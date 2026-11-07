@@ -65,6 +65,21 @@ exchanges ──< securities >── companies >──< company_aliases
 | `extracted_facts` | EVERY value read: canonical item, printed label, page, row, column, column header, period end and duration (3/6/9/12 or NULL), audited flag, raw cell text, original and normalized value, position on the page, validation status (PASSED/FAILED/UNCHECKED) with notes, and whether it was promoted (or why not) |
 | `financial_facts` (extended) | `document_id` and `source_page`: values promoted from a document point to the exact page |
 
+## Implemented (Phase 5 stabilization): migration 0006
+
+| Change | Purpose |
+|---|---|
+| `document_link_events` (new) | Audit trail of every change to a document's company: before/after, action, reason, actor, evidence (never deleted) |
+| `documents.issuer_name`, `association_status`, `association_note`, `association_checked_at` | Who issued the document (read from its first page); only non-MISMATCH documents count for coverage |
+| `document_extractions.superseded_at`, `ocr_engine` | Newer runs supersede older ones (kept for audit); engine used for OCR |
+| `document_pages.ocr_confidence` | Mean Tesseract confidence of OCR'd pages |
+| `extracted_facts.dimension`, `needs_review`, `ocr_confidence` | Segment name / schedule title; flagged for a person; lowest word confidence |
+| `extracted_statements.statement` also SEGMENT, RATIOS, NOTE, SHAREHOLDING | Disclosure tables |
+| `document_sections` (new) | Auditor's report, accounting policies, management discussion: page range, excerpt, explicit flags |
+| `group_entities` (new) | Entities named in a company's related-party note with the relationship word printed, page, and a link to our universe when listed |
+| `financial_facts.derived_from`, `history`; period types HALF_YEAR, NINE_MONTH | Derived-quarter inputs; earlier values replaced by a restatement; cumulative periods |
+| 11 new indexes | Foreign keys of the Phase 5 tables and `financial_facts.payload_id`, `dataset_verifications.company_id`, `documents.source_id` |
+
 ## Seed data
 
 `python -m app.seeds.loader` (from `./backend`) loads exchanges, sectors, a few industries and the five-company test universe (Reliance, TCS, Infosys, HDFC Bank, ICICI Bank). It is idempotent and never overwrites existing rows. BSE codes were cross-checked against public secondary sources and ISINs pass the check digit; verification against primary NSE/BSE master files is Phase 4 work.
