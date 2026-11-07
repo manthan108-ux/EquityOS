@@ -30,9 +30,10 @@ from app.models import AliasType
 from app.repositories import company_repository as repo
 from app.services.search_index import get_search_index
 
-FUZZY_MIN_SCORE = 60.0
+FUZZY_MIN_SCORE = 72.0
 SYMBOL_MIN_SCORE = 75.0  # tickers are short, so partial-match scoring is too noisy for them
 PREFIX_SCORE = 95.0
+MIN_FUZZY_NAME_LENGTH = 4  # shorter names are matched exactly or by prefix only
 MIN_FUZZY_QUERY_LENGTH = 2  # one character matches everything; not a useful suggestion
 MAX_SUGGESTIONS = 5
 MAX_QUERY_LENGTH = 100
@@ -154,10 +155,14 @@ def _fuzzy_suggestions(session: Session, normalized: str) -> list[Candidate]:
             )
 
     # Names: WRatio blends several fuzzy strategies and tolerates typos and word order.
+    # A very short name (e.g. "T T") partially matches almost anything, so a candidate must be at
+    # least half as long as the query to count as a fuzzy match. Prefix matches below are exempt.
+    min_len = max(MIN_FUZZY_NAME_LENGTH, len(normalized) // 2)
     for _, score, i in process.extract(
         normalized, index.name_texts, scorer=fuzz.WRatio, score_cutoff=FUZZY_MIN_SCORE, limit=60
     ):
-        consider(index.name_ids[i], index.name_displays[i], score)
+        if len(index.name_texts[i]) >= min_len:
+            consider(index.name_ids[i], index.name_displays[i], score)
     # Tickers are short, so partial-match scoring is noisy: use plain similarity.
     for _, score, i in process.extract(
         normalized, index.symbol_texts, scorer=fuzz.ratio, score_cutoff=SYMBOL_MIN_SCORE, limit=20

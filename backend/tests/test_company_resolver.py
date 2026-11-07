@@ -149,3 +149,19 @@ def test_oversized_query_is_rejected(seeded):
 
 def test_empty_database_is_not_found(session):
     assert resolve_company(session, "TCS").status is ResolutionStatus.NOT_FOUND
+
+
+def test_very_short_names_do_not_pollute_fuzzy_suggestions(seeded):
+    from app.models import AliasType, Company, CompanyAlias
+
+    tiny = Company(
+        issuer_key="INETTT1", legal_name="T T Limited", common_name="T T", master_data_source="t"
+    )
+    tiny.aliases.append(
+        CompanyAlias(alias="T T", normalized_alias="t t", alias_type=AliasType.COMMON_NAME)
+    )
+    seeded.add(tiny)
+    seeded.flush()
+    res = resolve_company(seeded, "tatamotors")
+    assert "T T" not in _names(seeded, res)
+    assert resolve_company(seeded, "T T").status is ResolutionStatus.RESOLVED  # exact still works

@@ -38,16 +38,19 @@
 - `GET /api/companies/search?q=` and `GET /api/companies/{id}` (unverified fields are listed, never invented).
 - Frontend: search box with debounce and suggestions, company confirmation card (the Start research button is disabled until the pipeline exists).
 - **All NSE/BSE companies:** importer for the official NSE/BSE security lists (see [DATA_SOURCES.md](DATA_SOURCES.md)); merges listings by ISIN issuer; audited; idempotent. Verified on a synthetic 5,000-company / 10,000-listing import.
-- 104 backend tests.
+- 108 backend tests.
+
+## Universe loaded (2026-11-07)
+
+Imported from the exchanges' official lists (saved in `data/master/`, git-ignored): NSE `EQUITY_L.csv` (2,630 rows) and BSE equity list (5,139 rows; 4,855 usable).
+Result: **4,969 companies, 7,485 listings** (2,499 on both exchanges, 127 NSE only, 2,343 BSE only). 284 BSE rows were skipped and reported: 276 funds/ETFs (INF ISINs), 6 non-equity instruments (rights entitlements, preference shares) and 2 equities with no valid ISIN (A.D.S. Diagnostics 523031, Pushpsons Industries 531562). Re-importing creates nothing new. The 5 pre-existing seed companies were verified unchanged apart from previously empty fields being filled.
 
 ## Known limitations
 
-- **The full universe is not loaded yet.** Neither exchange allows programmatic download from this project (NSE drops the connection; BSE returns 403) and we do not bypass that. The user must download the two official files and run the import command in DATA_SOURCES.md. Until then only the 5-company test universe exists.
-- The importer was written against the documented column layouts and tested with synthetic fixtures, not yet against a real exchange file. It fails loudly on unexpected headers.
-
-- Seed identity data (BSE codes, ISINs, names) is cross-checked against public secondary sources only; primary NSE/BSE verification is Phase 4. Reliance's founding year and all investor-relations URLs are intentionally unset.
-- Only 3 industries are seeded (those the test universe needs); sector/industry taxonomy grows with the Phase 8 sector profiles.
-
+- **Former names are not searchable** (e.g. "Zomato", now Eternal; "Tata Motors" demerger names) because exchange files hold only current names. Verified former-name aliases need a source (Phase 4).
+- The BSE file downloaded has no `Industry` column, so `exchange_industry` is empty; research sectors come from Phase 8 anyway.
+- The two BSE equities without an ISIN cannot be identified by our ISIN-based issuer key and are not imported.
+- Fuzzy suggestions can still be loosely related when nothing is close; they are only ever suggestions, never auto-selected.
 - The frontend status panel's browser-side rendering was not exercised in a real browser; connectivity was verified via HTTP (API responses, CORS header, frontend returns 200).
 - Tesseract OCR and Redis are not installed; they are needed only from Phase 5 and if background workers become necessary.
 - Docker image builds are not yet part of CI.

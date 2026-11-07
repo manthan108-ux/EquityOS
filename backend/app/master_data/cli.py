@@ -22,6 +22,11 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Import official exchange security lists.")
     parser.add_argument("--nse", type=Path, help="NSE EQUITY_L.csv")
     parser.add_argument("--bse", type=Path, help="BSE list-of-scrips CSV (Equity)")
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Run the full import, print the report, then roll back",
+    )
     args = parser.parse_args(argv)
 
     sources = [
@@ -33,8 +38,13 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("Provide at least one of --nse / --bse")
 
     try:
-        with Session(get_engine()) as session, session.begin():
+        with Session(get_engine()) as session:
             report = import_master_data(session, sources)
+            if args.dry_run:
+                session.rollback()
+                print("DRY RUN: nothing was saved.")
+            else:
+                session.commit()
     except (MasterFileError, OSError) as exc:
         print(f"Import failed, nothing was changed: {exc}", file=sys.stderr)
         return 1

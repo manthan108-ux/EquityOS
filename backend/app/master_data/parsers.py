@@ -46,10 +46,14 @@ class ParsedFile:
     exchange: str
     rows: list[MasterRow] = field(default_factory=list)
     skipped: dict[str, int] = field(default_factory=dict)  # reason -> count
+    skipped_examples: dict[str, list[str]] = field(default_factory=dict)  # reason -> a few rows
     total_rows: int = 0
 
-    def skip(self, reason: str) -> None:
+    def skip(self, reason: str, example: str = "") -> None:
         self.skipped[reason] = self.skipped.get(reason, 0) + 1
+        examples = self.skipped_examples.setdefault(reason, [])
+        if example and len(examples) < 5:
+            examples.append(example)
 
     @property
     def skipped_count(self) -> int:
@@ -122,8 +126,20 @@ def _date(value: str) -> date | None:
     return None
 
 
-def _valid_indian_isin(isin: str) -> bool:
-    return isin.startswith("IN") and is_valid_isin(isin)
+_COMPANY_ISIN_PREFIXES = ("INE", "IN9")
+
+
+def _isin_problem(isin: str) -> str | None:
+    """Why this ISIN cannot identify a listed company, or None if it can.
+
+    'INE' (and 'IN9', used for e.g. differential-voting shares) are company securities. 'INF'
+    ISINs are mutual-fund / ETF units, which are not companies, so they are excluded.
+    """
+    if not (isin.startswith("IN") and is_valid_isin(isin)):
+        return "invalid ISIN"
+    if not isin.startswith(_COMPANY_ISIN_PREFIXES):
+        return f"not a company security (ISIN prefix {isin[:3]}: fund/ETF/other)"
+    return None
 
 
 def parse_nse_equity_list(text: str) -> ParsedFile:
@@ -147,8 +163,8 @@ def parse_nse_equity_list(text: str) -> ParsedFile:
             parsed.skip("missing symbol")
         elif not row["name"]:
             parsed.skip("missing company name")
-        elif not _valid_indian_isin(isin):
-            parsed.skip("invalid ISIN")
+        elif problem := _isin_problem(isin):
+            parsed.skip(problem, f"{symbol} ({row['name']}) ISIN={isin or '(empty)'}")
         elif symbol in seen:
             parsed.skip("duplicate symbol in file")
         else:
@@ -199,15 +215,20 @@ def parse_bse_scrip_list(text: str) -> ParsedFile:
         status = _BSE_STATUS.get(row["status"].lower())
         instrument = row["instrument"].lower()
         if instrument and instrument != "equity":
-            parsed.skip("non-equity instrument")
+            parsed.skip(
+                "non-equity instrument",
+                f"{row['code']} {symbol} ({row['issuer']}) [{row['instrument']}]",
+            )
         elif not _BSE_CODE.match(row["code"]):
             parsed.skip("invalid BSE security code")
         elif not symbol:
             parsed.skip("missing symbol")
         elif not row["issuer"]:
             parsed.skip("missing issuer name")
-        elif not _valid_indian_isin(isin):
-            parsed.skip("invalid ISIN")
+        elif problem := _isin_problem(isin):
+            parsed.skip(
+                problem, f"{row['code']} {symbol} ({row['issuer']}) ISIN={isin or '(empty)'}"
+            )
         elif status is None:
             parsed.skip(f"unsupported status '{row['status']}'")
         elif symbol in seen_symbols or row["code"] in seen_codes:
