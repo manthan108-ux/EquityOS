@@ -22,6 +22,7 @@ from sqlalchemy import (
     func,
     text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, TimestampMixin
@@ -64,6 +65,14 @@ class Source(TimestampMixin, Base):
     authority_tier: Mapped[int] = mapped_column(Integer)
     base_url: Mapped[str | None] = mapped_column(String(300))
     terms_note: Mapped[str | None] = mapped_column(Text)
+    # Registry fields (spec section 1). Declared by the provider spec; whether a dataset is truly
+    # supported is decided by `dataset_verifications`, not by this list.
+    auth_requirement: Mapped[str | None] = mapped_column(String(200))
+    access_method: Mapped[str | None] = mapped_column(String(200))
+    rate_limits: Mapped[str | None] = mapped_column(String(300))
+    declared_datasets: Mapped[list | None] = mapped_column(JSONB)
+    coverage_note: Mapped[str | None] = mapped_column(Text)
+    redistribution_policy: Mapped[str | None] = mapped_column(String(300))
 
 
 class AcquisitionLog(Base):

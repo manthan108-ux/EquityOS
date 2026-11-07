@@ -310,3 +310,13 @@ def test_corrupt_cache_entry_is_just_a_miss(tmp_path):
     for meta in tmp_path.rglob("*.json"):
         meta.write_text("{not json")
     assert env.fetch(ttl=timedelta(hours=1)).status is FetchStatus.OK
+
+
+def test_unwritable_cache_directory_disables_caching_instead_of_crashing(tmp_path):
+    blocker = tmp_path / "a-file"
+    blocker.write_text("not a directory")
+    env = Env(ok(b"payload"), cache_dir=blocker / "cache", min_interval_s=0.0)  # cannot be created
+    first = env.fetch(ttl=timedelta(hours=1))
+    second = env.fetch(ttl=timedelta(hours=1))
+    assert first.ok and second.ok and not second.from_cache  # works, just without a cache
+    assert len(env.requests) == 2

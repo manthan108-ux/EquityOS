@@ -43,6 +43,18 @@ exchanges ──< securities >── companies >──< company_aliases
 
 `company_aliases.source` records where an alias came from (for example `NSE namechange.csv (2025-04-09)`); it is NULL for seed and exchange-list aliases.
 
+## Implemented (Phase 4b): provider facts
+
+| Table | Purpose |
+|---|---|
+| `financial_facts` | One line item of one statement for one period, provider, basis (CONSOLIDATED/STANDALONE) and period type. Keeps `original_value`, `original_unit`, `period_label` and the normalized `value_inr` (NULL if the unit is not convertible), plus source URL, retrieval time and the archived payload. Unique per company/provider/statement/line/period/type/basis |
+| `shareholding_facts` | Percent held per category and quarter (0-100 enforced) |
+| `corporate_actions` | Dividend / bonus / split / rights events as published, with the raw ratio text and event details |
+| `ratio_snapshots` | Provider-computed ratios with the raw strings and the provider's own definitions |
+| `raw_payloads` | Every provider response archived verbatim (JSONB, SHA-256), never containing credentials |
+| `dataset_verifications` | A recorded live retrieval attempt per provider and dataset. A dataset is "supported" only if one succeeded |
+| `sources` (extended) | Registry columns: auth requirement, access method, rate limits, declared datasets, coverage note, redistribution policy |
+
 ## Seed data
 
 `python -m app.seeds.loader` (from `./backend`) loads exchanges, sectors, a few industries and the five-company test universe (Reliance, TCS, Infosys, HDFC Bank, ICICI Bank). It is idempotent and never overwrites existing rows. BSE codes were cross-checked against public secondary sources and ISINs pass the check digit; verification against primary NSE/BSE master files is Phase 4 work.

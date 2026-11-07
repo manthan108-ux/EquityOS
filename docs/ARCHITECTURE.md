@@ -61,3 +61,7 @@ Folders for later phases (providers, evidence, agents, ...) are created when a p
 | 11 | Content validation on every fetch | Some sites answer HTTP 200 with an error page when throttled; without validation that would be stored as data. |
 | 12 | Official static exchange files are the primary market-data source | Public, authoritative (tier 1) and fetchable without defeating protections. Prices are stored unadjusted with file hash and URL. |
 | 13 | Providers return proposals; writes are explicit | Discovery (IR links, name history) never silently overwrites verified data. Name history only adds aliases, each with a recorded source. |
+| 14 | Provider router + registry; declared vs verified support; every attempt returned | No single source is assumed to supply everything; a fallback is never silent; support is claimed only after a recorded live retrieval. |
+| 15 | Authenticated documented APIs are called with `documented_api=True` (robots.txt skipped), credentials only in headers or redacted query parameters | robots.txt governs crawlers, not contractual APIs; access denials stay final; tokens never reach logs, cache keys, stored URLs or payload archives. |
+| 16 | Coverage engine counts only data that exists; confidence is a category with reasons | Completeness must not be inflated; a quality category must not be read as a probability. |
+| 17 | Manual routes (CSV, documents) are first-class, all-or-nothing and recorded as USER_SUPPLIED | Coverage can be completed legitimately where no API reaches, without pretending the data is provider-verified. |

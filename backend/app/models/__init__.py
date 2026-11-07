@@ -7,10 +7,30 @@ from app.models.acquisition import (
 )
 from app.models.base import Base
 from app.models.company import AliasType, Company, CompanyAlias, Security, SecurityStatus
+from app.models.facts import (
+    Basis,
+    CorporateAction,
+    DatasetVerification,
+    FinancialFact,
+    PeriodType,
+    RatioSnapshot,
+    RawPayload,
+    ShareholdingFact,
+    Statement,
+)
 from app.models.imports import MasterDataImport
 from app.models.reference import Exchange, Industry, Sector
 
 __all__ = [
+    "Basis",
+    "CorporateAction",
+    "DatasetVerification",
+    "FinancialFact",
+    "PeriodType",
+    "RatioSnapshot",
+    "RawPayload",
+    "ShareholdingFact",
+    "Statement",
     "AcquisitionLog",
     "Document",
     "EodPrice",

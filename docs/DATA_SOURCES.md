@@ -30,6 +30,8 @@ Everything goes through one audited client (`app/acquisition/http.py`) which: id
 | IRDAI feeds | `robots.txt` disallows | Skipped. |
 | `tcs.com` | HTTP 403 | IR discovery fails for this site; documents must come from another permitted route. |
 
+> The multi-source router, Upstox evaluation and coverage engine are described in [DATA_ACQUISITION_STRATEGY.md](DATA_ACQUISITION_STRATEGY.md).
+
 ## Known gaps (open risks for later phases)
 
 - **Financial statements, quarterly results, shareholding patterns, corporate announcements and XBRL** are normally served by the exchanges' protected APIs, which we do not use. The legitimate routes left are company investor-relations documents (annual reports, results PDFs, presentations) found via IR discovery, and any permitted static files. Phase 5 (document intelligence) therefore depends on company IR sites, and coverage will vary by company. Where data cannot be obtained, reports must say so.
