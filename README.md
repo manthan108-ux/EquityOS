@@ -4,7 +4,7 @@ An India-focused, evidence-driven AI equity research platform. Enter an NSE/BSE 
 
 > EquityOS produces research assistance, not investment advice or a promise of returns. It makes no claim of SEBI registration or analyst accreditation.
 
-**Status:** Phase 1 of 12 complete (foundation). See [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md).
+**Status:** Phase 2 of 12 complete (database foundation). See [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md).
 
 ## Stack
 
@@ -51,10 +51,19 @@ npm run dev                       # http://localhost:3000
 
 The backend reads `DATABASE_URL` from `.env` (see `.env.example`). Local runs reach Docker's Postgres on port **5433**.
 
+## Database migrations and seed data
+
+```bash
+# from ./backend, with the database running
+alembic upgrade head              # apply migrations (the Docker backend does this on start)
+python -m app.seeds.loader        # load exchanges, sectors and the 5-company test universe (idempotent)
+# in Docker:  docker compose exec backend python -m app.seeds.loader
+```
+
 ## Tests and checks
 
 ```bash
-# from ./backend
+# from ./backend  (database tests need the Docker Postgres running: docker compose up -d db)
 pytest -q
 ruff check . && ruff format --check .
 
@@ -71,6 +80,7 @@ All configuration is environment-based; see [.env.example](.env.example). Never 
 
 - [Project status](docs/PROJECT_STATUS.md)
 - [Architecture and design decisions](docs/ARCHITECTURE.md)
+- [Database schema](docs/DATABASE_SCHEMA.md)
 
 ## License
 
