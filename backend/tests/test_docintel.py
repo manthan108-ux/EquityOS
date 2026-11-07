@@ -548,7 +548,7 @@ def test_failed_checks_and_unknown_basis_block_promotion(session, company, tmp_p
     assert "consolidated/standalone basis not stated" in reasons
 
 
-def test_six_month_columns_are_staged_but_not_promoted(session, company, tmp_path):
+def test_six_month_to_september_is_stored_as_cumulative_half_year(session, company, tmp_path):
     doc = _document(session, company)
     page = income_page(
         second_header=("30.09.2026", "30.09.2025", "30.09.2026"),
@@ -556,16 +556,58 @@ def test_six_month_columns_are_staged_but_not_promoted(session, company, tmp_pat
     )
     run = extract_document(session, doc, tmp_path, content=_content(page)).extraction
     half = session.scalars(
-        select(ExtractedFact).where(
-            ExtractedFact.extraction_id == run.id, ExtractedFact.column_index == 2
+        select(FinancialFact).where(
+            FinancialFact.document_id == doc.id, FinancialFact.period_type == PeriodType.HALF_YEAR
         )
     ).all()
-    assert half and all(
-        f.duration_months == 6 and not f.promoted for f in half if f.original_value is not None
+    assert half and all(f.period_label == "H1FY2027" for f in half)
+    revenue = next(f for f in half if f.line_item == "revenue_from_operations")
+    assert revenue.period_end == date(2026, 9, 30) and revenue.original_value == Decimal("3800.00")
+    # the standalone quarter of the same date is a different row, never merged with it
+    quarter = session.scalar(
+        select(FinancialFact).where(
+            FinancialFact.document_id == doc.id,
+            FinancialFact.line_item == "revenue_from_operations",
+            FinancialFact.period_type == PeriodType.QUARTERLY,
+            FinancialFact.period_end == date(2026, 9, 30),
+        )
     )
-    assert "6-month period" in next(
-        f.not_promoted_reason for f in half if f.original_value is not None
-    )
+    assert quarter is not None and quarter.original_value == Decimal("1000.00")
+    assert run.facts_promoted > 0
+
+
+@pytest.mark.parametrize(
+    ("months", "end", "stored"),
+    [
+        (3, date(2026, 9, 30), PeriodType.QUARTERLY),
+        (12, date(2026, 3, 31), PeriodType.ANNUAL),
+        (6, date(2026, 9, 30), PeriodType.HALF_YEAR),
+        (9, date(2025, 12, 31), PeriodType.NINE_MONTH),
+        (6, date(2026, 3, 31), None),  # six months to March is not year-to-date for an April year
+        (9, date(2026, 9, 30), None),
+        (1, date(2026, 6, 30), None),
+    ],
+)
+def test_period_types_follow_the_april_march_fiscal_year(months, end, stored):
+    from app.docintel.periods import ColumnPeriod
+    from app.docintel.pipeline import period_type_for
+    from app.docintel.statements import ColumnInfo
+
+    column = ColumnInfo(0, 0, 1, "h", ColumnPeriod(end, months, False, None))
+    period_type, problem = period_type_for("INCOME", column)
+    assert period_type is stored
+    assert (problem is None) == (stored is not None)
+
+
+def test_period_labels():
+    from app.normalization import period_label
+
+    assert period_label(date(2026, 9, 30), 3) == "Q2FY2027"
+    assert period_label(date(2026, 9, 30), 6) == "H1FY2027"
+    assert period_label(date(2025, 12, 31), 9) == "9MFY2026"
+    assert period_label(date(2026, 3, 31), 12) == "FY2026"
+    with pytest.raises(ValueError):
+        period_label(date(2026, 3, 31), 6)
 
 
 def test_rerun_is_idempotent_and_newer_document_wins_restatements(session, company, tmp_path):

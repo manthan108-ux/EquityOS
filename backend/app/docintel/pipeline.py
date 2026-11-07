@@ -20,17 +20,23 @@ from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
+from app.core.storage import StoragePathError, resolve_inside
+from app.core.text import normalize_text
 from app.docintel import taxonomy, validate
+from app.docintel.association import build_issuer_index
+from app.docintel.disclosures import extract_shareholding, find_group_entities, find_sections
 from app.docintel.entity import COVER_PAGES, EntityCheck, check_entity, company_names
+from app.docintel.ocr import LOW_CONFIDENCE, OcrError, cross_check, read_region
 from app.docintel.pdf import PdfContent, read_pdf
 from app.docintel.statements import (
     CellFact,
     ColumnInfo,
     StatementBlock,
     extract_page_statements,
+    inherit_context,
     merge_continuations,
 )
 from app.models import (
@@ -39,17 +45,19 @@ from app.models import (
     Document,
     DocumentExtraction,
     DocumentPage,
+    DocumentSection,
     ExtractedFact,
     ExtractedStatement,
     ExtractionStatus,
     FinancialFact,
+    GroupEntity,
     PeriodType,
     Statement,
     ValidationStatus,
 )
-from app.normalization import fiscal_year_label, normalized_value, quarter_label
+from app.normalization import fiscal_year_label, normalized_value, period_label, quarter_label
 
-EXTRACTOR_VERSION = "5.0"
+EXTRACTOR_VERSION = "5.2"
 PROVIDER_CODE = "DOCUMENT_EXTRACTION"
 RESTATEMENT_TOLERANCE = Decimal("0.001")
 _PG_TEXT_LIMIT = 1_000_000  # characters of text kept per page (defensive cap)
@@ -62,18 +70,30 @@ class Decision:
 
 
 def period_type_for(statement: str, column: ColumnInfo) -> tuple[PeriodType | None, str | None]:
+    """How a column's figures are stored.
+
+    Balance sheets are points in time. Flow statements (income, cash flow) are classified by the
+    length of the period: 3 months is a STANDALONE quarter, 12 months a year, and the
+    year-to-date periods of an April-March fiscal year (6 months to September, 9 months to
+    December) are CUMULATIVE half-year / nine-month figures. Other lengths are not stored.
+    """
     period = column.period
     if period.period_end is None:
         return None, "column has no readable period"
     if statement == taxonomy.BALANCE_SHEET:
         return (PeriodType.ANNUAL if period.period_end.month == 3 else PeriodType.QUARTERLY), None
-    if period.duration_months == 3:
+    months, month = period.duration_months, period.period_end.month
+    if months == 3:
         return PeriodType.QUARTERLY, None
-    if period.duration_months == 12:
+    if months == 12:
         return PeriodType.ANNUAL, None
+    if months == 6 and month == 9:
+        return PeriodType.HALF_YEAR, None
+    if months == 9 and month == 12:
+        return PeriodType.NINE_MONTH, None
     return None, (
-        f"{period.duration_months}-month period: kept as extracted, not stored as a quarterly or "
-        "annual figure"
+        f"{months}-month period ending {period.period_end:%b %Y}: not a quarter, a year or a "
+        "year-to-date figure of an April-March fiscal year"
     )
 
 
@@ -85,6 +105,7 @@ def promotion_problem(
     company_linked: bool,
     entity: EntityCheck | None = None,
     scanned_page: bool = False,
+    ocr_review: str | None = None,
 ) -> Decision:
     """Why this value must NOT enter financial_facts, or Decision(problem=None) if it may."""
     column = block.column(fact.column_index)
@@ -98,10 +119,13 @@ def promotion_problem(
         return Decision(None, "cell is blank, nil or not a number")
     if not column.usable:
         return Decision(None, column.problem or "column is not a period column")
-    if block.basis is None:
+    own_basis = block.statement != taxonomy.SHAREHOLDING  # holdings have no basis or unit
+    if block.basis is None and own_basis:
         return Decision(None, "consolidated/standalone basis not stated")
-    if taxonomy.item_kind(fact.key) == "amount" and block.unit is None:
+    if own_basis and taxonomy.item_kind(fact.key) == "amount" and block.unit is None:
         return Decision(None, "reporting unit not stated")
+    if ocr_review:
+        return Decision(None, ocr_review)
     if status is ValidationStatus.FAILED:
         return Decision(None, "an arithmetic check involving this value failed")
     if status is ValidationStatus.UNCHECKED and not column_ok:
@@ -109,22 +133,179 @@ def promotion_problem(
     if scanned_page and status is not ValidationStatus.PASSED:
         # OCR can misread a single digit; only values an identity confirms are trusted.
         return Decision(None, "scanned page (OCR text): only values confirmed by a check are used")
+    if block.statement in taxonomy.DISCLOSURES:
+        # segment / ratio / schedule values are validated disclosures, not financial_facts rows
+        return Decision(None, None)
     period_type, problem = period_type_for(block.statement, column)
     return Decision(period_type, problem)
 
 
+def _persist_narrative(
+    session: Session,
+    run: DocumentExtraction,
+    document: Document,
+    content: PdfContent,
+    issues: list[dict],
+) -> None:
+    """Sections (auditor's report, policies, management discussion) and the group roster."""
+    try:
+        for section in find_sections(content.pages):
+            session.add(
+                DocumentSection(
+                    extraction_id=run.id,
+                    document_id=document.id,
+                    kind=section.kind,
+                    heading=section.heading,
+                    start_page=section.start_page,
+                    end_page=section.end_page,
+                    text=section.text.replace("\x00", ""),
+                    flags=section.flags or None,
+                )
+            )
+        if document.company_id is None or document.association_status == "MISMATCH":
+            return  # a roster only means something in the company's OWN filing
+        index = build_issuer_index(session)
+        for row in find_group_entities(content.pages):
+            normalized = normalize_text(row.entity_name)
+            matched = sorted(index.names.get(normalized, ()), key=str)
+            session.add(
+                GroupEntity(
+                    company_id=document.company_id,
+                    extraction_id=run.id,
+                    document_id=document.id,
+                    page_number=row.page_number,
+                    entity_name=row.entity_name[:300],
+                    normalized_name=normalized[:300],
+                    relationship=row.relationship[:80],
+                    matched_company_id=matched[0] if len(matched) == 1 else None,
+                )
+            )
+    except Exception as exc:  # noqa: BLE001 - narrative extras never block the financial results
+        issues.append(
+            {
+                "page": None,
+                "code": "NARRATIVE_ERROR",
+                "detail": f"skipped after {type(exc).__name__}",
+            }
+        )
+
+
+def _col_key(column: ColumnInfo) -> tuple:
+    return (column.period.period_end, column.period.duration_months, column.period.point_in_time)
+
+
+def _layout_key(block: StatementBlock) -> frozenset:
+    return frozenset(_col_key(c) for c in block.columns if c.usable)
+
+
+def _verified_layouts(blocks: list[StatementBlock], checks: dict) -> dict[frozenset, set]:
+    """Period layouts already proven by a primary statement of this document.
+
+    Segment, ratio and schedule tables repeat the column structure of the statement they sit
+    next to (same periods, same order). If a primary statement with exactly that structure had a
+    column confirmed by its arithmetic checks, the same column of a disclosure table is read
+    correctly too. Returns {layout: {verified column keys}}.
+    """
+    out: dict[frozenset, set] = {}
+    for block in blocks:
+        if block.statement not in (taxonomy.INCOME, taxonomy.BALANCE_SHEET, taxonomy.CASH_FLOW):
+            continue
+        results = checks[id(block)]
+        verified = {
+            _col_key(c)
+            for c in block.columns
+            if c.usable and validate.column_verified(results, c.index)
+        }
+        if verified:
+            out.setdefault(_layout_key(block), set()).update(verified)
+    return out
+
+
+def _layout_ok(block: StatementBlock, column_index: int, layouts: dict[frozenset, set]) -> bool:
+    if block.statement not in taxonomy.DISCLOSURES:
+        return False
+    verified = layouts.get(_layout_key(block))
+    column = block.column(column_index)
+    return bool(verified) and column.usable and _col_key(column) in verified
+
+
+class _OcrReview:
+    """Doubts about a value read from OCR text, decided from the page itself.
+
+    - look-alike characters in the printed token (O/0, l/1, S/5) -> flagged;
+    - a Tesseract word below the confidence floor -> flagged;
+    - on a scan with an embedded OCR layer: a SECOND, independent reading (our own Tesseract run)
+      must give the same number; a different number, or none, -> flagged.
+    A flagged value is never promoted and is listed for manual review.
+    """
+
+    def __init__(self, content: PdfContent) -> None:
+        self.content = content
+        self.page = {p.number: p for p in content.pages}
+        self._alt: dict[int, list | None] = {}
+        self.cross_checked = 0
+
+    def _alt_words(self, number: int):
+        if number not in self._alt:
+            reader = self.content.ocr_page
+            try:
+                self._alt[number] = reader(number) if reader else None
+            except (OcrError, OSError):
+                self._alt[number] = None
+        return self._alt[number]
+
+    def review(
+        self, fact: CellFact, page_number: int
+    ) -> tuple[str | None, str | None, float | None]:
+        """(reason a person must look, note for the audit trail, lowest word confidence)."""
+        page = self.page.get(page_number)
+        if page is None or page.method not in ("embedded_ocr", "ocr") or fact.bbox is None:
+            return None, None, None
+        reading = read_region(page.words, fact.bbox)
+        confidence = reading.min_conf if reading else None
+        if reading and reading.ambiguous:
+            return "look-alike characters in the OCR text of this value", None, confidence
+        if confidence is not None and confidence < LOW_CONFIDENCE:
+            return f"low OCR confidence ({confidence:.0f})", None, confidence
+        if page.method == "embedded_ocr" and fact.value is not None:
+            alt = self._alt_words(page_number)
+            if alt is not None:
+                verdict, seen = cross_check(fact.value, fact.bbox, alt)
+                self.cross_checked += 1
+                if verdict != "AGREE":
+                    detail = f"'{seen}'" if seen else "nothing"
+                    return (
+                        f"second OCR reading disagrees (saw {detail})"[:200],
+                        None,
+                        confidence,
+                    )
+                return None, "confirmed by an independent second OCR reading", confidence
+        return None, None, confidence
+
+
 def _unit(block: StatementBlock, fact: CellFact) -> str | None:
-    return "inr_per_share" if taxonomy.item_kind(fact.key) == "per_share" else block.unit
+    if block.statement == taxonomy.SHAREHOLDING:
+        return "percent" if fact.column_index == 1 else "shares"
+    kind = taxonomy.item_kind(fact.key)
+    if kind == "per_share":
+        return "inr_per_share"
+    if kind in ("percent", "ratio"):
+        return kind  # dimensionless: the printed number is kept as is
+    return block.unit
+
+
+_MONTHS_OF = {
+    PeriodType.QUARTERLY: 3,
+    PeriodType.ANNUAL: 12,
+    PeriodType.HALF_YEAR: 6,
+    PeriodType.NINE_MONTH: 9,
+}
 
 
 def _period_label(statement: str, period_end: date, period_type: PeriodType) -> str:
     if statement == taxonomy.BALANCE_SHEET:
         return f"as at {period_end.isoformat()}"
-    return (
-        quarter_label(period_end)
-        if period_type is PeriodType.QUARTERLY
-        else fiscal_year_label(period_end)
-    )
+    return period_label(period_end, _MONTHS_OF[period_type])
 
 
 _DATASET = {
@@ -191,7 +372,9 @@ class _Promoter:
                 first_row.promoted = False
                 first_row.not_promoted_reason = "conflicts with another table in the same document"
                 self.s.delete(first_fact)
-                self.datasets[_DATASET[(statement, period_type)]] -= 1
+                dataset = _DATASET.get((statement, period_type))
+                if dataset:
+                    self.datasets[dataset] -= 1
             self.conflicts.append(
                 {
                     "page": block.page_number,
@@ -256,8 +439,9 @@ class _Promoter:
         existing.source_page = fact.page_number or block.page_number
         existing.payload_id = None
         self._seen[ident] = (row, value_inr, existing)
-        dataset = _DATASET[(statement, period_type)]
-        self.datasets[dataset] = self.datasets.get(dataset, 0) + 1
+        dataset = _DATASET.get((statement, period_type))
+        if dataset:  # cumulative half-year / nine-month figures have no dataset of their own
+            self.datasets[dataset] = self.datasets.get(dataset, 0) + 1
         return True, None
 
 
@@ -283,7 +467,13 @@ def extract_document(
     promote: bool = True,
     content: PdfContent | None = None,
 ) -> ExtractionReport:
-    """Run the full pipeline on one stored document. Every outcome is recorded, never raised."""
+    """Run the full pipeline on one stored document. Every outcome is recorded, never raised.
+
+    The work runs inside a savepoint: if anything unexpected happens, everything written for this
+    run is rolled back, the run row itself stays (status FAILED, with the error class), and the
+    caller's transaction remains usable. When a run finishes with a usable result, earlier runs of
+    the same document are marked superseded (kept for the audit trail, never deleted).
+    """
     run = DocumentExtraction(
         document_id=document.id,
         extractor_version=EXTRACTOR_VERSION,
@@ -292,6 +482,47 @@ def extract_document(
     )
     session.add(run)
     session.flush()
+    try:
+        with session.begin_nested():
+            report = _extract(
+                session, document, data_dir, run, use_ocr=use_ocr, promote=promote, content=content
+            )
+    except Exception as exc:  # noqa: BLE001 - recorded on the run instead of aborting a batch
+        run.status = ExtractionStatus.FAILED
+        run.error = (
+            f"unexpected {type(exc).__name__} during extraction (nothing from this run kept)"
+        )
+        run.issues = [{"page": None, "code": "UNEXPECTED_ERROR", "detail": run.error}]
+        run.finished_at = datetime.now(UTC)
+        session.flush()
+        return ExtractionReport(run, [])
+    if run.status in (
+        ExtractionStatus.COMPLETED,
+        ExtractionStatus.NO_STATEMENTS,
+        ExtractionStatus.NEEDS_OCR,
+    ):
+        session.execute(
+            update(DocumentExtraction)
+            .where(
+                DocumentExtraction.document_id == document.id,
+                DocumentExtraction.id != run.id,
+                DocumentExtraction.superseded_at.is_(None),
+            )
+            .values(superseded_at=datetime.now(UTC))
+        )
+    return report
+
+
+def _extract(
+    session: Session,
+    document: Document,
+    data_dir: Path,
+    run: DocumentExtraction,
+    *,
+    use_ocr: bool | None,
+    promote: bool,
+    content: PdfContent | None,
+) -> ExtractionReport:
     issues: list[dict] = []
 
     if content is None:
@@ -304,8 +535,13 @@ def extract_document(
                 [],
                 error=f"only PDF documents are supported (got {document.content_type})",
             )
-        path = (data_dir / document.storage_path).resolve()
-        if not path.is_file() or data_dir.resolve() not in path.parents:
+        try:
+            path = resolve_inside(data_dir, document.storage_path)
+        except StoragePathError:
+            return _finish(
+                session, run, ExtractionStatus.FAILED, issues, [], error="stored file is missing"
+            )
+        if not path.is_file():
             return _finish(
                 session, run, ExtractionStatus.FAILED, issues, [], error="stored file is missing"
             )
@@ -315,6 +551,7 @@ def extract_document(
 
     run.page_count = content.page_count
     run.ocr_used = content.ocr_used
+    run.ocr_engine = content.ocr_engine if content.ocr_used or content.ocr_page else None
     if content.truncated:
         issues.append(
             {
@@ -332,6 +569,7 @@ def extract_document(
                 char_count=page.char_count,
                 needs_ocr=page.needs_ocr,
                 text_method=page.method,
+                ocr_confidence=page.ocr_confidence,
                 text=page.text[:_PG_TEXT_LIMIT].replace("\x00", ""),
             )
         )
@@ -351,8 +589,35 @@ def extract_document(
     for page in content.pages:
         if page.needs_ocr or not page.words:
             continue
-        blocks.extend(extract_page_statements(page.number, page.words))
-    blocks = merge_continuations(blocks)
+        try:
+            blocks.extend(
+                extract_page_statements(
+                    page.number, page.words, ocr=page.method in ("ocr", "embedded_ocr")
+                )
+            )
+        except Exception as exc:  # noqa: BLE001 - one odd page must not lose the whole document
+            issues.append(
+                {
+                    "page": page.number,
+                    "code": "PAGE_ERROR",
+                    "detail": f"page skipped after an unexpected {type(exc).__name__}",
+                }
+            )
+    for page in content.pages:
+        if page.needs_ocr or not page.words:
+            continue
+        try:
+            blocks.extend(extract_shareholding(page.number, page.words))
+        except Exception as exc:  # noqa: BLE001 - one odd page must not lose the document
+            issues.append(
+                {
+                    "page": page.number,
+                    "code": "PAGE_ERROR",
+                    "detail": f"shareholding scan skipped after {type(exc).__name__}",
+                }
+            )
+    blocks = inherit_context(merge_continuations(blocks))
+    _persist_narrative(session, run, document, content, issues)
 
     doc_latest = max(
         (
@@ -366,11 +631,14 @@ def extract_document(
     names = company_names(session, document.company_id) if document.company_id else set()
     page_text = {p.number: p.text for p in content.pages}
     page_method = {p.number: p.method for p in content.pages}
+    ocr_review = _OcrReview(content)
     cover = "\n".join(p.text for p in content.pages[:COVER_PAGES])
     promoter = _Promoter(session, document, doc_latest) if promote else None
     facts_total = 0
+    checks = {id(b): validate.run_checks(b) for b in blocks}
+    verified_layouts = _verified_layouts(blocks, checks)
     for block in blocks:
-        results = validate.run_checks(block)
+        results = checks[id(block)]
         statuses = validate.fact_statuses(block, results)
         entity = check_entity(
             page_text.get(block.page_number, ""),
@@ -383,7 +651,7 @@ def extract_document(
                 {"page": block.page_number, "code": "ENTITY_UNCONFIRMED", "detail": entity.how}
             )
         block_pages = [block.page_number, *block.continued_pages]
-        if any(page_method.get(p) == "embedded_ocr" for p in block_pages):
+        if any(page_method.get(p) in ("embedded_ocr", "ocr") for p in block_pages):
             block.issues.append(
                 {
                     "page": block.page_number,
@@ -397,7 +665,9 @@ def extract_document(
                 issues.append(
                     {
                         "page": block.page_number,
-                        "code": "CHECK_FAILED",
+                        # a confirm-only sum that does not close usually means the statement has
+                        # a component line we do not recognise: informational, not a failure
+                        "code": "SUM_NOT_CONFIRMED" if r.confirm_only else "CHECK_FAILED",
                         "detail": f"{r.name}: {r.form} (difference {r.difference})",
                     }
                 )
@@ -419,16 +689,25 @@ def extract_document(
         for fact in block.facts:
             status, notes = statuses[(fact.key, fact.column_index)]
             column = block.column(fact.column_index)
+            fact_page = fact.page_number or block.page_number
+            doubt, ocr_note, ocr_conf = ocr_review.review(fact, fact_page)
             decision = promotion_problem(
                 block,
                 fact,
                 status,
-                validate.column_verified(results, fact.column_index),
+                validate.column_verified(results, fact.column_index)
+                or _layout_ok(block, fact.column_index, verified_layouts),
                 document.company_id is not None,
                 entity,
-                scanned_page=page_method.get(fact.page_number or block.page_number)
-                == "embedded_ocr",
+                scanned_page=page_method.get(fact_page) in ("embedded_ocr", "ocr"),
+                ocr_review=doubt,
             )
+            notes = list(notes)
+            if ocr_note:
+                notes.append(ocr_note)
+            if column.repairs:
+                notes.append("column header repaired from OCR text: " + "; ".join(column.repairs))
+            scanned = page_method.get(fact_page) in ("embedded_ocr", "ocr")
             unit = _unit(block, fact)
             row = ExtractedFact(
                 extraction_id=run.id,
@@ -453,14 +732,26 @@ def extract_document(
                 if fact.value is not None and unit
                 else None,
                 bbox=list(fact.bbox) if fact.bbox else None,
+                dimension=(fact.dimension or None) and fact.dimension[:160],
                 validation_status=status,
                 validation_notes=notes or None,
                 promoted=False,
                 not_promoted_reason=None,
+                needs_review=bool(
+                    doubt
+                    or (scanned and status is ValidationStatus.FAILED and fact.value is not None)
+                ),
+                ocr_confidence=ocr_conf,
             )
             session.add(row)
             facts_total += 1
-            if decision.problem is None and promoter and decision.period_type is not None:
+            if block.statement in taxonomy.DISCLOSURES:
+                # validated disclosure: usable straight from extracted_facts (promoted = True)
+                row.promoted = decision.problem is None and promote
+                row.not_promoted_reason = (
+                    None if row.promoted else (decision.problem or "promotion disabled")[:200]
+                )
+            elif decision.problem is None and promoter and decision.period_type is not None:
                 promoted, reason = promoter.promote(block, fact, decision.period_type, row)
                 row.promoted = promoted
                 row.not_promoted_reason = reason[:200] if reason else None

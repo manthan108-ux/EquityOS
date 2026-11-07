@@ -207,8 +207,13 @@ def ingest_document_file(
     published_at: date | None = None,
     financial_period: str | None = None,
     data_dir: Path | None = None,
+    force_association: bool = False,
 ) -> tuple[Document, bool]:
-    """Store a local file as a document. The file name is never used to build a storage path."""
+    """Store a local file as a document. The file name is never used to build a storage path.
+
+    A PDF issued by a different entity than `company_id` is REFUSED (AssociationMismatch) unless
+    `force_association=True`, which links it anyway and records that it was forced.
+    """
     if doc_type not in ALLOWED_DOC_TYPES:
         raise ValueError(f"Unknown doc_type '{doc_type}'")
     size = path.stat().st_size
@@ -225,6 +230,8 @@ def ingest_document_file(
         title=title or path.name,
         published_at=published_at,
         financial_period=financial_period,
+        on_mismatch="raise",
+        force_association=force_association,
     )
 
 

@@ -22,8 +22,13 @@ services:
       # Inside the compose network the database host is the service name `db`, port 5432.
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-equityos}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-equityos}
       CORS_ORIGINS: '["http://localhost:3000"]'
+    # The SAME folder your machine uses (DATA_DIR, default ./data): documents, HTTP cache and the
+    # manual-ingestion inbox are shared between local runs and Docker, and survive container
+    # rebuilds and `docker compose down -v` because they live on your disk, not in the container.
+    # On Linux, set DATA_UID/DATA_GID to the owner of ./data (`id -u` / `id -g`).
+    user: "${DATA_UID:-1000}:${DATA_GID:-1000}"
     volumes:
-      - appdata:/app/data
+      - ${DATA_HOST_DIR:-./data}:/app/data
     ports:
       - "8000:8000"
     depends_on:
@@ -42,4 +47,3 @@ services:
 
 volumes:
   pgdata:
-  appdata:

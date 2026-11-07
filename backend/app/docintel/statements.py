@@ -30,10 +30,12 @@ from app.docintel.layout import (
     phrases,
     split_row,
 )
+from app.docintel.ocr import repair_header
 from app.docintel.periods import ColumnPeriod, parse_column_header
 
 MIN_MATCHED_ITEMS = 3  # fewer recognised line items than this: not treated as a statement
 MIN_UNTITLED_ITEMS = 5
+MIN_UNTITLED_RATIOS = 3  # ratio labels are distinctive, a few are enough
 MAX_WRAPPED_LINES = 4  # a label is never assembled from more than this many label-only lines
 PAD = 2.0
 _DANGLING = re.compile(
@@ -64,6 +66,7 @@ class ColumnInfo:
     period: ColumnPeriod
     is_note: bool = False
     problem: str | None = None  # why this column cannot be used (None = usable)
+    repairs: list[str] = field(default_factory=list)  # OCR slips corrected in the header text
 
     @property
     def usable(self) -> bool:
@@ -80,6 +83,7 @@ class ColumnInfo:
             "audited": p.audited,
             "is_note": self.is_note,
             "problem": self.problem,
+            "repairs": self.repairs,
         }
 
 
@@ -95,6 +99,7 @@ class CellFact:
     bbox: tuple[float, float, float, float] | None
     duplicate: bool = False  # the same item appeared twice in the block with different values
     page_number: int = 0  # page the value was printed on (statements can span pages)
+    dimension: str | None = None  # segment name / note title the value belongs to
 
 
 @dataclass
@@ -110,6 +115,8 @@ class StatementBlock:
     unmatched_labels: list[str] = field(default_factory=list)
     issues: list[dict] = field(default_factory=list)
     continued_pages: list[int] = field(default_factory=list)  # later pages merged into this block
+    dimension: str | None = None  # note tables: the schedule / note title
+    inherited: list[str] = field(default_factory=list)  # context copied from the previous page
 
     @property
     def matched_keys(self) -> set[str]:
@@ -118,15 +125,29 @@ class StatementBlock:
     def column(self, index: int) -> ColumnInfo:
         return next(c for c in self.columns if c.index == index)
 
-    def value(self, key: str, column: int) -> CellFact | None:
+    def value(self, key: str, column: int, dimension: str | None = None) -> CellFact | None:
         return next(
             (
                 f
                 for f in self.facts
-                if f.key == key and f.column_index == column and not f.duplicate
+                if f.key == key
+                and f.column_index == column
+                and not f.duplicate
+                and (dimension is None or f.dimension == dimension)
             ),
             None,
         )
+
+    def dimensional(self, key: str, column: int) -> list[CellFact]:
+        """All values of `key` in a column that belong to a dimension (segments, ...)."""
+        return [
+            f
+            for f in self.facts
+            if f.key == key
+            and f.column_index == column
+            and f.dimension is not None
+            and not f.duplicate
+        ]
 
 
 # ------------------------------------------------------------------------------- headers
@@ -227,7 +248,7 @@ def _overlap(part: Line, col: Column) -> float:
 
 
 def _read_columns(
-    header_lines: list[Line], columns: list[Column], statement: str
+    header_lines: list[Line], columns: list[Column], statement: str, ocr: bool = False
 ) -> list[ColumnInfo]:
     texts, notes = _column_headers(header_lines, columns)
     infos = []
@@ -257,13 +278,24 @@ def _read_columns(
                 )
             )
             continue
+        repairs: list[str] = []
+        if ocr:
+            header, repairs = repair_header(header)
         period = parse_column_header(header)
-        info = ColumnInfo(col.index, col.x0, col.x1, header, period)
+        info = ColumnInfo(col.index, col.x0, col.x1, header, period, repairs=repairs)
         if statement == taxonomy.BALANCE_SHEET:
             if period.period_end is not None and period.problem in (None, "duration not stated"):
                 info.period = ColumnPeriod(period.period_end, None, True, period.audited)
             else:
                 info.problem = period.problem or "no period"
+        elif statement in (taxonomy.SEGMENT, taxonomy.RATIOS, taxonomy.NOTE):
+            # disclosures: either a period ("Three months ended ...") or a date ("At 31.03.2026")
+            if period.period_end is None or (
+                period.problem and period.problem != "duration not stated"
+            ):
+                info.problem = period.problem or "no period"
+            elif not period.point_in_time and period.duration_months is None:
+                info.problem = "duration not stated"
         else:
             if period.point_in_time:
                 info.problem = "point-in-time column in a flow statement"
@@ -290,19 +322,19 @@ def _read_columns(
 
 
 def _unit_for(
-    header_text: str, above: list[Line], page_lines: list[Line]
+    header_text: str, above: list[Line], page_lines: list[Line], ocr: bool = False
 ) -> tuple[str | None, str | None]:
     """(unit, problem). Nearest statement of unit wins: header, then lines above, then page."""
-    units = detect.find_units(header_text)
+    units = detect.find_units(header_text, ocr)
     if len(units) == 1:
         return units.pop(), None
     if len(units) > 1:
         return None, f"conflicting units in header: {sorted(units)}"
     for line in reversed(above):
-        units = detect.find_units(line.text)
+        units = detect.find_units(line.text, ocr)
         if len(units) == 1:
             return units.pop(), None
-    page_units = detect.find_units(" ".join(ln.text for ln in page_lines))
+    page_units = detect.find_units(" ".join(ln.text for ln in page_lines), ocr)
     if len(page_units) == 1:
         return page_units.pop(), None
     if page_units:
@@ -323,6 +355,25 @@ def _basis_for(
     return found.pop() if len(found) == 1 else None
 
 
+_FOOTNOTE_START = re.compile(r"^\s*\d{1,2}\.\s+[A-Za-z]")
+
+
+def _trim_footnotes(body: list[Line]) -> list[Line]:
+    """End a schedule's lines where its footnotes begin ("1. Assets amounting to ... million").
+
+    Footnote sentences contain amounts and years whose positions would otherwise be mistaken for
+    extra value columns. The cut happens only after at least three numeric lines, so a table whose
+    first row starts like a footnote is not truncated.
+    """
+    numeric = 0
+    for i, line in enumerate(body):
+        if any(parse_cell(w.text) is not None for w in line.words):
+            numeric += 1
+        if numeric >= 3 and len(line.words) >= 6 and _FOOTNOTE_START.match(line.text):
+            return body[:i]
+    return body
+
+
 def _read_block(
     page_number: int,
     statement: str,
@@ -331,7 +382,10 @@ def _read_block(
     above: list[Line],
     page_lines: list[Line],
     detection: str,
+    ocr: bool = False,
 ) -> StatementBlock | None:
+    if statement == taxonomy.NOTE:
+        body = _trim_footnotes(body)
     columns = find_columns(body)
     if not columns:
         return None
@@ -351,9 +405,12 @@ def _read_block(
     header_text = " ".join(ln.text for ln in header_lines)
     title = title_line.text if title_line else None
     # Segment tables repeat "revenue" and "profit" per business line; they are not a statement.
-    if re.search(r"\bsegment", f"{title or ''} {header_text}", re.IGNORECASE):
+    primary = statement in (taxonomy.INCOME, taxonomy.BALANCE_SHEET, taxonomy.CASH_FLOW)
+    if primary and re.search(r"\bsegment", f"{title or ''} {header_text}", re.IGNORECASE):
         return None
-    unit, unit_problem = _unit_for(" ".join(filter(None, [title, header_text])), above, page_lines)
+    unit, unit_problem = _unit_for(
+        " ".join(filter(None, [title, header_text])), above, page_lines, ocr
+    )
     block = StatementBlock(
         page_number=page_number,
         statement=statement,
@@ -361,8 +418,13 @@ def _read_block(
         detection=detection,
         basis=_basis_for(title or "", header_text, above, page_lines),
         unit=unit,
-        columns=_read_columns(header_lines, columns, statement),
+        columns=_read_columns(header_lines, columns, statement, ocr),
+        dimension=(title or "")[:160] if statement == taxonomy.NOTE else None,
     )
+    if not primary and above and not any(c.usable for c in block.columns):
+        # a table that continues from the page before keeps its column headings ABOVE its title
+        block.columns = _read_columns([*above[-8:], *header_lines], columns, statement, ocr)
+        block.inherited.append("column headings read above the table title")
     if unit_problem:
         block.issues.append({"page": page_number, "code": "UNIT_UNKNOWN", "detail": unit_problem})
     if block.basis is None:
@@ -382,6 +444,12 @@ def _read_block(
     # Label-only lines waiting to be joined with the next valued row (a label can wrap over
     # several lines, possibly below an unrelated heading).
     pieces: list[str] = []
+    # label-only lines right above the first data row are the START of its wrapped label
+    for earlier in reversed(rows[:first_data]):
+        if earlier is None or not earlier.label or earlier.has_values:
+            break
+        pieces.insert(0, _strip_enumeration(" ".join(earlier.label.split())))
+    pieces = pieces[-MAX_WRAPPED_LINES:]
     last_unmatched = None  # valued row whose label may continue on the next line
     for i in range(first_data, len(body)):
         row = rows[i]
@@ -396,7 +464,7 @@ def _read_block(
                 joined = f"{last_unmatched[1]} {_strip_enumeration(label)}"
                 key = taxonomy.match_label(joined, statement, ctx)
                 if key:
-                    _add_facts(block, key, joined, last_unmatched[0])
+                    _add_facts(block, key, joined, last_unmatched[0], ctx.last_dimension)
                     block.unmatched_labels.remove(last_unmatched[1])
                     last_unmatched = None
                     continue
@@ -409,7 +477,7 @@ def _read_block(
         tail = _strip_enumeration(label)
         joins = [" ".join([*pieces[-k:], tail]).strip() for k in range(len(pieces), 0, -1)]
         candidates: list[str] = []
-        if pieces and (not label or label[:1].islower() or _DANGLING.search(pieces[-1])):
+        if pieces and (_is_continuation(label) or _DANGLING.search(pieces[-1])):
             candidates += joins
         if label:
             candidates.append(label)
@@ -422,20 +490,50 @@ def _read_block(
                 break
         pieces = []
         if key:
-            _add_facts(block, key, used, row)
+            _add_facts(block, key, used, row, ctx.last_dimension)
             last_unmatched = None
         else:
             if used:
                 block.unmatched_labels.append(used)
             last_unmatched = (row, used) if used else None
 
-    if len(block.matched_keys) < (MIN_MATCHED_ITEMS if title_line else MIN_UNTITLED_ITEMS):
+    if len(block.matched_keys) < (MIN_MATCHED_ITEMS if title_line else _min_untitled(statement)):
         return None
+    if not primary and not any(c.usable for c in block.columns):
+        return None  # a disclosure table without a readable period column is not staged
     _mark_duplicates(block)
     return block
 
 
-def _add_facts(block: StatementBlock, key: str, label: str, row) -> None:
+_ENUMERATOR = re.compile(r"^\(?([ivx]{1,4}|[a-z])[.)]", re.IGNORECASE)
+_PAREN_ENUMERATOR = re.compile(r"^\(\s*(\d{1,2}|[ivx]+|[a-z])\s*\)", re.IGNORECASE)
+
+
+def _is_continuation(label: str) -> bool:
+    """Does this row's label continue a wrapped label from the lines above?
+
+    A value-only row does. Otherwise only a label that starts lowercase or with a bracketed
+    remark ("(excluding subordinated debt)") does; enumerators ("iv)", "(a)", "j)", "a Retail
+    Banking") start a NEW row, so a heading above is never glued to the first row below it.
+    """
+    if not label:
+        return True
+    if _ENUMERATOR.match(label) or _PAREN_ENUMERATOR.match(label):
+        return False
+    if re.match(r"^[a-z]\s+[A-Z]", label):
+        return False
+    if label[0] == "(":
+        return True
+    return label[0].islower()
+
+
+def _min_untitled(statement: str) -> int:
+    return MIN_UNTITLED_RATIOS if statement == taxonomy.RATIOS else MIN_UNTITLED_ITEMS
+
+
+def _add_facts(
+    block: StatementBlock, key: str, label: str, row, dimension: str | None = None
+) -> None:
     for col_index, raw in row.cells.items():
         info = block.column(col_index)
         if info.is_note:
@@ -451,6 +549,7 @@ def _add_facts(block: StatementBlock, key: str, label: str, row) -> None:
                 decimals=decimals_of(raw),
                 bbox=row.bboxes.get(col_index),
                 page_number=block.page_number,
+                dimension=dimension or block.dimension,
             )
         )
 
@@ -486,11 +585,55 @@ def merge_continuations(blocks: list[StatementBlock]) -> list[StatementBlock]:
     return out
 
 
+def inherit_context(blocks: list[StatementBlock]) -> list[StatementBlock]:
+    """Give a block that lacks its basis (or unit) the one printed on the PAGE BEFORE.
+
+    Continuation pages repeat the column headings but not the "Standalone / Consolidated" title or
+    the unit line. Copied only when the previous page's last block has exactly the same usable
+    periods, so a table about something else is never given its neighbour's basis.
+    """
+    ordered = sorted(blocks, key=lambda b: (b.page_number, 0))
+    for index, block in enumerate(ordered):
+        if block.basis is not None and block.unit is not None:
+            continue
+        previous = next(
+            (b for b in reversed(ordered[:index]) if b.page_number == block.page_number - 1),
+            None,
+        )
+        if previous is None:
+            continue
+        mine = {_period_key(c) for c in block.columns if c.usable}
+        if not mine or mine != {_period_key(c) for c in previous.columns if c.usable}:
+            continue
+        if block.basis is None and previous.basis is not None:
+            block.basis = previous.basis
+            block.inherited.append(f"basis from page {previous.page_number}")
+            block.issues = [i for i in block.issues if i["code"] != "BASIS_UNKNOWN"]
+        if block.unit is None and previous.unit is not None:
+            block.unit = previous.unit
+            block.inherited.append(f"unit from page {previous.page_number}")
+            block.issues = [i for i in block.issues if i["code"] != "UNIT_UNKNOWN"]
+    return ordered
+
+
+_CONTD = re.compile(r"\s*\(?\s*contd\.?\s*\)?\s*$", re.IGNORECASE)
+
+
+def _plain_title(title: str | None) -> str:
+    return _CONTD.sub("", " ".join((title or "").lower().split()))
+
+
 def _continues(prev: StatementBlock, block: StatementBlock) -> bool:
     last_page = prev.continued_pages[-1] if prev.continued_pages else prev.page_number
     if block.page_number != last_page + 1:
         return False
     if (prev.statement, prev.basis, prev.unit) != (block.statement, block.basis, block.unit):
+        return False
+    # A schedule is a continuation only if its title repeats ('SCHEDULE 4 - BORROWINGS (Contd.)');
+    # a different title is a different table even when the columns are identical.
+    if block.statement == taxonomy.NOTE and _plain_title(block.dimension) != _plain_title(
+        prev.dimension
+    ):
         return False
     mine = {_period_key(c) for c in prev.columns if c.usable}
     theirs = {_period_key(c) for c in block.columns if c.usable}
@@ -499,10 +642,10 @@ def _continues(prev: StatementBlock, block: StatementBlock) -> bool:
 
 def _mark_duplicates(block: StatementBlock) -> None:
     """An item read twice in one column with different values is ambiguous: both are flagged."""
-    by_cell: dict[tuple[str, int], list[CellFact]] = {}
+    by_cell: dict[tuple[str, int, str | None], list[CellFact]] = {}
     for fact in block.facts:
-        by_cell.setdefault((fact.key, fact.column_index), []).append(fact)
-    for (key, _), facts in by_cell.items():
+        by_cell.setdefault((fact.key, fact.column_index, fact.dimension), []).append(fact)
+    for (key, _, _), facts in by_cell.items():
         if len(facts) > 1:
             values = {f.value for f in facts}
             if len(values) > 1:
@@ -520,11 +663,24 @@ def _mark_duplicates(block: StatementBlock) -> None:
                     block.facts.remove(fact)
 
 
-def extract_page_statements(page_number: int, words: list[Word]) -> list[StatementBlock]:
+def extract_page_statements(
+    page_number: int, words: list[Word], *, ocr: bool = False
+) -> list[StatementBlock]:
     """All statement tables recognised on one page."""
     lines = [merge_split_numbers(line) for line in group_lines(words)]
-    titles = [(i, detect.classify_title(line.text)) for i, line in enumerate(lines)]
-    title_idx = [(i, s) for i, s in titles if s]
+    titles = [
+        (i, detect.classify_title(line.text) or detect.classify_disclosure_title(line.text))
+        for i, line in enumerate(lines)
+    ]
+    title_idx: list[tuple[int, str]] = []
+    for i, kind in titles:
+        if not kind:
+            continue
+        # Section headings of a segment / ratio table repeat its title ("1. Segment Revenue",
+        # "2. Segmental Results"): the first title starts the table, the rest are inside it.
+        if title_idx and kind in (taxonomy.SEGMENT, taxonomy.RATIOS) and title_idx[-1][1] == kind:
+            continue
+        title_idx.append((i, kind))
     blocks: list[StatementBlock] = []
 
     # Untitled top part of the page: a statement continued from the previous page.
@@ -535,9 +691,17 @@ def extract_page_statements(page_number: int, words: list[Word]) -> list[Stateme
         scores = taxonomy.score_statement_types(_labels_only(top))
         best = max(scores, key=lambda k: scores[k])
         ranked = sorted(scores.values(), reverse=True)
-        if ranked[0] >= MIN_UNTITLED_ITEMS and ranked[1] * 2 < ranked[0] and row_labels:
+        floor = MIN_UNTITLED_RATIOS if best == taxonomy.RATIOS else MIN_UNTITLED_ITEMS
+        if ranked[0] >= floor and ranked[1] * 2 < ranked[0] and row_labels:
             block = _read_block(
-                page_number, best, None, top, [], lines, "line items only (no title on this page)"
+                page_number,
+                best,
+                None,
+                top,
+                [],
+                lines,
+                "line items only (no title on this page)",
+                ocr,
             )
             if block:
                 blocks.append(block)
@@ -556,6 +720,7 @@ def extract_page_statements(page_number: int, words: list[Word]) -> list[Stateme
             lines[:start],
             lines,
             f"title: {lines[start].text[:120]}",
+            ocr,
         )
         if block:
             blocks.append(block)

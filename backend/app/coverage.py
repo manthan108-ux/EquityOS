@@ -16,17 +16,20 @@ import enum
 import uuid
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
+from urllib.parse import urlsplit
 
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models import (
+    AcquisitionLog,
     Basis,
     Company,
     CorporateAction,
     Document,
     EodPrice,
+    FetchStatus,
     FinancialFact,
     PeriodType,
     RatioSnapshot,
@@ -55,6 +58,7 @@ PRICE_STALE_DAYS = 6  # a weekend plus a holiday
 CONFLICT_TOLERANCE = Decimal("0.01")  # 1% relative difference between sources
 
 MANUAL_CODES = {"MANUAL_IMPORT", "MANUAL_UPLOAD"}
+DERIVED_CODES = {"DERIVED_QUARTER"}
 
 
 class Status(enum.StrEnum):
@@ -194,7 +198,10 @@ class _Builder:
             ok, _ = verified_datasets(self.s, code)
             out.append(
                 SourceUsed(
-                    provider=code, verified=dataset.value in ok, user_supplied=code in MANUAL_CODES
+                    provider=code,
+                    # a derived quarter is arithmetic on already-validated facts, not a fetch
+                    verified=dataset.value in ok or code in DERIVED_CODES,
+                    user_supplied=code in MANUAL_CODES,
                 )
             )
         return out
@@ -358,6 +365,12 @@ class _Builder:
             )
         elif basis is Basis.STANDALONE:
             limitations.append("only standalone statements are available; no consolidated view")
+        derived = sorted({fmt(f.period_end) for f in chosen if f.provider_code in DERIVED_CODES})
+        if derived:
+            limitations.append(
+                f"{len(derived)} quarter(s) are CALCULATED from cumulative figures, not reported "
+                f"({', '.join(derived[:4])}{', ...' if len(derived) > 4 else ''})"
+            )
         if extra:
             limitations.append(
                 f"{len(extra)} older period(s) beyond the required window are also stored"
@@ -579,7 +592,10 @@ class _Builder:
     def documents(self, dataset: Dataset, doc_type: str, years: bool) -> DatasetCoverage:
         docs = self.s.execute(
             select(Document.financial_period, Document.url, Document.retrieved_at).where(
-                Document.company_id == self.company.id, Document.doc_type == doc_type
+                Document.company_id == self.company.id,
+                Document.doc_type == doc_type,
+                # a document issued by another entity never counts toward this company
+                Document.association_status != "MISMATCH",
             )
         ).all()
         have = {d.financial_period for d in docs if d.financial_period}
@@ -620,6 +636,9 @@ class _Builder:
             limitations.append(
                 "candidate links were found on the company website but are not downloaded"
             )
+        access = self._website_access_note()
+        if access:
+            limitations.append(access)
         origin = [
             ("MANUAL_UPLOAD" if d.url.startswith("manual-upload://") else "COMPANY_IR")
             for d in docs
@@ -632,6 +651,27 @@ class _Builder:
             retrieved=max((d.retrieved_at for d in docs), default=None),
             limitations=limitations or (["no documents stored"] if not docs else []),
             stale_after=10_000,
+        )
+
+    def _website_access_note(self) -> str | None:
+        """Why automated document retrieval may be incomplete (never hidden, never assumed OK)."""
+        host = urlsplit(self.company.website or "").netloc.lower().removeprefix("www.")
+        if not host:
+            return "no company website is on record, so documents can only be supplied manually"
+        row = self.s.execute(
+            select(AcquisitionLog.status, AcquisitionLog.http_status)
+            .where(AcquisitionLog.source_code == "COMPANY_IR", AcquisitionLog.url.like(f"%{host}%"))
+            .order_by(AcquisitionLog.started_at.desc())
+            .limit(1)
+        ).first()
+        if row is None:
+            return f"the company website ({host}) has not been checked for documents yet"
+        if row.status in (FetchStatus.OK, FetchStatus.CACHED):
+            return None
+        code = f", HTTP {row.http_status}" if row.http_status else ""
+        return (
+            f"automated retrieval from {host} failed ({row.status.value}{code}); documents must be "
+            "supplied manually. Missing documents here do NOT mean the company did not publish them"
         )
 
     def announcements(self) -> DatasetCoverage:

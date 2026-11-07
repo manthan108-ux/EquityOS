@@ -3,6 +3,12 @@ FROM python:3.13-slim
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
+# Tesseract OCR (Apache-2.0) for scanned filings, English data only. Installed from Debian's
+# repositories; the extractor calls the `tesseract` command (see app/docintel/ocr.py).
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-eng \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 COPY requirements.txt .

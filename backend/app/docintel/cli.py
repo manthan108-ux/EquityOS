@@ -17,14 +17,23 @@ from collections import Counter
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.config import get_settings, resolve_data_dir
 from app.core.database import get_engine
-from app.docintel.pdf import ocr_available
+from app.core.storage import StoragePathError, data_root, resolve_inside, storage_report
+from app.docintel.association import (
+    build_issuer_index,
+    check_document_text,
+    company_label,
+    record_check,
+    unlink_document,
+)
+from app.docintel.derive import derive_quarters
+from app.docintel.pdf import first_pages_text, ocr_available
 from app.docintel.pipeline import PROVIDER_CODE, extract_document
 from app.docintel.provider import FINANCIAL_DOC_TYPES, pending_documents
 from app.models import (
     Document,
     DocumentExtraction,
+    DocumentLinkEvent,
     ExtractedFact,
     ExtractedStatement,
     FinancialFact,
@@ -46,7 +55,7 @@ def _print_run(document: Document, run: DocumentExtraction, seconds: float) -> N
 
 
 def cmd_extract(args) -> int:
-    data_dir = resolve_data_dir(get_settings())
+    data_dir = data_root()
     with Session(get_engine()) as session:
         if args.document_id:
             doc = session.get(Document, uuid.UUID(args.document_id))
@@ -79,7 +88,10 @@ def cmd_show(args) -> int:
     with Session(get_engine()) as session:
         run = session.scalar(
             select(DocumentExtraction)
-            .where(DocumentExtraction.document_id == uuid.UUID(args.document_id))
+            .where(
+                DocumentExtraction.document_id == uuid.UUID(args.document_id),
+                DocumentExtraction.superseded_at.is_(None),
+            )
             .order_by(DocumentExtraction.started_at.desc(), DocumentExtraction.id.desc())
             .limit(1)
         )
@@ -156,6 +168,128 @@ def cmd_facts(args) -> int:
     return 0
 
 
+def cmd_storage_check(args) -> int:
+    with Session(get_engine()) as session:
+        report = storage_report(session, verify_hashes=args.verify_hashes)
+    print(f"data directory : {report.root}  (exists={report.exists}, writable={report.writable})")
+    print(f"documents      : {report.documents} in the database")
+    print(f"missing files  : {len(report.missing_files)} {report.missing_files}")
+    if report.verified_hashes:
+        print(f"hash mismatches: {len(report.hash_mismatches)} {report.hash_mismatches}")
+    print(f"unreferenced   : {report.unreferenced_files} file(s) on disk with no database row")
+    print("STORAGE OK" if report.healthy else "STORAGE PROBLEM")
+    return 0 if report.healthy else 1
+
+
+def _explain_unlinked(session, doc, index, root) -> None:
+    """Read-only: why an unlinked document was unlinked, with any relationship its former
+    company's own filing states."""
+    event = session.scalar(
+        select(DocumentLinkEvent)
+        .where(
+            DocumentLinkEvent.document_id == doc.id, DocumentLinkEvent.company_before.is_not(None)
+        )
+        .order_by(DocumentLinkEvent.id.desc())
+        .limit(1)
+    )
+    if event is None:
+        return
+    try:
+        pages = first_pages_text(resolve_inside(root, doc.storage_path))
+    except StoragePathError:
+        return
+    result = check_document_text(session, event.company_before, pages, index)
+    former = company_label(session, event.company_before)
+    print(f"    was linked to {former}: {result.status} / {result.relation}")
+    print(f"    issuer: {result.issuer_name}")
+    stated = result.evidence.get("stated_relationship")
+    if stated:
+        print(
+            f"    {former}'s own filing lists it as '{stated['relationship']}' "
+            f"(page {stated['page']})"
+        )
+
+
+def cmd_audit_associations(args) -> int:
+    """Check, from each document's own first page, that it belongs to the company it is linked to.
+
+    Read-only by default. `--record-status` stores the result on the document row (new metadata
+    columns only). `--apply-unlink --approved-by NAME` also unlinks mismatched documents; the file
+    stays, the change is written to the audit table `document_link_events`.
+    """
+    if args.apply_unlink and not args.approved_by:
+        raise SystemExit("--apply-unlink needs --approved-by NAME (who approved this change)")
+    root = data_root()
+    mismatches = 0
+    with Session(get_engine()) as session:
+        index = build_issuer_index(session)
+        for doc in session.scalars(select(Document).order_by(Document.retrieved_at)):
+            if doc.company_id is None:
+                print(f"{doc.id}  (not linked)  {doc.association_status:10} {doc.title or doc.url}")
+                _explain_unlinked(session, doc, index, root)
+                continue
+            try:
+                pages = first_pages_text(resolve_inside(root, doc.storage_path))
+            except StoragePathError:
+                pages = []
+            result = check_document_text(session, doc.company_id, pages, index)
+            print(
+                f"{doc.id}  linked to {company_label(session, doc.company_id):14} "
+                f"-> {result.status:10} {result.relation:22} issuer={result.issuer_name or '-'}"
+            )
+            print(f"    {doc.doc_type:22} {(doc.title or '')[:70]}")
+            print(f"    {result.note}")
+            for sentence in result.evidence.get("relation_statements", []):
+                print(f"    document says: {sentence}")
+            if result.mismatch:
+                mismatches += 1
+            if args.apply_unlink and result.mismatch:
+                report = unlink_document(
+                    session,
+                    doc,
+                    reason=f"first page issued by another entity: {result.note}",
+                    actor=f"user-approved:{args.approved_by}",
+                    result=result,
+                )
+                print(
+                    "    UNLINKED (file kept). validated values withdrawn: "
+                    f"{report.facts_withdrawn}, staged values detached: "
+                    f"{report.staged_facts_detached}"
+                )
+            elif args.record_status:
+                record_check(doc, result)
+        if args.apply_unlink or args.record_status:
+            session.commit()
+        else:
+            session.rollback()
+    changed = args.apply_unlink or args.record_status
+    note = "" if changed else "(read-only: nothing was changed)"
+    print(f"\n{mismatches} mismatched document(s). {note}")
+    return 0
+
+
+def cmd_derive_quarters(args) -> int:
+    """Standalone quarters from cumulative figures (H1 - Q1, 9M - H1, FY - 9M), with checks."""
+    with Session(get_engine()) as session:
+        company = find_company(session, args.symbol)
+        report = derive_quarters(session, company.id, write=not args.dry_run)
+        if not args.dry_run:
+            session.commit()
+    shown = [i for i in report.items if args.all or i.outcome in ("DERIVED", "INCONSISTENT")]
+    for item in shown:
+        print(
+            f"{item.outcome:12} {item.basis.value:12} {item.quarter:9} "
+            f"{item.line_item:36} {item.detail}"
+        )
+    suffix = "  (dry run: nothing written)" if args.dry_run else ""
+    print(
+        f"\n{company.common_name}: derived={report.count('DERIVED')} "
+        f"consistent={report.count('CONSISTENT')} inconsistent={report.count('INCONSISTENT')} "
+        f"skipped={report.count('SKIPPED')}{suffix}"
+    )
+    return 1 if report.count("INCONSISTENT") else 0
+
+
 def cmd_ocr_status(_args) -> int:
     if ocr_available():
         print("OCR available: scanned pages will be read with Tesseract.")
@@ -184,12 +318,27 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--symbol", required=True)
     p.add_argument("--statement", choices=["INCOME", "BALANCE_SHEET", "CASH_FLOW"])
     sub.add_parser("ocr-status")
+    p = sub.add_parser("derive-quarters")
+    p.add_argument("--symbol", required=True)
+    p.add_argument("--dry-run", action="store_true")
+    p.add_argument("--all", action="store_true", help="also list consistent and skipped items")
+    p = sub.add_parser("audit-associations")
+    p.add_argument("--record-status", action="store_true", help="store the check on each document")
+    p.add_argument("--apply-unlink", action="store_true", help="unlink mismatched documents")
+    p.add_argument(
+        "--approved-by", help="who approved --apply-unlink (recorded in the audit table)"
+    )
+    p = sub.add_parser("storage-check")
+    p.add_argument("--verify-hashes", action="store_true", help="re-hash every stored file")
     args = parser.parse_args(argv)
     handlers = {
         "extract": cmd_extract,
         "show": cmd_show,
         "facts": cmd_facts,
         "ocr-status": cmd_ocr_status,
+        "storage-check": cmd_storage_check,
+        "derive-quarters": cmd_derive_quarters,
+        "audit-associations": cmd_audit_associations,
     }
     return handlers[args.command](args)
 

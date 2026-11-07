@@ -1,6 +1,7 @@
 from app.models.acquisition import (
     AcquisitionLog,
     Document,
+    DocumentLinkEvent,
     EodPrice,
     FetchStatus,
     Source,
@@ -10,9 +11,11 @@ from app.models.company import AliasType, Company, CompanyAlias, Security, Secur
 from app.models.docintel import (
     DocumentExtraction,
     DocumentPage,
+    DocumentSection,
     ExtractedFact,
     ExtractedStatement,
     ExtractionStatus,
+    GroupEntity,
     ValidationStatus,
 )
 from app.models.facts import (
@@ -30,6 +33,9 @@ from app.models.imports import MasterDataImport
 from app.models.reference import Exchange, Industry, Sector
 
 __all__ = [
+    "GroupEntity",
+    "DocumentLinkEvent",
+    "DocumentSection",
     "DocumentExtraction",
     "DocumentPage",
     "ExtractedFact",

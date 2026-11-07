@@ -10,6 +10,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.database import get_session
+from app.core.storage import storage_report
 from app.models import (
     Company,
     Document,
@@ -102,7 +103,10 @@ def _summary(run: DocumentExtraction | None) -> ExtractionSummary | None:
 def _latest_run(session: Session, document_id: uuid.UUID) -> DocumentExtraction | None:
     return session.scalar(
         select(DocumentExtraction)
-        .where(DocumentExtraction.document_id == document_id)
+        .where(
+            DocumentExtraction.document_id == document_id,
+            DocumentExtraction.superseded_at.is_(None),
+        )
         .order_by(DocumentExtraction.started_at.desc(), DocumentExtraction.id.desc())
         .limit(1)
     )
@@ -194,3 +198,22 @@ def document_page(document_id: uuid.UUID, page_number: int, session: SessionDep)
         needs_ocr=page.needs_ocr,
         text=page.text,
     )
+
+
+class StorageStatus(BaseModel):
+    root: str
+    exists: bool
+    writable: bool
+    documents: int
+    missing_files: list[str]
+    hash_mismatches: list[str]
+    unreferenced_files: int
+    verified_hashes: bool
+    healthy: bool
+
+
+@router.get("/api/storage/status", response_model=StorageStatus)
+def storage_status(session: SessionDep, verify_hashes: bool = False) -> StorageStatus:
+    """Do the document rows and the files on disk agree? (Same answer locally and in Docker.)"""
+    report = storage_report(session, verify_hashes=verify_hashes)
+    return StorageStatus(**report.__dict__, healthy=report.healthy)

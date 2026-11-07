@@ -164,3 +164,27 @@ def quarter_label(period_end: date) -> str:
     if quarter is None:
         raise ValueError(f"{period_end} is not a quarter end")
     return f"Q{quarter}{fiscal_year_label(period_end)}"
+
+
+def period_label(period_end: date, months: int) -> str:
+    """Canonical label of a flow period ending at `period_end` and lasting `months`.
+
+    3 -> 'Q2FY2027'; 12 -> 'FY2027'. The cumulative year-to-date periods of an Indian fiscal year
+    (April start): 6 months ending September -> 'H1FY2027'; 9 months ending December -> '9MFY2027'.
+    Anything else (for example six months ending March, which is not year-to-date) has no label
+    and raises ValueError.
+    """
+    if months == 3:
+        return quarter_label(period_end)
+    if months == 12:
+        return fiscal_year_label(period_end)
+    if months == 6 and period_end.month == 9:
+        return f"H1{fiscal_year_label(period_end)}"
+    if months == 9 and period_end.month == 12:
+        return f"9M{fiscal_year_label(period_end)}"
+    raise ValueError(f"no fiscal label for a {months}-month period ending {period_end}")
+
+
+def months_between(earlier_end: date, later_end: date) -> int:
+    """Whole months from one month-end to a later one."""
+    return (later_end.year - earlier_end.year) * 12 + (later_end.month - earlier_end.month)
