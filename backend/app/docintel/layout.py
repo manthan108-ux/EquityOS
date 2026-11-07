@@ -117,10 +117,30 @@ def decimals_of(text: str) -> int:
     return len(match.group(1)) if match else 0
 
 
+_NUMBERISH = re.compile(r"^[\d,.\-()%OolIiSBZ|]+$")
+_LOOKALIKE = set("OolIiSBZ|")
+
+
+def looks_like_misread_number(text: str) -> bool:
+    """Digits mixed with look-alike letters ("1O,5O0.00", "l,234"): a number OCR could not read.
+
+    It is kept as a CELL (which then fails to parse and is flagged for review) instead of being
+    mistaken for prose, which would silently drop the whole row.
+    """
+    token = text.strip()
+    return (
+        bool(_NUMBERISH.match(token))
+        and any(ch.isdigit() for ch in token)
+        and any(ch in _LOOKALIKE for ch in token)
+    )
+
+
 def is_value_token(text: str) -> bool:
     """A token that can stand in a value column: a number or an NA marker."""
     raw = text.strip()
-    return raw.lower() in NA_MARKERS or parse_cell(raw) is not None
+    return (
+        raw.lower() in NA_MARKERS or parse_cell(raw) is not None or looks_like_misread_number(raw)
+    )
 
 
 def _is_number(text: str) -> bool:

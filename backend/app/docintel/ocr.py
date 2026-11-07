@@ -25,7 +25,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
 
-from app.docintel.layout import Word, parse_cell
+from app.docintel.layout import Word, looks_like_misread_number, parse_cell
 
 TIMEOUT_SECONDS = 180
 DEFAULT_DPI = 300
@@ -127,18 +127,10 @@ def mean_confidence(words: Sequence[Word]) -> float | None:
 
 # ------------------------------------------------------------------------- doubtful readings
 
-_LOOKALIKE = set("OolIiSBZ|")
-_NUMBERISH = re.compile(r"^[\d,.\-()%OolIiSBZ|]+$")
-
 
 def ambiguous_characters(text: str) -> bool:
     """A number-like token mixing digits with look-alike letters ("1O,5O0.00", "l,234", "S0.5")."""
-    token = text.strip()
-    return (
-        bool(_NUMBERISH.match(token))
-        and any(ch.isdigit() for ch in token)
-        and any(ch in _LOOKALIKE for ch in token)
-    )
+    return looks_like_misread_number(text)
 
 
 def words_in_box(
@@ -258,6 +250,8 @@ def repair_header(text: str) -> tuple[str, list[str]]:
         notes.append(f"{token} -> {fixed}")
         return match.group(0).replace(token, fixed, 1)
 
+    text = re.sub(r"(?<![A-Za-z])([A-Za-z]{3,4})(?=['’]?\s?\d{2,4}\b)", fix, text)
+
     # The superscript ordinal of a day ("30th") is read as 30%, 3074, 301h, 307H, 31*1 ...: keep
     # the day, drop the junk. Only when a month name and a year follow, and the result must still
     # be a valid month-end day (checked later by the period parser), so a real misread of the
@@ -266,12 +260,10 @@ def repair_header(text: str) -> tuple[str, list[str]]:
         notes.append(f"{match.group(0).strip()} -> {match.group(1)}th")
         return f"{match.group(1)}th "
 
-    text = re.sub(
+    repaired = re.sub(
         r"\b(\d{2})(?:[%@#*•°º]\d?|[1lI7][hH4]|\d?[hH]|7\d?)\s*(?=(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]{0,6}\W{0,2}\s?\d{2,4})",
         day,
         text,
         flags=re.IGNORECASE,
     )
-    # a short word glued to a quote/space + 2-4 digit year or a day, as in "30th Seo'25"
-    repaired = re.sub(r"(?<![A-Za-z])([A-Za-z]{3,4})(?=['\u2019]?\s?\d{2,4}\b)", fix, text)
     return repaired, notes

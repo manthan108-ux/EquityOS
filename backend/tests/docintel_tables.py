@@ -84,6 +84,8 @@ def schedule_page(*, other_total: str = "700") -> list[Word]:
     page.text(
         "1. Includes borrowings of 1,234 million from the Reserve Bank in 2026 and 2025 as noted."
     )
+    page.raw(words(0, 400, "At", right=True), words(0, 490, "At", right=True))
+    page.raw(words(0, 400, "31.03.2026", right=True), words(0, 490, "31.03.2025", right=True))
     page.text("SCHEDULE 5 - OTHER LIABILITIES")
     page.row("I. Bills payable", "400", "300", rights=BS_RIGHTS)
     page.row("II. Others", "300", "250", rights=BS_RIGHTS)
@@ -93,7 +95,7 @@ def schedule_page(*, other_total: str = "700") -> list[Word]:
 
 def shareholding_page(*, total: str = "1,000") -> list[Word]:
     page = Page()
-    page.text("Shareholding pattern of XYZ Limited at March 31, 2026")
+    page.text("Shareholding pattern of Reliance Industries Limited at March 31, 2026")
     page.raw(
         words(0, LABEL_X, "Shareholder Category"),
         words(0, 400, "No. of Shares", right=True),

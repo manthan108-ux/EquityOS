@@ -21,6 +21,13 @@ from app.normalization import parse_period_label, quarter_label
 
 TTL = timedelta(days=1)
 MAX_IR_PAGES = 3
+COMMON_IR_PATHS = (
+    "/investor-relations",
+    "/investors",
+    "/personal/about-us/investor-relations",
+    "/about-us/investor-relations",
+    "/investor",
+)
 DOCUMENT_SUFFIXES = (".pdf", ".xlsx", ".xls", ".zip", ".xml")
 
 # (kind, pattern on the link text or URL); the first matching kind wins, so order matters.
@@ -192,5 +199,18 @@ class CompanyIrProvider:
                 if page.ok:
                     for link in extract_ir_links(page.text, page_url):
                         links.setdefault(link.url, link)
+        if follow and not any(link.is_document for link in links.values()):
+            # The homepage did not lead to investor material: try the usual investor-relations
+            # paths on the same site (each fetch still obeys robots.txt and is logged).
+            for path in COMMON_IR_PATHS:
+                page = self._page(urljoin(website.rstrip("/") + "/", path.lstrip("/")))
+                discovery.pages_fetched.append(page)
+                if not page.ok:
+                    continue
+                found = extract_ir_links(page.text, page.url if hasattr(page, "url") else website)
+                for link in found:
+                    links.setdefault(link.url, link)
+                if any(link.is_document for link in found):
+                    break
         discovery.links = sorted(links.values(), key=lambda link: (link.kind, link.url))
         return discovery

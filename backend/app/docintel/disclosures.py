@@ -143,7 +143,11 @@ def auditor_flags(text: str) -> dict:
     if opinion is None:
         opinion = "unmodified" if _TRUE_AND_FAIR.search(text) else "unknown"
     flat = " ".join(text.split())
-    quotes = [s[:300] for s in _SENTENCE.split(flat) if "in our opinion" in s.lower()][:2]
+    quotes = [
+        s[s.lower().index("in our opinion") :][:300]  # start at the phrase, not at a heading
+        for s in _SENTENCE.split(flat)
+        if "in our opinion" in s.lower()
+    ][:2]
     going = _GOING_CONCERN.search(flat)
     if going:
         quotes.append(flat[max(0, going.start() - 120) : going.end() + 120])

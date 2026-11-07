@@ -16,8 +16,10 @@ from app.models import (
     Document,
     DocumentExtraction,
     DocumentPage,
+    DocumentSection,
     ExtractedFact,
     ExtractedStatement,
+    GroupEntity,
 )
 
 router = APIRouter(tags=["documents"])
@@ -217,3 +219,130 @@ def storage_status(session: SessionDep, verify_hashes: bool = False) -> StorageS
     """Do the document rows and the files on disk agree? (Same answer locally and in Docker.)"""
     report = storage_report(session, verify_hashes=verify_hashes)
     return StorageStatus(**report.__dict__, healthy=report.healthy)
+
+
+class DisclosureOut(BaseModel):
+    statement: str
+    item: str
+    dimension: str | None
+    label: str
+    period_end: date | None
+    duration_months: int | None
+    basis: str | None
+    value: str | None
+    unit: str | None
+    raw_value: str
+    document_id: uuid.UUID
+    page_number: int
+    validation: str
+
+
+@router.get("/api/companies/{company_id}/disclosures", response_model=list[DisclosureOut])
+def company_disclosures(
+    company_id: uuid.UUID,
+    session: SessionDep,
+    kind: str | None = None,
+    limit: int = 500,
+) -> list[DisclosureOut]:
+    """Validated segment / ratio / schedule / shareholding values from the company's own
+    documents (current extraction runs only), each with its document and page."""
+    if session.get(Company, company_id) is None:
+        raise HTTPException(status_code=404, detail="Company not found")
+    kinds = {"SEGMENT", "RATIOS", "NOTE", "SHAREHOLDING"}
+    if kind is not None and kind.upper() not in kinds:
+        raise HTTPException(status_code=422, detail=f"kind must be one of {sorted(kinds)}")
+    query = (
+        select(ExtractedFact)
+        .join(DocumentExtraction, DocumentExtraction.id == ExtractedFact.extraction_id)
+        .join(Document, Document.id == ExtractedFact.document_id)
+        .where(
+            Document.company_id == company_id,
+            Document.association_status != "MISMATCH",
+            DocumentExtraction.superseded_at.is_(None),
+            ExtractedFact.promoted.is_(True),
+            ExtractedFact.statement.in_([kind.upper()] if kind else kinds),
+        )
+        .order_by(ExtractedFact.statement, ExtractedFact.period_end.desc(), ExtractedFact.id)
+        .limit(min(max(limit, 1), 2000))
+    )
+    return [
+        DisclosureOut(
+            statement=f.statement,
+            item=f.canonical_item,
+            dimension=f.dimension,
+            label=f.raw_label,
+            period_end=f.period_end,
+            duration_months=f.duration_months,
+            basis=f.basis,
+            value=str(f.original_value) if f.original_value is not None else None,
+            unit=f.original_unit,
+            raw_value=f.raw_value,
+            document_id=f.document_id,
+            page_number=f.page_number,
+            validation=f.validation_status.value,
+        )
+        for f in session.scalars(query)
+    ]
+
+
+class GroupEntityOut(BaseModel):
+    entity_name: str
+    relationship: str
+    document_id: uuid.UUID
+    page_number: int
+    in_company_universe: bool
+
+
+@router.get("/api/companies/{company_id}/group-entities", response_model=list[GroupEntityOut])
+def company_group_entities(company_id: uuid.UUID, session: SessionDep) -> list[GroupEntityOut]:
+    """Entities the company's own filings list as related (subsidiary, associate, ...)."""
+    if session.get(Company, company_id) is None:
+        raise HTTPException(status_code=404, detail="Company not found")
+    rows = session.scalars(
+        select(GroupEntity)
+        .join(DocumentExtraction, DocumentExtraction.id == GroupEntity.extraction_id)
+        .where(GroupEntity.company_id == company_id, DocumentExtraction.superseded_at.is_(None))
+        .order_by(GroupEntity.relationship, GroupEntity.entity_name)
+    )
+    return [
+        GroupEntityOut(
+            entity_name=r.entity_name,
+            relationship=r.relationship,
+            document_id=r.document_id,
+            page_number=r.page_number,
+            in_company_universe=r.matched_company_id is not None,
+        )
+        for r in rows
+    ]
+
+
+class SectionOut(BaseModel):
+    kind: str
+    heading: str
+    start_page: int
+    end_page: int
+    flags: dict | None
+    excerpt: str
+
+
+@router.get("/api/documents/{document_id}/sections", response_model=list[SectionOut])
+def document_sections(document_id: uuid.UUID, session: SessionDep) -> list[SectionOut]:
+    run = _latest_run(session, document_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="Document has not been processed yet")
+    rows = session.scalars(
+        select(DocumentSection)
+        .where(DocumentSection.extraction_id == run.id)
+        .order_by(DocumentSection.start_page)
+    )
+    return [
+        SectionOut(
+            kind=r.kind,
+            heading=r.heading,
+            start_page=r.start_page,
+            end_page=r.end_page,
+            flags=r.flags,
+            excerpt=r.text,
+        )
+        for r in rows
+    ]

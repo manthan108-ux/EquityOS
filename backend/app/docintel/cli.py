@@ -290,9 +290,34 @@ def cmd_derive_quarters(args) -> int:
     return 1 if report.count("INCONSISTENT") else 0
 
 
+def cmd_ingest_inbox(args) -> int:
+    """Ingest PDFs you saved in data/inbox/<SYMBOL>/ (for sites that refuse automated access)."""
+    from app.docintel.inbox import inbox_dir, ingest_inbox
+
+    root = data_root()
+    with Session(get_engine()) as session:
+        company = find_company(session, args.symbol)
+        folder = inbox_dir(root, args.symbol)
+        if not folder.is_dir():
+            folder.mkdir(parents=True, exist_ok=True)
+            print(f"Created {folder}. Save the company's PDFs there, then run this again.")
+            return 0
+        outcomes = ingest_inbox(session, company.id, root, args.symbol)
+        session.commit()
+    for o in outcomes:
+        print(f"{o.status:15} {o.file[:50]:50} {o.doc_type or '-':22} {o.detail}")
+    if not outcomes:
+        print(f"{folder} has no new files.")
+    else:
+        print(f"\nNext: python -m app.docintel.cli extract --symbol {args.symbol}")
+    return 1 if any(o.status == "REFUSED" for o in outcomes) else 0
+
+
 def cmd_ocr_status(_args) -> int:
     if ocr_available():
-        print("OCR available: scanned pages will be read with Tesseract.")
+        from app.docintel.ocr import tesseract_version
+
+        print(f"OCR available ({tesseract_version()}): scanned pages will be read with it.")
         return 0
     print(
         "OCR NOT available: scanned pages are reported as unreadable, never guessed.\n"
@@ -318,6 +343,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--symbol", required=True)
     p.add_argument("--statement", choices=["INCOME", "BALANCE_SHEET", "CASH_FLOW"])
     sub.add_parser("ocr-status")
+    p = sub.add_parser("ingest-inbox")
+    p.add_argument("--symbol", required=True)
     p = sub.add_parser("derive-quarters")
     p.add_argument("--symbol", required=True)
     p.add_argument("--dry-run", action="store_true")
@@ -337,6 +364,7 @@ def main(argv: list[str] | None = None) -> int:
         "facts": cmd_facts,
         "ocr-status": cmd_ocr_status,
         "storage-check": cmd_storage_check,
+        "ingest-inbox": cmd_ingest_inbox,
         "derive-quarters": cmd_derive_quarters,
         "audit-associations": cmd_audit_associations,
     }

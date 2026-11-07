@@ -88,6 +88,22 @@ any API provider. See [DOCUMENT_INTELLIGENCE.md](DOCUMENT_INTELLIGENCE.md).
   TCS, Infosys, HDFC Bank still have no stored documents.
 - 400 backend tests (synthetic page geometry, generated PDFs, and a real-layout bank page).
 
+## Phase 5 stabilization (2026-11-08)
+
+Full report: [PHASE5_STABILIZATION.md](PHASE5_STABILIZATION.md); limits: [KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md).
+
+- Local and Docker now share one data folder; storage health check and API.
+- Document issuer verification with an audit trail; the ICICI Prudential AMC deck was unlinked with
+  your approval; ICICI Bank's own filing lists it as "Subsidiary".
+- Half-year / nine-month figures; standalone quarters derived only from exact nested periods
+  (ICICI 36 and Reliance 15 half-year figures equal Q1 + Q2, 0 inconsistencies).
+- Segments, ratios, schedules, shareholding, group roster and narrative sections extracted and
+  validated on the real documents; OCR (Tesseract in Docker) with a second-reading cross-check.
+- HDFC Bank discovery fixed (67 documents listed) but its PDFs time out; TCS and Infosys remain
+  403. Manual `ingest-inbox` added. PDF licence alternatives tested (pdfminer.six reproduces
+  PyMuPDF with no wrong values); not switched.
+- 443 backend tests.
+
 ## Universe load (2026-11-07)
 
 BSE list imported from the manually downloaded file (5,139 rows, 4,855 usable). 284 BSE rows were skipped and reported: 276 funds/ETFs (INF ISINs), 6 non-equity instruments, and 2 equities with no valid ISIN (A.D.S. Diagnostics 523031, Pushpsons Industries 531562). The 5 pre-existing seed companies were verified unchanged apart from previously empty fields being filled.
@@ -102,7 +118,7 @@ BSE list imported from the manually downloaded file (5,139 rows, 4,855 usable). 
 - News feeds hold only a recent window and matching is a local phrase check; items are leads, not conclusions.
 - Fuzzy suggestions can be loosely related when nothing is close; they are only ever suggestions.
 - The frontend was not exercised in a real browser (API and build were verified).
-- Tesseract OCR is not installed: fully scanned PDFs without any text layer are reported as NEEDS_OCR and not read (`python -m app.docintel.cli ocr-status`). Redis is not installed (only needed if background workers become necessary).
+- Tesseract is installed in Docker only (Windows needs an administrator install); see KNOWN_LIMITATIONS.md. Redis is not installed (only needed if background workers become necessary).
 - Document intelligence reads the primary statements only; notes, segment tables, shareholding and ratios inside PDFs are not yet extracted. Half-year and nine-month figures are staged but not promoted. Real-document validation so far covers ICICI Bank (bank format) and Reliance (Ind AS, scanned); other layouts may need taxonomy additions, which surface as unmatched labels or failed checks, never as wrong numbers.
 - One stored document (ICICI Prudential AMC's presentation) is linked to ICICI Bank from Phase 4 and still counts toward ICICI Bank's 'investor presentations' coverage; its numbers are refused by the entity check. It should be unlinked (not done automatically: existing records are not changed without your confirmation).
 - PyMuPDF is AGPL-3.0: fine for private use; see ARCHITECTURE decision 23 before offering EquityOS publicly.

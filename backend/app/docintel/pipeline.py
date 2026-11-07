@@ -115,6 +115,8 @@ def promotion_problem(
         return Decision(None, f"entity not confirmed: {entity.how}")
     if fact.duplicate:
         return Decision(None, "item read twice in this column with different values")
+    if ocr_review:
+        return Decision(None, ocr_review)
     if fact.value is None:
         return Decision(None, "cell is blank, nil or not a number")
     if not column.usable:
@@ -124,8 +126,6 @@ def promotion_problem(
         return Decision(None, "consolidated/standalone basis not stated")
     if own_basis and taxonomy.item_kind(fact.key) == "amount" and block.unit is None:
         return Decision(None, "reporting unit not stated")
-    if ocr_review:
-        return Decision(None, ocr_review)
     if status is ValidationStatus.FAILED:
         return Decision(None, "an arithmetic check involving this value failed")
     if status is ValidationStatus.UNCHECKED and not column_ok:
