@@ -6,3 +6,6 @@ SQLAlchemy==2.1.8
 psycopg[binary]==3.3.8
 alembic==1.20.1
 rapidfuzz==3.14.6
+feedparser==6.0.14
+beautifulsoup4==4.15.0
+httpx==0.28.1

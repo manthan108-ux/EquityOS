@@ -24,8 +24,18 @@ class Settings(BaseSettings):
     # SQLAlchemy URL using the psycopg (v3) driver.
     database_url: str = "postgresql+psycopg://equityos:equityos@localhost:5432/equityos"
 
+    # Download/cache root (git-ignored); relative paths start at the repo root.
+    data_dir: str = "data"
+    # Honest, descriptive identification sent to every site we contact.
+    http_user_agent: str = "EquityOS-research/0.1 (+https://github.com/manthan108-ux/EquityOS)"
+
     # Origins allowed to call the API from a browser (the Next.js dev server by default).
     cors_origins: list[str] = ["http://localhost:3000"]
+
+
+def resolve_data_dir(settings: Settings) -> Path:
+    path = Path(settings.data_dir)
+    return path if path.is_absolute() else _ROOT_ENV.parent / path
 
 
 @lru_cache

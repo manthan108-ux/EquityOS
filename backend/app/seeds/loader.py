@@ -17,8 +17,9 @@ from app.models import (
     Industry,
     Sector,
     Security,
+    Source,
 )
-from app.seeds.reference_data import EXCHANGES, INDUSTRIES, SECTORS
+from app.seeds.reference_data import EXCHANGES, INDUSTRIES, SECTORS, SOURCES
 from app.seeds.test_universe import SOURCE, TEST_UNIVERSE
 
 
@@ -30,6 +31,9 @@ def seed_reference_data(session: Session) -> None:
     for code, name in SECTORS.items():
         if session.scalar(select(Sector).where(Sector.code == code)) is None:
             session.add(Sector(code=code, name=name))
+    for row in SOURCES:
+        if session.scalar(select(Source).where(Source.code == row["code"])) is None:
+            session.add(Source(**row))
     session.flush()
 
     sectors = {s.code: s for s in session.scalars(select(Sector))}

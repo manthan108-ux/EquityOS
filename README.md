@@ -4,7 +4,7 @@ An India-focused, evidence-driven AI equity research platform. Enter an NSE/BSE 
 
 > EquityOS produces research assistance, not investment advice or a promise of returns. It makes no claim of SEBI registration or analyst accreditation.
 
-**Status:** Phase 3 of 12 complete (company resolution). See [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md).
+**Status:** Phase 4 of 12 complete (data acquisition). See [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md).
 
 ## Stack
 
@@ -59,6 +59,18 @@ alembic upgrade head              # apply migrations (the Docker backend does th
 python -m app.seeds.loader        # load exchanges, sectors and the 5-company test universe (idempotent)
 # in Docker:  docker compose exec backend python -m app.seeds.loader
 ```
+
+## Acquiring data (Phase 4)
+
+```bash
+# from ./backend
+python -m app.acquisition.cli probe             # what each source returns right now
+python -m app.acquisition.cli nse-equity-list   # refresh the NSE company list automatically
+python -m app.acquisition.cli name-history --apply
+python -m app.acquisition.cli prices --exchange NSE --from 2026-11-03 --to 2026-11-06
+```
+
+See [docs/DATA_SOURCES.md](docs/DATA_SOURCES.md) for what each source provides and what is blocked.
 
 ## Loading all NSE/BSE companies
 

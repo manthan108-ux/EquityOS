@@ -118,7 +118,7 @@ def _decimal(value: str) -> Decimal | None:
 
 
 def _date(value: str) -> date | None:
-    for fmt in ("%d-%b-%Y", "%d-%m-%Y", "%Y-%m-%d", "%d/%m/%Y"):
+    for fmt in ("%d-%b-%Y", "%d-%b-%y", "%d-%m-%Y", "%Y-%m-%d", "%d/%m/%Y"):
         try:
             return datetime.strptime(value.strip(), fmt).date()
         except ValueError:

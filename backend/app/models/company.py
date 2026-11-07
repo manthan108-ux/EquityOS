@@ -142,5 +142,7 @@ class CompanyAlias(TimestampMixin, Base):
     alias_type: Mapped[AliasType] = mapped_column(
         _str_enum(AliasType, "alias_type"), default=AliasType.OTHER
     )
+    # Where this alias came from (e.g. "wikidata:Q908931"); NULL for seed/exchange-file aliases.
+    source: Mapped[str | None] = mapped_column(String(100))
 
     company: Mapped[Company] = relationship(back_populates="aliases")
