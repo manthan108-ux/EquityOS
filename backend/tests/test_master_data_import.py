@@ -291,3 +291,40 @@ def test_scale_import_of_five_thousand_companies_is_fast_and_searchable(base):
     res = resolve_company(base, "synthetic company 4999")
     assert res.status in (ResolutionStatus.RESOLVED, ResolutionStatus.SUGGESTIONS)
     assert time.perf_counter() - started < 5
+
+
+# --- real-file edge cases found while dry-running the exchange downloads --------------------
+
+
+def test_fund_and_etf_isins_are_not_companies():
+    fund_isin = make_isin("GGG7", "0101").replace("INE", "INF")
+    fund_isin = fund_isin[:-1] + isin_check_digit(fund_isin[:-1])
+    text = bse_csv(
+        BSE_ALPHA, f"590010,Some ETF,SOMEETF,SOME ETF,Active,F,10,{fund_isin},Funds,Equity"
+    )
+    parsed = parse_bse_scrip_list(text)
+    assert [r.symbol for r in parsed.rows] == ["ALPHA"]
+    (reason,) = [r for r in parsed.skipped if r.startswith("not a company security")]
+    assert "INF" in reason
+    assert "SOMEETF" in parsed.skipped_examples[reason][0]
+
+
+def test_skipped_rows_keep_examples_for_the_report(base):
+    placeholder = "590011,No Isin Ltd,NOISIN,NO ISIN LTD,Active,Y ,10.00,-,Equity"
+    report = run_import(base, None, bse_csv(BSE_ALPHA, placeholder))
+    text = report.summary()
+    assert "invalid ISIN: 1" in text
+    assert "NOISIN" in text
+
+
+def test_rights_entitlement_never_names_the_company(base):
+    rights_isin = make_isin("AAA1", "2001")  # security type 20, not 01
+    rights = f"ALPHA-RE1,Alpha Industries Ltd-RE,BE,01-JAN-2024,1,1,{rights_isin},1"
+    for rows in ((rights, NSE_ALPHA), (NSE_ALPHA, rights)):  # file order must not matter
+        run_import(base, nse_csv(*rows))
+        company = base.scalar(select(Company).where(Company.issuer_key == "INEAAA1"))
+        assert company.legal_name == "Alpha Industries Limited"
+        base.query(Security).delete()
+        base.query(CompanyAlias).delete()
+        base.query(Company).delete()
+        base.flush()

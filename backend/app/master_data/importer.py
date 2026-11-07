@@ -38,6 +38,16 @@ from app.models import (
 
 _LEGAL_SUFFIX = re.compile(r"\s+(limited|ltd\.?)$", re.IGNORECASE)
 _PARSERS = {"NSE": parse_nse_equity_list, "BSE": parse_bse_scrip_list}
+# Temporary instruments carry the issuer name plus a suffix, e.g. "Foo Ltd-RE" (rights entitlement).
+_TEMPORARY_NAME = re.compile(r"-\s?(RE|RI|PP|PO)\d*\s*$|\b(partly paid|rights entitlement)\b", re.I)
+
+
+def _name_priority(row: MasterRow) -> tuple[bool, bool]:
+    """Sort key: main equity first. Security type '01' (ISIN chars 8-9) is the ordinary share;
+    rights entitlements and the like use other codes and must not name the company."""
+    return (row.isin[7:9] != "01", bool(_TEMPORARY_NAME.search(row.company_name)))
+
+
 _MAX_ALIAS = 200
 _MAX_EXAMPLES = 20
 
@@ -57,6 +67,7 @@ class FileReport:
     rows_total: int
     rows_imported: int
     skipped: dict[str, int]
+    skipped_examples: dict[str, list[str]] = field(default_factory=dict)
 
 
 @dataclass
@@ -75,8 +86,11 @@ class ImportReport:
         for f in self.files:
             lines.append(
                 f"{f.exchange} {f.filename}: {f.rows_total} rows, {f.rows_imported} usable, "
-                f"{sum(f.skipped.values())} skipped {f.skipped or ''}".rstrip()
+                f"{sum(f.skipped.values())} skipped"
             )
+            for reason, count in sorted(f.skipped.items()):
+                lines.append(f"    - {reason}: {count}")
+                lines += [f"        e.g. {ex}" for ex in f.skipped_examples.get(reason, [])]
         lines += [
             f"Companies created: {self.companies_created}, "
             f"matched existing: {self.companies_matched}",
@@ -165,6 +179,7 @@ def import_master_data(session: Session, sources: list[SourceFile]) -> ImportRep
                 parsed.total_rows,
                 len(parsed.rows),
                 parsed.skipped,
+                parsed.skipped_examples,
             )
         )
         imported_exchanges.add(source.exchange)
@@ -173,7 +188,7 @@ def import_master_data(session: Session, sources: list[SourceFile]) -> ImportRep
             f"Exchange security list import: {source.exchange} {source.filename} "
             f"(sha256 {sha[:12]})"
         )
-        for row in parsed.rows:
+        for row in sorted(parsed.rows, key=_name_priority):  # stable: file order otherwise
             _merge_row(ctx, row, exchange, record.id, provenance)
 
     session.flush()

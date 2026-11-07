@@ -13,17 +13,30 @@ EquityOS supports **any** NSE/BSE listed company. The universe is loaded from th
 
 **Why a manual download?** On 2026-11-07 neither exchange could be fetched programmatically from this project: NSE's archive host drops non-browser connections and BSE's API answers HTTP 403. We do not spoof a browser or otherwise work around this. Downloading the file in your browser is ordinary use of the exchange's public website; importing the file is a local operation. If an exchange later offers a permitted automated feed, a provider can replace this step (Phase 4 provider interface).
 
+### Where to save the files
+
+Save them in `data/master/` at the repository root (git-ignored, so the exchange data is never committed):
+
+```
+EquityOS/data/master/nse_EQUITY_L.csv
+EquityOS/data/master/bse_Equity.csv
+```
+
 ### Import
+
+Always preview first: `--dry-run` runs everything, prints the report and rolls back.
 
 ```bash
 # from ./backend (database running; schema migrated; `python -m app.seeds.loader` run once for exchanges/sectors)
-python -m app.master_data.cli --nse "C:/path/to/EQUITY_L.csv" --bse "C:/path/to/bse_scrips.csv"
+python -m app.master_data.cli --nse ../data/master/nse_EQUITY_L.csv --bse ../data/master/bse_Equity.csv --dry-run   # preview
+python -m app.master_data.cli --nse ../data/master/nse_EQUITY_L.csv --bse ../data/master/bse_Equity.csv             # import
 ```
 
 Either flag may be used alone. The importer:
 
 - merges NSE and BSE rows of the same company using the **ISIN issuer key** (ISIN characters 1-7; `IN9...` ISINs are mapped onto the same issuer's `INE...` key, an assumption documented in `app/core/identifiers.py`);
 - is idempotent, never deletes (securities missing from a newer file are only reported), never overwrites an existing company name or verified field;
+- keeps only company securities (ISIN prefix INE/IN9); funds/ETFs (INF) and non-equity instruments are skipped, and rights-entitlement rows never name a company;
 - validates every ISIN (ISO 6166 check digit) and BSE code, and skips and counts bad rows with reasons;
 - fails loudly, changing nothing, if required columns are missing (layout change) instead of guessing;
 - records each file (name, SHA-256, row counts, skip reasons) in `master_data_imports`, and links each security to its last import.
