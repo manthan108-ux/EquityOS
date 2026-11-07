@@ -110,10 +110,28 @@ def test_rejects_duplicate_symbol_on_same_exchange(session):
         session.flush()
 
 
-def test_rejects_duplicate_legal_name(session):
+def test_two_issuers_may_share_a_legal_name(session):
+    # Names are not identities: different issuers can legitimately share one.
+    for key in ("INE111A", "INE222B"):
+        session.add(
+            Company(
+                issuer_key=key,
+                legal_name="Same Name Limited",
+                common_name="Same Name",
+                master_data_source="t",
+            )
+        )
+    session.flush()
+
+
+def test_rejects_duplicate_issuer_key(session):
     _seed(session)
-    session.add(Company(legal_name="Infosys Limited", common_name="Dup", master_data_source="test"))
-    with pytest.raises(IntegrityError, match="uq_companies_legal_name"):
+    session.add(
+        Company(
+            issuer_key="INE009A", legal_name="Other", common_name="Other", master_data_source="t"
+        )
+    )
+    with pytest.raises(IntegrityError, match="uq_companies_issuer_key"):
         session.flush()
 
 

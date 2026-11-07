@@ -24,3 +24,26 @@ def is_valid_isin(isin: str) -> bool:
                 d -= 9
         total += d
     return total % 10 == 0
+
+
+def isin_check_digit(isin_without_check: str) -> str:
+    """Compute the ISO 6166 check digit for the first 11 characters of an ISIN."""
+    for digit in "0123456789":
+        if is_valid_isin(isin_without_check + digit):
+            return digit
+    raise ValueError(f"Cannot compute a check digit for {isin_without_check!r}")
+
+
+def issuer_key(isin: str) -> str:
+    """Issuer part of an Indian ISIN (characters 1-7, e.g. 'INE002A').
+
+    Different securities of one issuer (equity, partly-paid, differential-voting shares) share
+    this prefix, which is how the NSE and BSE listings of one company are merged.
+
+    ASSUMPTION: securities issued under the 'IN9' prefix (e.g. differential-voting shares) share
+    the 4-character issuer code of the same issuer's 'INE' securities, so 'IN9155A' maps to
+    'INE155A'. If an exchange file ever contradicts this, the import report will show it.
+    """
+    if isin.startswith("IN9"):
+        return "INE" + isin[3:7]
+    return isin[:7]

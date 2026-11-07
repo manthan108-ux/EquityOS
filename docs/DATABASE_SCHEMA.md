@@ -16,8 +16,9 @@ exchanges ──< securities >── companies >──< company_aliases
 | `exchanges` | NSE, BSE (extensible) | unique `code`, unique `mic` |
 | `sectors` | Research sectors; each maps to a Phase 8 sector profile | unique `code`, unique `name` |
 | `industries` | Industries within a sector | unique (`sector_id`, `code`) |
-| `companies` | One row per legal entity; UUID canonical ID | unique `legal_name`; `founding_year` between 1600 and 2100 |
+| `companies` | One row per issuer; UUID canonical ID; `issuer_key` (ISIN chars 1-7) merges NSE/BSE listings | unique `issuer_key`; names are NOT unique; `founding_year` 1600-2100 |
 | `securities` | One exchange listing of a company | unique (`exchange_id`, `symbol`); unique (`exchange_id`, `security_code`); ISIN matches `^[A-Z]{2}[A-Z0-9]{9}[0-9]$`; BSE code is 6 digits |
+| `master_data_imports` | Audit of each imported exchange file (SHA-256, row counts, skip reasons) | row counts add up |
 | `company_aliases` | Names users may type; `normalized_alias` is what the resolver matches | unique (`company_id`, `normalized_alias`); index on `normalized_alias` |
 
 ### Design notes
