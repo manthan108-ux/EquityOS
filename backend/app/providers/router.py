@@ -18,10 +18,10 @@ from app.providers.base import CompanyRef, DataProvider, Dataset, Outcome, Provi
 # Priority per dataset (first = preferred). A dataset absent here has no router-fetchable source.
 PRIORITY: dict[Dataset, list[str]] = {
     Dataset.COMPANY_PROFILE: ["UPSTOX_FUNDAMENTALS"],
-    Dataset.INCOME_ANNUAL: ["UPSTOX_FUNDAMENTALS", "MANUAL"],
-    Dataset.INCOME_QUARTERLY: ["UPSTOX_FUNDAMENTALS", "MANUAL"],
-    Dataset.BALANCE_SHEET: ["UPSTOX_FUNDAMENTALS", "MANUAL"],
-    Dataset.CASH_FLOW: ["UPSTOX_FUNDAMENTALS", "MANUAL"],
+    Dataset.INCOME_ANNUAL: ["DOCUMENT_EXTRACTION", "UPSTOX_FUNDAMENTALS", "MANUAL"],
+    Dataset.INCOME_QUARTERLY: ["DOCUMENT_EXTRACTION", "UPSTOX_FUNDAMENTALS", "MANUAL"],
+    Dataset.BALANCE_SHEET: ["DOCUMENT_EXTRACTION", "UPSTOX_FUNDAMENTALS", "MANUAL"],
+    Dataset.CASH_FLOW: ["DOCUMENT_EXTRACTION", "UPSTOX_FUNDAMENTALS", "MANUAL"],
     Dataset.SHAREHOLDING: ["UPSTOX_FUNDAMENTALS"],
     Dataset.KEY_RATIOS: ["UPSTOX_FUNDAMENTALS"],
     Dataset.CORPORATE_ACTIONS: ["UPSTOX_FUNDAMENTALS"],

@@ -16,6 +16,7 @@ from urllib.parse import urljoin, urlsplit
 from bs4 import BeautifulSoup
 
 from app.acquisition.http import FetchResult, PoliteClient
+from app.core.text import normalize_text
 from app.normalization import parse_period_label, quarter_label
 
 TTL = timedelta(days=1)
@@ -102,6 +103,27 @@ def guess_period(text: str) -> str | None:
     if label:
         return f"FY{(label.group(1) or '20')}{label.group(2)}"
     return None
+
+
+def names_group_entity(text: str, company_names: set[str]) -> str | None:
+    """The other group company a link is labelled for, or None.
+
+    Parent companies host their subsidiaries' documents ("ICICI Prudential AMC: Investor
+    Presentation" on icicibank.com). A link whose text starts with "<Name>:" where <Name> begins
+    like the company's name but is not one of its names belongs to another entity. Prefixes that
+    do not look like a group name (digits, or a different first word) are not judged here.
+    """
+    head, sep, _ = text.partition(":")
+    if not sep:
+        return None
+    prefix = normalize_text(head)
+    words = prefix.split()
+    if not 1 <= len(words) <= 6 or any(ch.isdigit() for ch in prefix):
+        return None
+    if prefix in company_names:
+        return None
+    first_words = {name.split()[0] for name in company_names if name}
+    return head.strip() if words[0] in first_words else None
 
 
 def extract_ir_links(html: str, base_url: str) -> list[IrLink]:

@@ -15,8 +15,8 @@ research agents / jobs
         │                  returns: chosen provider + EVERY attempt (no silent substitution)
         ▼
   Provider adapters (each declares its datasets; none is assumed to support everything)
-   UpstoxFundamentals · MarketData(NSE/BSE files) · NSE · BSE · CompanyIR · Regulator · News
-   · Government · Manual (documents, CSV exports)
+   DocumentExtraction · UpstoxFundamentals · MarketData(NSE/BSE files) · NSE · BSE · CompanyIR
+   · Regulator · News · Government · Manual (documents, CSV exports)
         │  all HTTP through one polite, audited client (robots.txt, pacing, retries, cache, log)
         ▼
   Normalized fact tables (+ raw payload archive)
@@ -55,6 +55,7 @@ research agents / jobs
 | News feeds | headlines | Publisher RSS | **Yes** (6/6 feeds) |
 | Government (data.gov.in) | statistics by resource id | Documented API, free key | No (no key configured) |
 | Manual | documents, financial CSV, announcements | Local files | Yes (tested with fixtures; always available) |
+| **Document extraction** (Phase 5) | income (quarterly + annual), balance sheet, cash flow, read from stored official PDFs | Local deterministic parsing; arithmetic checks before use | **Yes** for ICICI Bank (results + annual report) and Reliance (integrated filing); see [DOCUMENT_INTELLIGENCE.md](DOCUMENT_INTELLIGENCE.md) |
 
 ### Upstox Fundamentals API: what the documentation says
 
@@ -103,6 +104,18 @@ only data that exists.
 
 Fundamentals will remain unavailable until either an Upstox token is configured and verified or
 financial CSV exports / documents are supplied manually.
+
+### After Phase 5 (2026-11-07, still no Upstox token)
+
+| Dataset | Reliance | TCS | Infosys | HDFC Bank | ICICI Bank |
+|---|---|---|---|---|---|
+| Annual income statement | Documents 20% | unavailable | unavailable | unavailable | Documents 40% |
+| Quarterly results | Documents 25% | unavailable | unavailable | unavailable | Documents 38% |
+| Balance sheet | Documents 20% | unavailable | unavailable | unavailable | Documents 40% |
+| Cash flow statement | unavailable (scanned page, unit unreadable) | unavailable | unavailable | unavailable | Documents 40% |
+| Quarterly result documents | Company site 25% | unavailable | unavailable | unavailable | Company site 25% |
+
+Router priority for statements is now: document extraction, then Upstox, then manual imports.
 
 ## Ways to supply fundamentals yourself (always available)
 

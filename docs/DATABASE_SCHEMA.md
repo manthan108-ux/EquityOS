@@ -55,6 +55,16 @@ exchanges ──< securities >── companies >──< company_aliases
 | `dataset_verifications` | A recorded live retrieval attempt per provider and dataset. A dataset is "supported" only if one succeeded |
 | `sources` (extended) | Registry columns: auth requirement, access method, rate limits, declared datasets, coverage note, redistribution policy |
 
+## Implemented (Phase 5): document intelligence (migration 0005)
+
+| Table | Purpose |
+|---|---|
+| `document_extractions` | One processing run of one document: extractor version, status (COMPLETED, NO_STATEMENTS, NEEDS_OCR, UNSUPPORTED, FAILED), page counts, pages needing OCR, statements found, values extracted and promoted, structured issues, error |
+| `document_pages` | Text of every page of a run (for citations), character count, whether the page needs OCR and how its text was obtained. Unique per run and page |
+| `extracted_statements` | A statement table recognised on a page: type, basis, unit (NULL = not stated), title, how it was detected, per-column header/period/audited/problem, matched and unmatched rows, every arithmetic check with the numbers used |
+| `extracted_facts` | EVERY value read: canonical item, printed label, page, row, column, column header, period end and duration (3/6/9/12 or NULL), audited flag, raw cell text, original and normalized value, position on the page, validation status (PASSED/FAILED/UNCHECKED) with notes, and whether it was promoted (or why not) |
+| `financial_facts` (extended) | `document_id` and `source_page`: values promoted from a document point to the exact page |
+
 ## Seed data
 
 `python -m app.seeds.loader` (from `./backend`) loads exchanges, sectors, a few industries and the five-company test universe (Reliance, TCS, Infosys, HDFC Bank, ICICI Bank). It is idempotent and never overwrites existing rows. BSE codes were cross-checked against public secondary sources and ISINs pass the check digit; verification against primary NSE/BSE master files is Phase 4 work.
@@ -64,7 +74,6 @@ exchanges ──< securities >── companies >──< company_aliases
 | Phase | Tables |
 |---|---|
 | 4 | `sources`, `documents`, `acquisition_jobs` |
-| 5 | `document_sections`, `document_tables` |
 | 6 | `evidence`, `evidence_validation`, `evidence_conflicts` |
 | 7 | `financial_statements`, `income_statements`, `balance_sheets`, `cash_flows`, `quarterly_results`, `segment_financials`, `shareholding_data`, `market_data`, `technical_indicators`, `financial_metrics` |
 | 8 | `sector_profiles`, `sector_weights`, `weight_adjustments`, `peer_sets`, `peers` |

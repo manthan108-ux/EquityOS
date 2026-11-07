@@ -6,8 +6,8 @@
 | 2 | Database foundation | Complete |
 | 3 | Company resolution (+ full-universe master import) | Complete |
 | 4 | Data acquisition (+ 4b multi-source provider router, coverage engine) | Complete |
-| 5 | Document intelligence | Next |
-| 6 | Evidence and validation engine | Pending |
+| 5 | Document intelligence | Complete |
+| 6 | Evidence and validation engine | Next |
 | 7 | Financial calculation engine | Pending |
 | 8 | Sector and peer engine | Pending |
 | 9 | Research agent system (LLM layer starts here) | Pending |
@@ -57,19 +57,53 @@ Triggered by the risk that exchange APIs would not supply fundamentals. See [DAT
 
 **Upstox is NOT verified.** Its endpoints exist but no token is configured, so no fundamentals have been retrieved. To enable it, put a free read-only Analytics Token in `.env` (`UPSTOX_ANALYTICS_TOKEN`) and run the verify command in the strategy document.
 
+## Phase 5 - document intelligence (2026-11-07)
+
+Financial statements are now read directly from official PDFs, so fundamentals exist even without
+any API provider. See [DOCUMENT_INTELLIGENCE.md](DOCUMENT_INTELLIGENCE.md).
+
+- Deterministic pipeline (no LLM): PDF text and word positions (PyMuPDF 1.26.5), layout engine
+  (lines, numeric columns, rows), statement titles, units (crore / lakh / million / thousand),
+  consolidated vs standalone basis, column periods (dates split over lines, fiscal labels,
+  "As at"), line-item taxonomy for Ind AS and bank formats, statements continuing across pages.
+- Arithmetic validation per column (income, balance sheet, cash flow identities, bank and
+  consolidated forms) with rounding-based tolerance; confirm-only component sums.
+- Two-stage storage (migration 0005): every value read is staged in `extracted_facts` with page,
+  label, header, raw text and position; only values passing all promotion rules enter
+  `financial_facts` (provider `DOCUMENT_EXTRACTION`, document and page on each row).
+- Safeguards: entity check (a subsidiary's document hosted on the parent's site is refused),
+  scanned pages with embedded OCR text promote only check-confirmed values, restatements (newer
+  document wins, change noted), in-document conflicts withdrawn, cross-document agreement recorded.
+- Router: `DOCUMENT_EXTRACTION` is first for income, balance sheet and cash flow datasets.
+  CLI `python -m app.docintel.cli`, API `/api/companies/{id}/documents`,
+  `/api/documents/{id}/extraction`, `/api/documents/{id}/pages/{n}`.
+- Phase 4 fix found on the way: IR downloads now skip links labelled for a group company
+  ("ICICI Prudential AMC: ..." on icicibank.com).
+- **Real results:** ICICI Bank Q2 FY2027 results (126/126 checks, 302 values promoted) and FY2026
+  annual report (349 pages, 36/36 checks, 81 promoted); 65 of 67 FY2026 values agree across the two
+  documents (the 2 differences were a real taxonomy distinction, now fixed). Reliance's scanned
+  Q2 FY2027 integrated filing: 72 check-confirmed values promoted, verified by hand against the
+  page text. The mislinked ICICI Prudential AMC deck: 0 values (entity check).
+- Coverage now (fundamentals): ICICI Bank 38-40%, Reliance 20-25% (income, balance sheet);
+  TCS, Infosys, HDFC Bank still have no stored documents.
+- 400 backend tests (synthetic page geometry, generated PDFs, and a real-layout bank page).
+
 ## Universe load (2026-11-07)
 
 BSE list imported from the manually downloaded file (5,139 rows, 4,855 usable). 284 BSE rows were skipped and reported: 276 funds/ETFs (INF ISINs), 6 non-equity instruments, and 2 equities with no valid ISIN (A.D.S. Diagnostics 523031, Pushpsons Industries 531562). The 5 pre-existing seed companies were verified unchanged apart from previously empty fields being filled.
 
 ## Known limitations
 
-- **Fundamentals are currently unavailable for all test companies** until an Upstox token is configured and verified, or CSV exports / documents are supplied manually. Exchange announcements, filings and XBRL have no permitted automated source (protected APIs, not used).
-- Earlier note, still true: financial statements, quarterly results, shareholding patterns, announcements and XBRL are not obtainable from the exchanges' protected APIs. The exchanges serve them through protected APIs that we do not use. Phase 5 must rely on company investor-relations documents, so coverage will vary by company and gaps must be disclosed in reports. This is the biggest open risk to the project.
+- **Fundamentals exist only where official documents are stored** (ICICI Bank, Reliance). TCS and Infosys block automated access to their sites (403) and HDFC Bank's pages exposed no document links; their documents can be supplied with `ingest-document`, or fundamentals come from Upstox once its token is configured (expected 2026-11-08). Exchange announcements, filings and XBRL have no permitted automated source (protected APIs, not used).
+- Still true: announcements, shareholding patterns and XBRL are served by the exchanges' protected APIs, which we do not use. Statements now come from company documents (Phase 5), so coverage varies by company with what each company's website exposes; gaps are disclosed.
 - Stored prices are unadjusted for splits and bonuses; corporate actions are not yet acquired.
 - The BSE company list still needs a manual download (BSE's API is blocked); the NSE list refreshes automatically.
 - BSE historical price files are patchy (BSE removes older files) and prices have only been backfilled for 3 days; deeper NSE history is a longer, rate-limited run.
 - News feeds hold only a recent window and matching is a local phrase check; items are leads, not conclusions.
 - Fuzzy suggestions can be loosely related when nothing is close; they are only ever suggestions.
 - The frontend was not exercised in a real browser (API and build were verified).
-- Tesseract OCR and Redis are not installed; they are needed from Phase 5 and only if background workers become necessary.
+- Tesseract OCR is not installed: fully scanned PDFs without any text layer are reported as NEEDS_OCR and not read (`python -m app.docintel.cli ocr-status`). Redis is not installed (only needed if background workers become necessary).
+- Document intelligence reads the primary statements only; notes, segment tables, shareholding and ratios inside PDFs are not yet extracted. Half-year and nine-month figures are staged but not promoted. Real-document validation so far covers ICICI Bank (bank format) and Reliance (Ind AS, scanned); other layouts may need taxonomy additions, which surface as unmatched labels or failed checks, never as wrong numbers.
+- One stored document (ICICI Prudential AMC's presentation) is linked to ICICI Bank from Phase 4 and still counts toward ICICI Bank's 'investor presentations' coverage; its numbers are refused by the entity check. It should be unlinked (not done automatically: existing records are not changed without your confirmation).
+- PyMuPDF is AGPL-3.0: fine for private use; see ARCHITECTURE decision 23 before offering EquityOS publicly.
 - Docker image builds are not part of CI yet.

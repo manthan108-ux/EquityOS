@@ -7,6 +7,14 @@ from app.models.acquisition import (
 )
 from app.models.base import Base
 from app.models.company import AliasType, Company, CompanyAlias, Security, SecurityStatus
+from app.models.docintel import (
+    DocumentExtraction,
+    DocumentPage,
+    ExtractedFact,
+    ExtractedStatement,
+    ExtractionStatus,
+    ValidationStatus,
+)
 from app.models.facts import (
     Basis,
     CorporateAction,
@@ -22,6 +30,12 @@ from app.models.imports import MasterDataImport
 from app.models.reference import Exchange, Industry, Sector
 
 __all__ = [
+    "DocumentExtraction",
+    "DocumentPage",
+    "ExtractedFact",
+    "ExtractedStatement",
+    "ExtractionStatus",
+    "ValidationStatus",
     "Basis",
     "CorporateAction",
     "DatasetVerification",
