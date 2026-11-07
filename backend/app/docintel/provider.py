@@ -11,9 +11,17 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.config import get_settings, resolve_data_dir
+from app.core.storage import data_root
+from app.docintel.pdf import ocr_available
 from app.docintel.pipeline import EXTRACTOR_VERSION, PROVIDER_CODE, extract_document
-from app.models import Document, DocumentExtraction, FinancialFact, PeriodType, Statement
+from app.models import (
+    Document,
+    DocumentExtraction,
+    ExtractionStatus,
+    FinancialFact,
+    PeriodType,
+    Statement,
+)
 from app.providers.base import CompanyRef, Dataset, Outcome, ProviderResult, ProviderSpec
 
 FINANCIAL_DOC_TYPES = ("annual_report", "quarterly_result", "investor_presentation")
@@ -44,20 +52,35 @@ SPEC = ProviderSpec(
 
 
 def pending_documents(session: Session, company_id) -> list[Document]:
-    """The company's financial PDFs with no completed run by the current extractor version."""
+    """The company's financial PDFs that still need processing.
+
+    A document is done when its CURRENT run (by this extractor version) finished usefully:
+    COMPLETED, NO_STATEMENTS, or UNSUPPORTED. FAILED runs are retried, and NEEDS_OCR runs are
+    retried once OCR becomes available. Documents issued by another entity are never processed
+    for this company.
+    """
     docs = session.scalars(
         select(Document).where(
             Document.company_id == company_id,
             Document.content_type == "application/pdf",
             Document.doc_type.in_(FINANCIAL_DOC_TYPES),
+            Document.association_status != "MISMATCH",
         )
     ).all()
+    settled = [
+        ExtractionStatus.COMPLETED,
+        ExtractionStatus.NO_STATEMENTS,
+        ExtractionStatus.UNSUPPORTED,
+    ]
+    if not ocr_available():
+        settled.append(ExtractionStatus.NEEDS_OCR)
     done = set(
         session.scalars(
             select(DocumentExtraction.document_id).where(
                 DocumentExtraction.document_id.in_([d.id for d in docs]),
                 DocumentExtraction.extractor_version == EXTRACTOR_VERSION,
-                DocumentExtraction.finished_at.is_not(None),
+                DocumentExtraction.superseded_at.is_(None),
+                DocumentExtraction.status.in_(settled),
             )
         )
     )
@@ -80,7 +103,7 @@ class DocumentExtractionProvider:
                 Outcome.UNSUPPORTED,
                 f"documents do not provide {dataset.value}",
             )
-        data_dir = resolve_data_dir(get_settings())
+        data_dir = data_root()
         processed = 0
         for document in pending_documents(session, company.id):
             extract_document(session, document, data_dir)

@@ -16,11 +16,22 @@ accepted: a misread column or a wrong unit breaks these identities.
 from dataclasses import dataclass
 from decimal import Decimal
 
+from app.docintel.layout import is_value_token
 from app.docintel.statements import StatementBlock
-from app.docintel.taxonomy import BALANCE_SHEET, CASH_FLOW, INCOME
+from app.docintel.taxonomy import (
+    BALANCE_SHEET,
+    CASH_FLOW,
+    INCOME,
+    NOTE,
+    SEGMENT,
+    SHAREHOLDING,
+    normalize_label,
+)
 from app.models import ValidationStatus
 
-RELATIVE_TOLERANCE = Decimal("0.0005")
+# Measured on real ICICI/Reliance documents: every correct check passes with ZERO relative slack,
+# so only a hair is kept (0.001%); rounding is covered by the per-unit allowance below.
+RELATIVE_TOLERANCE = Decimal("0.00001")
 
 # Each form: (total key, [(sign, key), ...]) meaning total == sum(sign * value).
 Form = tuple[str, list[tuple[int, str]]]
@@ -370,6 +381,70 @@ CHECKS: tuple[Check, ...] = (
     ),
 )
 
+CHECKS += (
+    Check(
+        "segment revenue less inter-segment = revenue after elimination",
+        SEGMENT,
+        (
+            _f(
+                "segment_revenue_after_elimination",
+                "segment_revenue_total",
+                "-segment_revenue_inter_segment",
+            ),
+        ),
+    ),
+    Check(
+        "revenue from operations = revenue after elimination - GST recovered",
+        SEGMENT,
+        (
+            _f(
+                "revenue_from_operations",
+                "segment_revenue_after_elimination",
+                "-segment_gst_recovered",
+            ),
+        ),
+    ),
+    Check(
+        "segment assets: total before eliminations less adjustments = total",
+        SEGMENT,
+        (
+            _f(
+                "segment_assets_total",
+                "segment_assets_gross_total",
+                "-segment_assets_inter_segment_adjustment",
+            ),
+        ),
+    ),
+    Check(
+        "segment liabilities: total before eliminations less adjustments = total",
+        SEGMENT,
+        (
+            _f(
+                "segment_liabilities_total",
+                "segment_liabilities_gross_total",
+                "-segment_liabilities_inter_segment_adjustment",
+            ),
+        ),
+    ),
+    Check(
+        "capital employed = segment assets - segment liabilities",
+        SEGMENT,
+        (_f("segment_capital_employed", "segment_assets_total", "-segment_liabilities_total"),),
+    ),
+)
+
+SEGMENT_MEASURES = (
+    "segment_revenue",
+    "segment_result",
+    "segment_result_ebitda",
+    "segment_result_ebit",
+    "segment_assets",
+    "segment_liabilities",
+)
+# Schedules are printed in whole units, so a sum is exact up to rounding: a much tighter limit
+# than the 0.05% allowed for statements whose subtotals are rounded independently.
+NOTE_RELATIVE_TOLERANCE = Decimal("0.00001")
+
 
 @dataclass
 class CheckResult:
@@ -447,7 +522,125 @@ def run_checks(block: StatementBlock) -> list[CheckResult]:
             if result:
                 result.name = name
                 results.append(result)
+        if block.statement == SHAREHOLDING:
+            results.extend(_shareholding_checks(block, column.index))
+        if block.statement == SEGMENT:
+            results.extend(_segment_sums(block, column.index))
+        elif block.statement == NOTE:
+            results.extend(_note_totals(block, column.index))
     return results
+
+
+def _shareholding_checks(block: StatementBlock, column: int) -> list[CheckResult]:
+    from app.docintel.disclosures import shareholding_sums  # avoids an import cycle
+
+    keys = tuple({f.key for f in block.facts})
+    return [
+        CheckResult(
+            name="shareholding categories add up to the total",
+            column=column,
+            passed=passed,
+            form=form,
+            difference=difference,
+            tolerance=tolerance,
+            keys=keys,
+        )
+        for col, passed, form, difference, tolerance in shareholding_sums(block)
+        if col == column
+    ]
+
+
+def _segment_sums(block: StatementBlock, column: int) -> list[CheckResult]:
+    """Segments add up to the printed total of their measure (unallocated rows are segments too)."""
+    out = []
+    for measure in SEGMENT_MEASURES:
+        # consolidated tables print "Total" (before eliminations) and then a net total
+        total = block.value(f"{measure}_gross_total", column) or block.value(
+            f"{measure}_total", column
+        )
+        rows = [f for f in block.dimensional(measure, column) if f.value is not None]
+        if total is None or total.value is None or len(rows) < 2:
+            continue
+        computed = sum((f.value for f in rows), Decimal(0))
+        decimals = max([total.decimals, *(f.decimals for f in rows)])
+        tolerance = max(
+            Decimal(1).scaleb(-decimals) * Decimal(len(rows) + 1) / 2,
+            abs(total.value) * RELATIVE_TOLERANCE,
+        )
+        difference = total.value - computed
+        out.append(
+            CheckResult(
+                name=f"segments add up to the total ({measure})",
+                column=column,
+                passed=abs(difference) <= tolerance,
+                form=f"{measure}_total {total.value} vs sum of {len(rows)} segments = {computed}",
+                difference=difference,
+                tolerance=tolerance,
+                keys=(total.key, measure),
+            )
+        )
+    return out
+
+
+def _numeric(fact) -> Decimal | None:
+    """Printed value of a cell: a number, or 0 for an explicit nil marker; None if unreadable."""
+    if fact.value is not None:
+        return fact.value
+    return Decimal(0) if is_value_token(fact.raw_value) else None
+
+
+def _note_totals(block: StatementBlock, column: int) -> list[CheckResult]:
+    """Every TOTAL row of a schedule equals the rows since the previous total, or the previous
+    sub-totals (or both together). A printed '-' counts as nil in such a sum."""
+    rows = sorted(
+        (f for f in block.facts if f.column_index == column and not f.duplicate),
+        key=lambda f: f.row_index,
+    )
+    items: list = []
+    subtotals: list = []
+    out = []
+    for fact in rows:
+        value = _numeric(fact)
+        if value is None:
+            items, subtotals = [], []  # an unreadable cell: no sum can be trusted past it
+            continue
+        if not normalize_label(fact.raw_label).startswith("total"):
+            items.append((fact, value))
+            continue
+        item_sum = sum((v for _, v in items), Decimal(0))
+        sub_sum = sum((v for _, v in subtotals), Decimal(0))
+        candidates = [("rows", item_sum, items)]
+        if subtotals:
+            candidates += [
+                ("sub-totals", sub_sum, subtotals),
+                ("sub-totals and rows", sub_sum + item_sum, [*subtotals, *items]),
+            ]
+        decimals = fact.decimals
+        tolerance = max(
+            Decimal(1).scaleb(-decimals) * Decimal(len(items) + len(subtotals) + 1) / 2,
+            abs(value) * NOTE_RELATIVE_TOLERANCE,
+        )
+        best_kind = "rows"
+        if items or subtotals:
+            best = min(candidates, key=lambda c: abs(value - c[1]))
+            best_kind = best[0]
+            used = best[2]
+            out.append(
+                CheckResult(
+                    name="schedule total equals its parts",
+                    column=column,
+                    passed=abs(value - best[1]) <= tolerance,
+                    form=f"{fact.raw_label.strip()} {value} vs {best[0]} = {best[1]}",
+                    difference=value - best[1],
+                    tolerance=tolerance,
+                    keys=(fact.key, *(f.key for f, _ in used)),
+                )
+            )
+        # A total that was built from earlier sub-totals replaces them (so a repeated total is
+        # not counted twice); one built from plain rows joins the sub-totals for the grand total.
+        subtotals = [(fact, value)] if best_kind != "rows" else [*subtotals, (fact, value)]
+        items = []
+    return out
 
 
 # Sums whose component list varies by company: every component READ in the column is added.

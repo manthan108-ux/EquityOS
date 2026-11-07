@@ -37,8 +37,13 @@ class Statement(enum.StrEnum):
 
 
 class PeriodType(enum.StrEnum):
+    """What the figure covers. HALF_YEAR and NINE_MONTH are CUMULATIVE year-to-date figures as
+    reported (Apr-Sep, Apr-Dec); QUARTERLY is a standalone three-month figure."""
+
     ANNUAL = "ANNUAL"
     QUARTERLY = "QUARTERLY"
+    HALF_YEAR = "HALF_YEAR"
+    NINE_MONTH = "NINE_MONTH"
 
 
 class Basis(enum.StrEnum):
@@ -68,6 +73,7 @@ class FinancialFact(Base):
         ),
         Index("ix_financial_facts_lookup", "company_id", "statement", "period_end"),
         Index("ix_financial_facts_document", "document_id"),
+        Index("ix_financial_facts_payload", "payload_id"),
         CheckConstraint("original_unit <> ''", name="unit_present"),
     )
 
@@ -95,6 +101,12 @@ class FinancialFact(Base):
         ForeignKey("documents.id", ondelete="SET NULL")
     )
     source_page: Mapped[int | None]
+    # Set only on figures CALCULATED from reported ones (a standalone quarter = cumulative minus
+    # the previous cumulative): the ids and values of the reported facts it was computed from.
+    derived_from: Mapped[dict | None] = mapped_column(JSONB)
+    # Earlier values this fact held before a later filing restated it, newest last:
+    # [{value, unit, document_id, page, replaced_at, reason}]. Nothing a document said is lost.
+    history: Mapped[list | None] = mapped_column(JSONB)
 
 
 class ShareholdingFact(Base):
@@ -188,6 +200,7 @@ class DatasetVerification(Base):
     __tablename__ = "dataset_verifications"
     __table_args__ = (
         Index("ix_dataset_verifications_lookup", "provider_code", "dataset", "verified_at"),
+        Index("ix_dataset_verifications_company", "company_id"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)

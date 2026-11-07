@@ -24,7 +24,7 @@ from app.docintel.entity import company_names
 from app.models import Company, DatasetVerification, RawPayload, Security
 from app.providers.base import CompanyRef, DataProvider, Dataset, Outcome
 from app.providers.company_ir import names_group_entity
-from app.providers.documents import DocumentProvider
+from app.providers.documents import AssociationMismatch, DocumentProvider
 from app.providers.manual import ManualImportError, import_financials_csv, ingest_document_file
 from app.providers.registry import build_providers, provider_statuses, sync_registry
 from app.providers.router import PRIORITY, DataRouter
@@ -224,9 +224,14 @@ def cmd_ingest_document(args, providers, router) -> int:
                 doc_type=args.type,
                 title=args.title,
                 financial_period=args.period,
+                force_association=args.force_association,
             )
         except (ValueError, OSError) as exc:
             print(f"Refused: {exc}")
+            if isinstance(exc, AssociationMismatch):
+                print(
+                    "If you are sure it belongs to this company, repeat with --force-association."
+                )
             return 1
         session.commit()
         print(
@@ -300,7 +305,12 @@ def cmd_fetch_documents(args, providers, router) -> int:
                     financial_period=link.get("period_hint"),
                 )
                 session.commit()
-                if stored.document:
+                if stored.document and stored.document.company_id is None and stored.created:
+                    print(
+                        f"stored but NOT linked to {company.common_name}: "
+                        f"{stored.document.association_note}  {link['url']}"
+                    )
+                elif stored.document:
                     print(
                         f"{'stored ' if stored.created else 'have   '} {link['url']}  period={link.get('period_hint') or '?'} "
                         "(period inferred from the link; confirm it)"
@@ -334,6 +344,11 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--file", required=True)
     p.add_argument("--period")
     p.add_argument("--title")
+    p.add_argument(
+        "--force-association",
+        action="store_true",
+        help="link even if the document's first page names a different issuer",
+    )
     p = sub.add_parser("import-financials")
     p.add_argument("--file", required=True)
     p = sub.add_parser("fetch-documents")

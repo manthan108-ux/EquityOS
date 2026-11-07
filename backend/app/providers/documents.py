@@ -17,6 +17,8 @@ from sqlalchemy.orm import Session
 
 from app.acquisition.http import FetchResult, PoliteClient
 from app.core.config import get_settings, resolve_data_dir
+from app.docintel.association import IssuerCheck, add_event, check_document_text, record_check
+from app.docintel.pdf import first_pages_text
 from app.models import Document, FetchStatus, Source
 
 # magic bytes -> (extension, canonical content type)
@@ -74,8 +76,17 @@ def store_document_bytes(
     published_at: date | None = None,
     financial_period: str | None = None,
     retrieved_at: datetime | None = None,
+    on_mismatch: str = "unlink",
+    force_association: bool = False,
 ) -> tuple[Document, bool]:
-    """Validate and store bytes. Identical content is stored once. Raises ValueError if unsafe."""
+    """Validate and store bytes. Identical content is stored once. Raises ValueError if unsafe.
+
+    A PDF linked to a company is checked against its own first page. If it was issued by another
+    entity (a subsidiary's results hosted on the parent's website), then by default
+    (`on_mismatch="unlink"`) the file is stored but NOT linked to the company, and the refusal is
+    written to the audit trail; with `on_mismatch="raise"` nothing is stored and
+    `AssociationMismatch` is raised. `force_association=True` links it anyway (status FORCED).
+    """
     if doc_type not in ALLOWED_DOC_TYPES:
         raise ValueError(f"Unknown doc_type '{doc_type}'")
     if not body:
@@ -92,6 +103,14 @@ def store_document_bytes(
         return existing, False
 
     extension, content_type = kind
+    check = None
+    intended_company = company_id
+    if company_id is not None and extension == "pdf":
+        check = check_document_text(session, company_id, first_pages_text(body))
+        if check.mismatch and not force_association:
+            if on_mismatch == "raise":
+                raise AssociationMismatch(check)
+            company_id = None  # stored, but not attributed to this company
     relative = Path("documents") / sha[:2] / f"{sha}.{extension}"
     target = root / relative
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -114,7 +133,51 @@ def store_document_bytes(
     )
     session.add(document)
     session.flush()
+    if check is not None:
+        record_check(document, check, forced=force_association)
+        if company_id is None:
+            add_event(
+                session,
+                document,
+                before=intended_company,
+                after=None,
+                action="REFUSED",
+                reason=f"not linked: {check.note}",
+                actor="system",
+                evidence={
+                    "issuer": check.issuer_name,
+                    "relation": check.relation,
+                    **check.evidence,
+                },
+            )
+        else:
+            add_event(
+                session,
+                document,
+                before=None,
+                after=company_id,
+                action="LINKED",
+                reason=(
+                    "forced by the user despite a mismatch: "
+                    if force_association and check.mismatch
+                    else ""
+                )
+                + check.note,
+                actor="cli" if force_association else "system",
+                evidence={"status": check.status, "relation": check.relation},
+            )
     return document, True
+
+
+class AssociationMismatch(ValueError):
+    """The document was issued by an entity other than the company it was meant for."""
+
+    def __init__(self, check: IssuerCheck) -> None:
+        self.check = check
+        super().__init__(
+            f"this document is not from the selected company: {check.note}"
+            + (f" (issuer: {check.issuer_name})" if check.issuer_name else "")
+        )
 
 
 class DocumentProvider:
@@ -159,6 +222,7 @@ class DocumentProvider:
 
 
 __all__ = [
+    "AssociationMismatch",
     "DocumentProvider",
     "FetchStatus",
     "StoredDocument",

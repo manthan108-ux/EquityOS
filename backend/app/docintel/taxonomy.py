@@ -18,9 +18,13 @@ Some labels mean different things in different places:
 
 import re
 import unicodedata
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 INCOME, BALANCE_SHEET, CASH_FLOW = "INCOME", "BALANCE_SHEET", "CASH_FLOW"
+# Disclosure tables read with the same machinery as the primary statements (period columns):
+SEGMENT, RATIOS, NOTE = "SEGMENT", "RATIOS", "NOTE"
+SHAREHOLDING = "SHAREHOLDING"  # read by its own reader (disclosures.py), labelled columns
+DISCLOSURES = {SEGMENT, RATIOS, NOTE, SHAREHOLDING}
 
 
 @dataclass(frozen=True)
@@ -28,7 +32,7 @@ class Item:
     key: str
     statement: str
     patterns: tuple[str, ...]
-    kind: str = "amount"  # amount | per_share
+    kind: str = "amount"  # amount | per_share | percent | ratio
     sectional: bool = False  # balance sheet: prefix with current / non_current from context
 
 
@@ -295,8 +299,108 @@ ITEMS: tuple[Item, ...] = (
     ),
 )
 
-_COMPILED = [(item, [re.compile(p) for p in item.patterns]) for item in ITEMS]
-BY_KEY = {item.key: item for item in ITEMS}
+# Ratios and other "additional information" lines printed under or after the results (SEBI LODR
+# Reg. 52(4) for listed debt; RBI formats for banks). Dimensionless values keep their printed form.
+RATIO_ITEMS: tuple[Item, ...] = (
+    _i(
+        "government_shareholding_pct",
+        RATIOS,
+        r"percentage of shares held by government of india",
+        kind="percent",
+    ),
+    _i(
+        "capital_adequacy_ratio",
+        RATIOS,
+        r"capital adequacy ratio( \(basel iii\))?",
+        r"crar",
+        kind="percent",
+    ),
+    _i(
+        "eps_basic",
+        RATIOS,
+        r"basic eps before and after extraordinary items,? net of tax( expense)?",
+        kind="per_share",
+    ),
+    _i(
+        "eps_diluted",
+        RATIOS,
+        r"diluted eps before and after extraordinary items,? net of tax( expense)?",
+        kind="per_share",
+    ),
+    _i(
+        "gross_npa_amount",
+        RATIOS,
+        r"gross non[- ]performing (customer )?assets( \(net of write[- ]off\))?",
+        r"gross npa",
+    ),
+    _i("net_npa_amount", RATIOS, r"net non[- ]performing (customer )?assets", r"net npa"),
+    _i(
+        "gross_npa_ratio",
+        RATIOS,
+        r"(% of )?gross non[- ]performing (customer )?assets( \(net of write[- ]off\))? to gross (customer )?assets",
+        r"gross npa ratio",
+        kind="percent",
+    ),
+    _i(
+        "net_npa_ratio",
+        RATIOS,
+        r"(% of )?net non[- ]performing (customer )?assets to net (customer )?assets",
+        r"net npa ratio",
+        kind="percent",
+    ),
+    _i("return_on_assets", RATIOS, r"return on assets( \(annuali[sz]ed\))?", kind="percent"),
+    _i("net_worth", RATIOS, r"net ?worth"),
+    _i(
+        "outstanding_redeemable_preference_shares",
+        RATIOS,
+        r"outstanding redeemable preference shares",
+    ),
+    _i("capital_redemption_reserve", RATIOS, r"capital redemption reserve"),
+    _i("debenture_redemption_reserve", RATIOS, r"debenture redemption reserve"),
+    _i("debt_equity_ratio", RATIOS, r"debt[- ]equity ratio( \(in times\))?", kind="ratio"),
+    _i(
+        "debt_service_coverage_ratio",
+        RATIOS,
+        r"debt service coverage ratio( \(in times\))?",
+        kind="ratio",
+    ),
+    _i(
+        "interest_service_coverage_ratio",
+        RATIOS,
+        r"interest service coverage ratio( \(in times\))?",
+        kind="ratio",
+    ),
+    _i("current_ratio", RATIOS, r"current ratio( \(in times\))?", kind="ratio"),
+    _i(
+        "long_term_debt_to_working_capital",
+        RATIOS,
+        r"long[- ]term debt to working capital( \(in times\))?",
+        kind="ratio",
+    ),
+    _i(
+        "bad_debts_to_accounts_receivable_ratio",
+        RATIOS,
+        r"bad debts to accounts receivable ratio( \(in %\))?",
+        kind="percent",
+    ),
+    _i("current_liability_ratio", RATIOS, r"current liability ratio( \(in times\))?", kind="ratio"),
+    _i(
+        "total_debts_to_total_assets",
+        RATIOS,
+        r"total debts to total assets( \(in times\))?",
+        kind="ratio",
+    ),
+    _i("debtors_turnover", RATIOS, r"debtors turnover( \(in times\))?", kind="ratio"),
+    _i("inventory_turnover", RATIOS, r"inventory turnover( \(in times\))?", kind="ratio"),
+    _i("operating_margin_pct", RATIOS, r"operating margin( \(in %\))?", kind="percent"),
+    _i("net_profit_margin_pct", RATIOS, r"net profit margin( \(in %\))?", kind="percent"),
+    _i("provision_coverage_ratio", RATIOS, r"provision coverage ratio", kind="percent"),
+)
+
+_COMPILED = [(item, [re.compile(p) for p in item.patterns]) for item in (*ITEMS, *RATIO_ITEMS)]
+BY_KEY: dict[str, Item] = {}
+for _item in (*ITEMS, *RATIO_ITEMS):
+    BY_KEY.setdefault(_item.key, _item)  # eps_* exist in two statements: both are per-share
 
 # Income-statement labels whose meaning depends on the anchor line above them.
 _OWNERS = re.compile(
@@ -344,7 +448,9 @@ def normalize_label(label: str) -> str:
         text = stripped
     text = _FORMULA.sub(" ", text)
     text = _SLASH_ALT.sub(" ", text)
-    text = re.sub(r"\s+", " ", text).strip(" :;,.-*")
+    text = re.sub(r"\s+", " ", text).strip(" :;,.-*\u2022\"'")
+    # footnote digits glued to a word by superscripts: "Reserve Bank of India1" -> "... India"
+    text = re.sub(r"(?<=[a-z]{3})\d{1,2}$", "", text)
     # trailing schedule / note reference printed beside the label: "Interest earned 13", "... 1A"
     text = re.sub(r"\s\d{1,2}[a-z]{0,2}$", "", text)
     return text
@@ -356,6 +462,11 @@ class Context:
 
     section: str | None = None  # "current" | "non_current" for balance sheets
     anchor: str | None = None  # last profit / comprehensive-income line in an income statement
+    measure: str | None = None  # segment tables: the measure whose rows are being read
+    closed: bool = False  # segment tables: a total was seen, the measure's rows are over
+    last_dimension: str | None = None  # segment name of the row just matched
+    seen: dict[str, int] = field(default_factory=dict)  # note tables: repeated labels get _2, _3
+    heading: str | None = None  # note tables: the last heading (label-only line) above
 
 
 _SECTION = re.compile(r"(non[- ]current|current) (assets|liabilities)")
@@ -385,9 +496,97 @@ _ATTRIBUTION_HEADINGS = [
 ]
 
 
+_SEGMENT_HEADINGS = [
+    (re.compile(r"segment (value of sales and services|revenue).*"), "segment_revenue"),
+    (re.compile(r"segment(al)? results? \(ebitda\).*"), "segment_result_ebitda"),
+    (re.compile(r"segment(al)? results? \(ebit[)}\]].*"), "segment_result_ebit"),
+    (re.compile(r"segment(al)? results?.*"), "segment_result"),
+    (re.compile(r"segment assets.*"), "segment_assets"),
+    (re.compile(r"segment liabilities.*"), "segment_liabilities"),
+]
+_SEGMENT_TOTAL = re.compile(r"total segment (revenue|results?|assets|liabilities|profit.*)")
+_SEGMENT_SPECIAL = [
+    (re.compile(r"gross value of sales and services"), "TOTAL"),
+    (re.compile(r"total"), "GROSS_TOTAL"),  # consolidated: total before eliminations
+    (re.compile(r"(less:? )?inter[- ]segment adjustments?"), "ADJUSTMENT"),
+    (re.compile(r"(add:? )?share in profit of associates"), "segment_share_of_associates"),
+    (
+        re.compile(r"(less:? )?inter[- ]segment (revenue|transfers)"),
+        "segment_revenue_inter_segment",
+    ),
+    (
+        re.compile(r"(income from operations|value of sales (and|&) services)"),
+        "segment_revenue_after_elimination",
+    ),
+    (re.compile(r"(less:? )?gst recovered"), "segment_gst_recovered"),
+    (re.compile(r"revenue from operations"), "revenue_from_operations"),
+    (re.compile(r"capital employed"), "segment_capital_employed"),
+]
+
+
+def _match_segment(norm: str, label: str, ctx: Context) -> str | None:
+    """Rows of a segment table: segment values under the current measure, plus named totals."""
+    ctx.last_dimension = None
+    text = re.sub(r"^[\u2022\-\u2013*]\s*", "", norm)
+    text = re.sub(r"^[a-z]\s+(?=[a-z])", "", text)  # "a retail banking" (single-letter marker)
+    if _SEGMENT_TOTAL.fullmatch(text):
+        ctx.closed = True
+        return f"{ctx.measure}_total" if ctx.measure else None
+    for pattern, key in _SEGMENT_SPECIAL:
+        if pattern.fullmatch(text):
+            if key == "TOTAL":
+                ctx.closed = True
+                return f"{ctx.measure}_total" if ctx.measure else None
+            if key == "GROSS_TOTAL":
+                if ctx.closed:  # "Total (4) + (5)" after capital employed is not a gross total
+                    return None
+                ctx.closed = True
+                return f"{ctx.measure}_gross_total" if ctx.measure else None
+            if key == "ADJUSTMENT":
+                return f"{ctx.measure}_inter_segment_adjustment" if ctx.measure else None
+            return key
+    if ctx.measure and not ctx.closed and text and not text.startswith(("total", "profit", "less")):
+        original = re.sub(r"^[\W_]*(?:[a-z]\s+(?=[A-Za-z]))?", "", label.strip())
+        ctx.last_dimension = re.sub(r"[\s*\"'\u2022]+$", "", original) or text
+        return ctx.measure
+    return None
+
+
+_SUB_ITEM = re.compile(r"^\(?([ivx]{1,4}|[a-z])\)", re.IGNORECASE)
+
+
+def _slug(text: str, limit: int = 72) -> str:
+    return re.sub(r"[^a-z0-9]+", "_", text).strip("_")[:limit]
+
+
+def _match_note(norm: str, label: str, ctx: Context) -> str | None:
+    """Rows of a schedule / note table: every labelled row is kept under a stable slug.
+
+    A sub-item ("i) From banks") is qualified by the heading above it, so the same words under
+    "Demand deposits" and under "Term deposits" are different keys.
+    """
+    slug = _slug(norm, 72)
+    if not slug:
+        return None
+    if ctx.heading and _SUB_ITEM.match(label.strip()) and not norm.startswith("total"):
+        slug = f"{_slug(ctx.heading, 28)}__{slug}"[:76]
+    count = ctx.seen.get(slug, 0) + 1
+    ctx.seen[slug] = count
+    return slug if count == 1 else f"{slug}_{count}"
+
+
 def observe_heading(label: str, statement: str, ctx: Context) -> None:
     """Update context from a heading line (a line with a label but no values)."""
     norm = normalize_label(label)
+    if statement == NOTE:
+        ctx.heading = norm if norm and not norm.startswith("total") else ctx.heading
+        return
+    if statement == SEGMENT:
+        for pattern, measure in _SEGMENT_HEADINGS:  # most specific first: the first match wins
+            if pattern.fullmatch(norm):
+                ctx.measure, ctx.closed = measure, False
+                break
+        return
     if statement == INCOME:
         for pattern, anchor in _ATTRIBUTION_HEADINGS:
             if pattern.fullmatch(norm):
@@ -407,6 +606,10 @@ def match_label(label: str, statement: str, ctx: Context) -> str | None:
     norm = normalize_label(label)
     if not norm:
         return None
+    if statement == SEGMENT:
+        return _match_segment(norm, label, ctx)
+    if statement == NOTE:
+        return _match_note(norm, label, ctx)
     if statement == INCOME:
         owners, nci = _OWNERS.fullmatch(norm), _NCI.fullmatch(norm)
         if owners or nci:
@@ -439,7 +642,7 @@ def item_kind(key: str) -> str:
 
 def score_statement_types(labels: list[str]) -> dict[str, int]:
     """How many labels match each statement type's items (used when a page has no title)."""
-    scores = {INCOME: 0, BALANCE_SHEET: 0, CASH_FLOW: 0}
+    scores = {INCOME: 0, BALANCE_SHEET: 0, CASH_FLOW: 0, RATIOS: 0}
     for label in labels:
         norm = normalize_label(label)
         for statement in scores:

@@ -75,6 +75,10 @@ class DocumentExtraction(Base):
     error: Mapped[str | None] = mapped_column(Text)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Set when a newer run of the same document replaces this one. Superseded runs stay for the
+    # audit trail but readers use only the current (non-superseded) run.
+    superseded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    ocr_engine: Mapped[str | None] = mapped_column(String(60))  # e.g. "tesseract 5.3.0"
 
 
 class DocumentPage(Base):
@@ -90,21 +94,24 @@ class DocumentPage(Base):
     page_number: Mapped[int] = mapped_column(Integer)  # 1-based, as a reader counts pages
     char_count: Mapped[int] = mapped_column(Integer)
     needs_ocr: Mapped[bool] = mapped_column(Boolean, default=False)
-    text_method: Mapped[str] = mapped_column(String(20))  # "text_layer" | "ocr" | "none"
+    text_method: Mapped[str] = mapped_column(String(20))  # text_layer | embedded_ocr | ocr | none
+    ocr_confidence: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))  # mean word conf. 0-100
     text: Mapped[str] = mapped_column(Text)
 
 
 class ExtractedStatement(Base):
-    """One financial statement table recognised on one page."""
+    """One financial statement or disclosure table recognised on one page."""
 
     __tablename__ = "extracted_statements"
+    __table_args__ = (Index("ix_extracted_statements_extraction", "extraction_id"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     extraction_id: Mapped[int] = mapped_column(
         ForeignKey("document_extractions.id", ondelete="CASCADE")
     )
     page_number: Mapped[int] = mapped_column(Integer)
-    statement: Mapped[str] = mapped_column(String(20))  # INCOME | BALANCE_SHEET | CASH_FLOW
+    # INCOME | BALANCE_SHEET | CASH_FLOW | SEGMENT | RATIOS | SHAREHOLDING | NOTE
+    statement: Mapped[str] = mapped_column(String(20))
     basis: Mapped[str | None] = mapped_column(String(20))  # NULL = not stated on the page
     unit: Mapped[str | None] = mapped_column(String(30))  # NULL = not stated on the page
     title: Mapped[str | None] = mapped_column(Text)
@@ -121,6 +128,8 @@ class ExtractedFact(Base):
     __tablename__ = "extracted_facts"
     __table_args__ = (
         Index("ix_extracted_facts_extraction", "extraction_id"),
+        Index("ix_extracted_facts_statement", "statement_id"),
+        Index("ix_extracted_facts_document", "document_id"),
         Index("ix_extracted_facts_company_item", "company_id", "canonical_item", "period_end"),
         CheckConstraint(
             "duration_months IN (3, 6, 9, 12) OR duration_months IS NULL", name="duration_known"
@@ -160,9 +169,73 @@ class ExtractedFact(Base):
     validation_notes: Mapped[list | None] = mapped_column(JSONB)
     promoted: Mapped[bool] = mapped_column(Boolean, default=False)
     not_promoted_reason: Mapped[str | None] = mapped_column(String(200))
+    # Segment name, note type or other grouping the value belongs to (NULL for the primary
+    # statements). Part of the value's identity: the same line item exists once per segment.
+    dimension: Mapped[str | None] = mapped_column(String(160))
+    # True when a person should look at this value before it is relied on (OCR disagreement,
+    # low OCR confidence, ambiguous characters). Never promoted while True.
+    needs_review: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    ocr_confidence: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))  # lowest word conf.
+
+
+class DocumentSection(Base):
+    """A narrative section located by its heading: auditor's report, accounting policies,
+    management commentary, notes. Stored as text with its page range, never summarised, so any
+    later statement about it can quote the page."""
+
+    __tablename__ = "document_sections"
+    __table_args__ = (
+        Index("ix_document_sections_extraction", "extraction_id"),
+        Index("ix_document_sections_document_kind", "document_id", "kind"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    extraction_id: Mapped[int] = mapped_column(
+        ForeignKey("document_extractions.id", ondelete="CASCADE")
+    )
+    document_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("documents.id", ondelete="CASCADE"))
+    kind: Mapped[str] = mapped_column(String(40))  # AUDITOR_REPORT | ACCOUNTING_POLICIES | ...
+    heading: Mapped[str] = mapped_column(String(300))
+    start_page: Mapped[int] = mapped_column(Integer)
+    end_page: Mapped[int] = mapped_column(Integer)
+    text: Mapped[str] = mapped_column(Text)
+    # Explicit, quoted signals only, e.g. {"opinion": "unmodified", "quotes": ["..."]}.
+    flags: Mapped[dict | None] = mapped_column(JSONB)
+
+
+class GroupEntity(Base):
+    """An entity a company's own filing names as related to it ("Subsidiary", "Associate", ...).
+
+    Read from the related-party note of a document, with its page. The relationship is exactly
+    the word the company printed; nothing is inferred from names or ownership data we do not have.
+    `matched_company_id` links the entity to our company universe when its name is listed there.
+    """
+
+    __tablename__ = "group_entities"
+    __table_args__ = (
+        UniqueConstraint("extraction_id", "normalized_name", "relationship"),
+        Index("ix_group_entities_company", "company_id", "normalized_name"),
+        Index("ix_group_entities_document", "document_id"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"))
+    extraction_id: Mapped[int] = mapped_column(
+        ForeignKey("document_extractions.id", ondelete="CASCADE")
+    )
+    document_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("documents.id", ondelete="CASCADE"))
+    page_number: Mapped[int] = mapped_column(Integer)
+    entity_name: Mapped[str] = mapped_column(String(300))  # as printed (footnote marks removed)
+    normalized_name: Mapped[str] = mapped_column(String(300))
+    relationship: Mapped[str] = mapped_column(String(80))  # as printed, e.g. "Subsidiary"
+    matched_company_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("companies.id", ondelete="SET NULL")
+    )
 
 
 __all__ = [
+    "GroupEntity",
+    "DocumentSection",
     "DocumentExtraction",
     "DocumentPage",
     "ExtractedFact",

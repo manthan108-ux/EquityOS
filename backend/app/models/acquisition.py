@@ -98,6 +98,7 @@ class Document(TimestampMixin, Base):
     __tablename__ = "documents"
     __table_args__ = (
         Index("ix_documents_company_id", "company_id"),
+        Index("ix_documents_source_id", "source_id"),
         CheckConstraint("size_bytes > 0", name="size_positive"),
     )
 
@@ -120,6 +121,37 @@ class Document(TimestampMixin, Base):
     retrieved_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+    # Who the document is really FROM, read from its own first page (Phase 5 stabilization).
+    # association_status: UNVERIFIED (never checked / cannot tell), CONFIRMED (the issuer is this
+    # company), MISMATCH (the issuer is another entity), FORCED (linked by the user despite a
+    # mismatch). Only CONFIRMED / UNVERIFIED / FORCED documents count toward a company's coverage.
+    issuer_name: Mapped[str | None] = mapped_column(String(300))
+    association_status: Mapped[str] = mapped_column(
+        String(20), default="UNVERIFIED", server_default="UNVERIFIED"
+    )
+    association_note: Mapped[str | None] = mapped_column(Text)
+    association_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class DocumentLinkEvent(Base):
+    """Audit trail of every change to which company a document belongs to. Never deleted."""
+
+    __tablename__ = "document_link_events"
+    __table_args__ = (Index("ix_document_link_events_document", "document_id", "created_at"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    document_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("documents.id", ondelete="CASCADE"))
+    company_before: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("companies.id", ondelete="SET NULL")
+    )
+    company_after: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("companies.id", ondelete="SET NULL")
+    )
+    action: Mapped[str] = mapped_column(String(20))  # LINKED | UNLINKED | RELINKED | REFUSED
+    reason: Mapped[str] = mapped_column(Text)
+    actor: Mapped[str] = mapped_column(String(60))  # "system" | "user-approved" | "cli"
+    evidence: Mapped[dict | None] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class EodPrice(Base):

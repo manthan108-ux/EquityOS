@@ -39,11 +39,17 @@ _UNIT_CANON = {
 }
 
 
-def find_units(text: str) -> set[str]:
+# OCR drops or garbles the rupee sign: "(fin crore", "(f in crore}", "{t in crore". Accepted ONLY
+# for text that came from OCR: one stray character glued to "in" before the unit word.
+_OCR_UNIT = re.compile(r"[\(\{\[~]\s*\S?\s?in\s+" + _UNIT_WORD)
+
+
+def find_units(text: str, ocr: bool = False) -> set[str]:
     """All reporting units stated in the text ('crore', 'lakh', 'million', ...)."""
     low = text.lower().replace("’", "'").replace("‘", "'")
     found = set()
-    for pattern in _UNIT_PATTERNS:
+    patterns = [*_UNIT_PATTERNS, _OCR_UNIT] if ocr else _UNIT_PATTERNS
+    for pattern in patterns:
         for match in pattern.finditer(low):
             unit = _UNIT_CANON.get(match.group(1).strip())
             if unit:
@@ -106,6 +112,42 @@ def classify_title(text: str) -> str | None:
     for statement in (BALANCE_SHEET, CASH_FLOW, INCOME):
         if any(p.search(low) for p in _TITLE_RE[statement]):
             return statement
+    return None
+
+
+_DISCLOSURE_TITLES = {
+    "SEGMENT": [
+        re.compile(r"\bsegment(al)?\s+(results?|information|reporting|revenues?|wise)\b"),
+        re.compile(r"\bsegment(al)?[- ]wise\b"),
+    ],
+    "RATIOS": [
+        re.compile(r"\banalytical ratios\b"),
+        re.compile(r"\bkey (financial )?ratios\b"),
+        re.compile(r"\badditional information\b.*\bratios?\b"),
+    ],
+    # "SCHEDULE 4 - BORROWINGS", "Note 20: Borrowings" (a title, not a sentence)
+    "NOTE": [
+        re.compile(r"^schedule\s+\d+[a-z]?\s*[-\u2013:]\s*\S"),
+        re.compile(r"^notes?\s+(no\.?\s*)?\d+[a-z]?\s*[-\u2013:.]\s*\S"),
+    ],
+}
+_NOT_DISCLOSURE_TITLE = re.compile(
+    r"\b(reviewed|approved|taken on record|in accordance|pursuant|regulation 33|have been|"
+    r"has been|were|forming part|refer|significant accounting|integral part|referred to|"
+    r"published|circular)\b"
+)
+
+
+def classify_disclosure_title(text: str) -> str | None:
+    """SEGMENT / RATIOS / NOTE if the line reads like the title of such a table, else None."""
+    low = " ".join(text.lower().replace("&", " and ").split())
+    if not low or len(low.split()) > MAX_TITLE_WORDS or _NOT_DISCLOSURE_TITLE.search(low):
+        return None
+    if _AMOUNT.search(low):
+        return None
+    for kind, patterns in _DISCLOSURE_TITLES.items():
+        if any(p.search(low) for p in patterns):
+            return kind
     return None
 
 
