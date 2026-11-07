@@ -13,6 +13,7 @@ Rules this client enforces (agents and providers never fetch on their own):
 
 import hashlib
 import json
+import logging
 import random
 import threading
 import time
@@ -21,7 +22,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from urllib import robotparser
-from urllib.parse import urlsplit
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import httpx
 
@@ -77,6 +78,17 @@ class ClientConfig:
     respect_robots: bool = True
 
 
+def redact_query(url: str, params: tuple[str, ...]) -> str:
+    """Replace the values of the named query parameters with REDACTED."""
+    parts = urlsplit(url)
+    wanted = {p.lower() for p in params}
+    pairs = [
+        (k, "REDACTED" if k.lower() in wanted else v)
+        for k, v in parse_qsl(parts.query, keep_blank_values=True)
+    ]
+    return urlunsplit(parts._replace(query=urlencode(pairs)))
+
+
 class PoliteClient:
     def __init__(
         self,
@@ -101,8 +113,16 @@ class PoliteClient:
         self._lock = threading.Lock()
         self._next_allowed: dict[str, float] = {}
         self._robots: dict[str, tuple[datetime, robotparser.RobotFileParser | None]] = {}
-        if config.cache_dir:
-            config.cache_dir.mkdir(parents=True, exist_ok=True)
+        self._cache_dir = config.cache_dir
+        if self._cache_dir:
+            try:
+                self._cache_dir.mkdir(parents=True, exist_ok=True)
+            except OSError:
+                # No writable cache: carry on without one rather than failing every request.
+                logging.getLogger("equityos.acquisition").warning(
+                    "cache directory %s is not writable; caching disabled", self._cache_dir
+                )
+                self._cache_dir = None
 
     def close(self) -> None:
         self._http.close()
@@ -117,11 +137,20 @@ class PoliteClient:
         ttl: timedelta | None = None,
         validate: Validator | None = None,
         max_bytes: int | None = None,
+        headers: dict[str, str] | None = None,
+        documented_api: bool = False,
+        secret_params: tuple[str, ...] = (),
     ) -> FetchResult:
         """Fetch `url`. `source` is the source-registry code used in the audit log."""
         started = self._clock()
-        result = self._fetch(url, ttl, validate, max_bytes or self.config.max_bytes)
+        result = self._fetch(
+            url, ttl, validate, max_bytes or self.config.max_bytes, headers, documented_api
+        )
         result.duration_ms = int((self._clock() - started) * 1000)
+        if secret_params:
+            # Credentials passed as query parameters go on the wire but never into the audit log,
+            # stored source URLs or any caller-visible URL.
+            result.url = redact_query(url, secret_params)
         if self._recorder:
             self._recorder(source, result)
         return result
@@ -129,21 +158,31 @@ class PoliteClient:
     # ---- internals -------------------------------------------------------------------------
 
     def _fetch(
-        self, url: str, ttl: timedelta | None, validate: Validator | None, max_bytes: int
+        self,
+        url: str,
+        ttl: timedelta | None,
+        validate: Validator | None,
+        max_bytes: int,
+        headers: dict[str, str] | None,
+        documented_api: bool,
     ) -> FetchResult:
+        # `headers` (e.g. an Authorization token) are sent on the wire only. They are never part of
+        # the cache key, the audit log or any FetchResult. `documented_api` marks a call to an
+        # authenticated, contractually documented API endpoint: robots.txt is a crawler policy and
+        # does not govern those, but every other protection (401/403 etc.) is still final.
         cached = self._cache_read(url, ttl) if ttl else None
         if cached is not None and (
             validate is None or validate(cached.content or b"", cached.content_type) is None
         ):
             return cached
 
-        if self.config.respect_robots and not self._allowed_by_robots(url):
+        if self.config.respect_robots and not documented_api and not self._allowed_by_robots(url):
             return FetchResult(url, FetchStatus.BLOCKED_BY_ROBOTS, error="Disallowed by robots.txt")
 
         last = FetchResult(url, FetchStatus.NETWORK_ERROR, error="not attempted")
         for attempt in range(1, self.config.max_attempts + 1):
             self._wait_turn(url)
-            last = self._attempt(url, validate, max_bytes)
+            last = self._attempt(url, validate, max_bytes, headers)
             last.attempts = attempt
             retryable = last.status in (
                 FetchStatus.TIMEOUT,
@@ -159,9 +198,11 @@ class PoliteClient:
             self._cache_write(url, last)
         return last
 
-    def _attempt(self, url: str, validate: Validator | None, max_bytes: int) -> FetchResult:
+    def _attempt(
+        self, url: str, validate: Validator | None, max_bytes: int, headers: dict[str, str] | None
+    ) -> FetchResult:
         try:
-            with self._http.stream("GET", url) as response:
+            with self._http.stream("GET", url, headers=headers) as response:
                 code = response.status_code
                 ctype = response.headers.get("content-type")
                 if code in _DENIED_HTTP:
@@ -169,12 +210,18 @@ class PoliteClient:
                         url,
                         FetchStatus.ACCESS_DENIED,
                         code,
-                        content_type=ctype,
+                        self._error_body(response),
+                        ctype,
                         error=f"HTTP {code}: access denied (not bypassed)",
                     )
                 if code == 404:
                     return FetchResult(
-                        url, FetchStatus.NOT_FOUND, code, content_type=ctype, error="HTTP 404"
+                        url,
+                        FetchStatus.NOT_FOUND,
+                        code,
+                        self._error_body(response),
+                        ctype,
+                        error="HTTP 404",
                     )
                 throttle = (self.config.host_throttle_codes or {}).get(urlsplit(url).netloc, ())
                 if code in _RETRYABLE_HTTP or code in throttle:
@@ -193,7 +240,8 @@ class PoliteClient:
                         url,
                         FetchStatus.CLIENT_ERROR,
                         code,
-                        content_type=ctype,
+                        self._error_body(response),
+                        ctype,
                         error=f"HTTP {code}",
                     )
                 body = bytearray()
@@ -225,6 +273,14 @@ class PoliteClient:
                 retrieved_at=self._now(),
             )
         return FetchResult(url, FetchStatus.OK, code, content, ctype, retrieved_at=self._now())
+
+    @staticmethod
+    def _error_body(response: httpx.Response) -> bytes:
+        """A capped copy of an error response body, so callers can read API error codes."""
+        try:
+            return response.read()[:65536]
+        except httpx.HTTPError:
+            return b""
 
     # ---- pacing, backoff -------------------------------------------------------------------
 
@@ -298,10 +354,10 @@ class PoliteClient:
     # ---- disk cache ------------------------------------------------------------------------
 
     def _cache_paths(self, url: str) -> tuple[Path, Path] | None:
-        if not self.config.cache_dir:
+        if not self._cache_dir:
             return None
         key = hashlib.sha256(url.encode()).hexdigest()
-        base = self.config.cache_dir / key[:2]
+        base = self._cache_dir / key[:2]
         return base / f"{key}.body", base / f"{key}.json"
 
     def _cache_read(self, url: str, ttl: timedelta) -> FetchResult | None:

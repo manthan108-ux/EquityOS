@@ -4,7 +4,7 @@ An India-focused, evidence-driven AI equity research platform. Enter an NSE/BSE 
 
 > EquityOS produces research assistance, not investment advice or a promise of returns. It makes no claim of SEBI registration or analyst accreditation.
 
-**Status:** Phase 4 of 12 complete (data acquisition). See [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md).
+**Status:** Phase 4 of 12 complete (data acquisition and multi-source provider router). See [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md).
 
 ## Stack
 
@@ -70,7 +70,13 @@ python -m app.acquisition.cli name-history --apply
 python -m app.acquisition.cli prices --exchange NSE --from 2026-11-03 --to 2026-11-06
 ```
 
-See [docs/DATA_SOURCES.md](docs/DATA_SOURCES.md) for what each source provides and what is blocked.
+See [docs/DATA_SOURCES.md](docs/DATA_SOURCES.md) for what each source provides and what is blocked, and [docs/DATA_ACQUISITION_STRATEGY.md](docs/DATA_ACQUISITION_STRATEGY.md) for the provider router, Upstox evaluation and coverage engine.
+
+```bash
+python -m app.providers.cli providers                 # registry: configured / verified / unverified
+python -m app.providers.cli coverage --symbol TCS     # what data exists and how much to trust it
+python -m app.providers.cli compare --symbols RELIANCE,TCS,INFY,HDFCBANK,ICICIBANK
+```
 
 ## Loading all NSE/BSE companies
 

@@ -5,7 +5,7 @@
 | 1 | Architecture and foundation | Complete |
 | 2 | Database foundation | Complete |
 | 3 | Company resolution (+ full-universe master import) | Complete |
-| 4 | Data acquisition | Complete |
+| 4 | Data acquisition (+ 4b multi-source provider router, coverage engine) | Complete |
 | 5 | Document intelligence | Next |
 | 6 | Evidence and validation engine | Pending |
 | 7 | Financial calculation engine | Pending |
@@ -44,13 +44,27 @@
 - Live results (2026-11-07): the universe is **5,551 companies / 8,068 listings** (NSE list refreshed automatically, including 582 SME companies). 1,065 former names/symbols were added from NSE history, so searching "Zomato" finds Eternal. Official prices are stored for 3 trading days on both exchanges (about 22,000 rows); re-running stores nothing new.
 - 170 backend tests.
 
+## Phase 4b - multi-source acquisition (2026-11-07)
+
+Triggered by the risk that exchange APIs would not supply fundamentals. See [DATA_ACQUISITION_STRATEGY.md](DATA_ACQUISITION_STRATEGY.md).
+
+- **Provider router** with a registry (datasets, auth, access method, rate limits, coverage, terms, availability, last retrieval) and **declared vs verified** support. No silent substitution: every route lists all attempts.
+- **Adapters:** Upstox Fundamentals (written from the official documentation), market data (NSE/BSE files), NSE, BSE, company IR (now follows investor pages one level and classifies links by file name), regulators, news, government (data.gov.in), manual documents and a strict financial-CSV import.
+- **Normalized fact tables** (`financial_facts`, `shareholding_facts`, `corporate_actions`, `ratio_snapshots`, `raw_payloads`, `dataset_verifications`) preserving original value, unit and period; units, periods and fiscal quarters normalized deterministically (`app/normalization.py`).
+- **Coverage engine** (`GET /api/companies/{id}/coverage`): required vs available periods, sources, freshness, verification, confidence with reasons, limitations and affected research pillars.
+- **Live verification results:** prices (all 5 companies, 247 NSE trading days), NSE lists/history, BSE list, news, regulators verified; company IR works for ICICI Bank and Reliance only (TCS and Infosys 403, HDFC Bank no links). A real 19 MB ICICI Bank annual report and Q2 FY2027 results were downloaded, validated and stored.
+- 291 backend tests.
+
+**Upstox is NOT verified.** Its endpoints exist but no token is configured, so no fundamentals have been retrieved. To enable it, put a free read-only Analytics Token in `.env` (`UPSTOX_ANALYTICS_TOKEN`) and run the verify command in the strategy document.
+
 ## Universe load (2026-11-07)
 
 BSE list imported from the manually downloaded file (5,139 rows, 4,855 usable). 284 BSE rows were skipped and reported: 276 funds/ETFs (INF ISINs), 6 non-equity instruments, and 2 equities with no valid ISIN (A.D.S. Diagnostics 523031, Pushpsons Industries 531562). The 5 pre-existing seed companies were verified unchanged apart from previously empty fields being filled.
 
 ## Known limitations
 
-- **Financial statements, quarterly results, shareholding patterns, announcements and XBRL are not yet obtainable programmatically.** The exchanges serve them through protected APIs that we do not use. Phase 5 must rely on company investor-relations documents, so coverage will vary by company and gaps must be disclosed in reports. This is the biggest open risk to the project.
+- **Fundamentals are currently unavailable for all test companies** until an Upstox token is configured and verified, or CSV exports / documents are supplied manually. Exchange announcements, filings and XBRL have no permitted automated source (protected APIs, not used).
+- Earlier note, still true: financial statements, quarterly results, shareholding patterns, announcements and XBRL are not obtainable from the exchanges' protected APIs. The exchanges serve them through protected APIs that we do not use. Phase 5 must rely on company investor-relations documents, so coverage will vary by company and gaps must be disclosed in reports. This is the biggest open risk to the project.
 - Stored prices are unadjusted for splits and bonuses; corporate actions are not yet acquired.
 - The BSE company list still needs a manual download (BSE's API is blocked); the NSE list refreshes automatically.
 - BSE historical price files are patchy (BSE removes older files) and prices have only been backfilled for 3 days; deeper NSE history is a longer, rate-limited run.

@@ -12,8 +12,9 @@ COPY alembic.ini ./
 COPY migrations ./migrations
 COPY app ./app
 
-# Run as an unprivileged user.
-RUN useradd --create-home appuser
+# Run as an unprivileged user with a writable data directory (cache, documents).
+RUN useradd --create-home appuser && mkdir -p /app/data && chown appuser /app/data
+ENV DATA_DIR=/app/data
 USER appuser
 
 EXPOSE 8000

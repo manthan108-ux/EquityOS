@@ -1,8 +1,9 @@
 """Download and store documents (annual reports, results, presentations) with provenance.
 
 Safety: documents are untrusted input. Files are stored under a name derived from their content
-hash (never from the URL, so no path traversal), their real type is checked against magic bytes,
-and nothing in a document is ever executed or treated as an instruction.
+hash (never from the URL or a user-supplied filename, so no path traversal), their real type is
+checked against magic bytes, and nothing in a document is ever executed or treated as an
+instruction.
 """
 
 import hashlib
@@ -31,10 +32,12 @@ ALLOWED_DOC_TYPES = {
     "quarterly_result",
     "investor_presentation",
     "earnings_transcript",
+    "corporate_announcement",
     "xbrl",
     "regulatory_publication",
     "other",
 }
+MAX_MANUAL_BYTES = 200 * 1024 * 1024
 
 
 def sniff(body: bytes) -> tuple[str, str] | None:
@@ -54,7 +57,64 @@ def validate_document(body: bytes, _ctype: str | None) -> str | None:
 class StoredDocument:
     document: Document | None
     created: bool
-    fetch: FetchResult
+    fetch: FetchResult | None
+    error: str | None = None
+
+
+def store_document_bytes(
+    session: Session,
+    root: Path,
+    body: bytes,
+    *,
+    url: str,
+    doc_type: str,
+    source_code: str,
+    company_id: uuid.UUID | None = None,
+    title: str | None = None,
+    published_at: date | None = None,
+    financial_period: str | None = None,
+    retrieved_at: datetime | None = None,
+) -> tuple[Document, bool]:
+    """Validate and store bytes. Identical content is stored once. Raises ValueError if unsafe."""
+    if doc_type not in ALLOWED_DOC_TYPES:
+        raise ValueError(f"Unknown doc_type '{doc_type}'")
+    if not body:
+        raise ValueError("Empty file")
+    kind = sniff(body)
+    if kind is None:
+        raise ValueError("Unrecognised or unsafe file type")
+
+    sha = hashlib.sha256(body).hexdigest()
+    existing = session.scalar(select(Document).where(Document.sha256 == sha))
+    if existing is not None:
+        if existing.financial_period is None and financial_period:
+            existing.financial_period = financial_period  # fills a gap; never overwrites
+        return existing, False
+
+    extension, content_type = kind
+    relative = Path("documents") / sha[:2] / f"{sha}.{extension}"
+    target = root / relative
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(body)
+
+    source = session.scalar(select(Source).where(Source.code == source_code))
+    document = Document(
+        company_id=company_id,
+        source_id=source.id if source else None,
+        url=url,
+        title=title,
+        doc_type=doc_type,
+        content_type=content_type,
+        sha256=sha,
+        size_bytes=len(body),
+        storage_path=relative.as_posix(),
+        published_at=published_at,
+        financial_period=financial_period,
+        retrieved_at=retrieved_at or datetime.now(UTC),
+    )
+    session.add(document)
+    session.flush()
+    return document, True
 
 
 class DocumentProvider:
@@ -81,38 +141,28 @@ class DocumentProvider:
         code = source_code or self.source_code
         fetch = self._client.fetch(url, source=code, validate=validate_document)
         if not fetch.ok or not fetch.content:
-            return StoredDocument(None, False, fetch)
-
-        body = fetch.content
-        sha = hashlib.sha256(body).hexdigest()
-        existing = session.scalar(select(Document).where(Document.sha256 == sha))
-        if existing is not None:
-            return StoredDocument(existing, False, fetch)  # identical bytes: do not store twice
-
-        extension, content_type = sniff(body) or ("bin", "application/octet-stream")
-        relative = Path("documents") / sha[:2] / f"{sha}.{extension}"
-        target = self._root / relative
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_bytes(body)
-
-        source = session.scalar(select(Source).where(Source.code == code))
-        document = Document(
-            company_id=company_id,
-            source_id=source.id if source else None,
+            return StoredDocument(None, False, fetch, fetch.error)
+        document, created = store_document_bytes(
+            session,
+            self._root,
+            fetch.content,
             url=url,
-            title=title,
             doc_type=doc_type,
-            content_type=content_type,
-            sha256=sha,
-            size_bytes=len(body),
-            storage_path=relative.as_posix(),
+            source_code=code,
+            company_id=company_id,
+            title=title,
             published_at=published_at,
             financial_period=financial_period,
-            retrieved_at=fetch.retrieved_at or datetime.now(UTC),
+            retrieved_at=fetch.retrieved_at,
         )
-        session.add(document)
-        session.flush()
-        return StoredDocument(document, True, fetch)
+        return StoredDocument(document, created, fetch)
 
 
-__all__ = ["DocumentProvider", "FetchStatus", "StoredDocument", "sniff", "validate_document"]
+__all__ = [
+    "DocumentProvider",
+    "FetchStatus",
+    "StoredDocument",
+    "sniff",
+    "store_document_bytes",
+    "validate_document",
+]

@@ -29,6 +29,12 @@ class Settings(BaseSettings):
     # Honest, descriptive identification sent to every site we contact.
     http_user_agent: str = "EquityOS-research/0.1 (+https://github.com/manthan108-ux/EquityOS)"
 
+    # Optional provider credentials. Never logged, cached or committed: set them in .env.
+    # Upstox free read-only Analytics Token (1 year), from the Upstox Developer Apps page.
+    upstox_analytics_token: str | None = None
+    upstox_access_token: str | None = None  # alternative: a normal daily OAuth access token
+    data_gov_in_api_key: str | None = None  # free key from data.gov.in
+
     # Origins allowed to call the API from a browser (the Next.js dev server by default).
     cors_origins: list[str] = ["http://localhost:3000"]
 
