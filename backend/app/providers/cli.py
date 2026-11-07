@@ -20,8 +20,10 @@ from sqlalchemy.orm import Session
 from app.acquisition.factory import build_client
 from app.core.database import get_engine
 from app.coverage import Status, build_coverage
+from app.docintel.entity import company_names
 from app.models import Company, DatasetVerification, RawPayload, Security
 from app.providers.base import CompanyRef, DataProvider, Dataset, Outcome
+from app.providers.company_ir import names_group_entity
 from app.providers.documents import DocumentProvider
 from app.providers.manual import ManualImportError, import_financials_csv, ingest_document_file
 from app.providers.registry import build_providers, provider_statuses, sync_registry
@@ -283,7 +285,12 @@ def cmd_fetch_documents(args, providers, router) -> int:
                 )
                 return 1
             provider = DocumentProvider(client)
+            names = company_names(session, company.id)
             for link in links:
+                other = names_group_entity(link.get("text") or "", names)
+                if other:
+                    print(f"skipped {link['url']}: labelled for another entity ({other})")
+                    continue
                 stored = provider.download(
                     session,
                     link["url"],

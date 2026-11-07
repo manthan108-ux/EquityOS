@@ -16,6 +16,7 @@ Everything goes through one audited client (`app/acquisition/http.py`) which: id
 | RBI press-release RSS, SEBI announcements RSS | Regulator publications | 3 | `RbiPressReleases`, `SebiAnnouncements` |
 | Mint, Economic Times, Moneycontrol, BusinessLine RSS | Recent headlines and links, filtered locally for a company name | 5 | Headlines are leads, never proof. Feeds hold only recent items: a window, not history. |
 | Company websites | Investor-relations / annual-report / results link discovery from the official site | 2 | Per-site: `ril.com` works, `tcs.com` returns 403 |
+| Company documents (PDF) | Financial statements read from annual reports and results filings (Phase 5 document intelligence) | 2 | ICICI Bank results + annual report from icicibank.com; Reliance's exchange integrated filing (financial) from its official static host `rilstaticasset.akamaized.net`, linked from ril.com. Subsidiary documents hosted on a parent's site are skipped. |
 
 ## What does NOT work, and why we did not force it
 
@@ -34,7 +35,7 @@ Everything goes through one audited client (`app/acquisition/http.py`) which: id
 
 ## Known gaps (open risks for later phases)
 
-- **Financial statements, quarterly results, shareholding patterns, corporate announcements and XBRL** are normally served by the exchanges' protected APIs, which we do not use. The legitimate routes left are company investor-relations documents (annual reports, results PDFs, presentations) found via IR discovery, and any permitted static files. Phase 5 (document intelligence) therefore depends on company IR sites, and coverage will vary by company. Where data cannot be obtained, reports must say so.
+- **Shareholding patterns, corporate announcements and XBRL** are served by the exchanges' protected APIs, which we do not use. **Financial statements** are now read from company documents (Phase 5); coverage varies by company with what each site exposes (TCS and Infosys return 403, HDFC Bank exposed no document links). Where data cannot be obtained, reports say so.
 - **Corporate actions** (splits, bonuses, dividends) are not yet acquired. Stored prices are **unadjusted**; anything comparing prices across such events must adjust first (Phase 7).
 - BSE price history is patchy because BSE removes older files. NSE history is deep.
 - Exchange data is for our own research use only and must not be redistributed.

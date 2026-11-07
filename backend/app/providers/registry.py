@@ -12,9 +12,12 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.acquisition.http import PoliteClient
+from app.docintel.provider import DocumentExtractionProvider
 from app.models import (
     AcquisitionLog,
     DatasetVerification,
+    DocumentExtraction,
+    ExtractionStatus,
     FetchStatus,
     FinancialFact,
     Source,
@@ -56,6 +59,7 @@ def build_providers(client: PoliteClient) -> list[DataProvider]:
         RegulatorDataProvider(client),
         NewsAdapter(client),
         GovernmentDataProvider(client),
+        DocumentExtractionProvider(),
         manual.ManualProvider(),
     ]
 
@@ -118,7 +122,28 @@ def verified_datasets(session: Session, provider_code: str) -> tuple[set[str], s
     return ever_ok, latest_failed
 
 
+def _extraction_success(session: Session) -> tuple[datetime | None, str | None]:
+    """Document extraction fetches nothing: its history is its extraction runs."""
+    ok = session.scalar(
+        select(func.max(DocumentExtraction.finished_at)).where(
+            DocumentExtraction.status == ExtractionStatus.COMPLETED
+        )
+    )
+    bad = session.scalar(
+        select(DocumentExtraction)
+        .where(
+            DocumentExtraction.status.in_([ExtractionStatus.FAILED, ExtractionStatus.UNSUPPORTED])
+        )
+        .order_by(DocumentExtraction.started_at.desc())
+        .limit(1)
+    )
+    failure = f"{bad.status.value}: {bad.error or ''}".strip(": ") if bad else None
+    return ok, failure
+
+
 def last_success(session: Session, provider: DataProvider) -> tuple[datetime | None, str | None]:
+    if provider.spec.code == "DOCUMENT_EXTRACTION":
+        return _extraction_success(session)
     codes = LOG_SOURCES.get(provider.spec.code, (provider.spec.code,))
     ok_statuses = (FetchStatus.OK, FetchStatus.CACHED)
     ok = session.scalar(

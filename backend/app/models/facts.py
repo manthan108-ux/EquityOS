@@ -67,6 +67,7 @@ class FinancialFact(Base):
             "basis",
         ),
         Index("ix_financial_facts_lookup", "company_id", "statement", "period_end"),
+        Index("ix_financial_facts_document", "document_id"),
         CheckConstraint("original_unit <> ''", name="unit_present"),
     )
 
@@ -89,6 +90,11 @@ class FinancialFact(Base):
     payload_id: Mapped[int | None] = mapped_column(
         ForeignKey("raw_payloads.id", ondelete="SET NULL")
     )
+    # Set when the value was read from a stored document (Phase 5): which document and page.
+    document_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("documents.id", ondelete="SET NULL")
+    )
+    source_page: Mapped[int | None]
 
 
 class ShareholdingFact(Base):

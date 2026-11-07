@@ -23,23 +23,25 @@ Next.js UI ──► FastAPI API ──► Orchestrator ──► research agent
 4. **Visible failure.** A failed module marks the report sections that depend on it; its output is never invented.
 5. **Standalone vs consolidated and reporting periods are never mixed** without an explicit methodology.
 
-## Current layout (through Phase 2)
+## Current layout
 
 ```
 backend/app/
-  main.py            FastAPI app factory, CORS
-  api/health.py      /health (liveness), /health/ready (DB check)
-  core/config.py     Settings from environment variables (pydantic-settings)
-  core/database.py   SQLAlchemy engine + session dependency
-  core/identifiers.py ISIN validation (ISO 6166)
-  core/text.py       Name normalisation shared by aliases and the resolver
-  models/            SQLAlchemy models (company master data)
-backend/migrations/  Alembic migrations (schema changes only happen here)
-backend/app/seeds/   Idempotent reference + test-universe seed data
-frontend/src/
-  app/               Next.js routes
-  features/health/   System status panel
-  services/api.ts    Single place for backend calls
+  main.py              FastAPI app factory, CORS
+  api/                 health, companies (search, coverage), providers (status), documents
+  core/                settings, database, ISIN validation, name normalisation
+  models/              SQLAlchemy models: company master, acquisition, facts, docintel
+  services/            deterministic company resolver + cached search index
+  master_data/         exchange security-list importer (NSE/BSE)
+  acquisition/         PoliteClient (robots.txt, pacing, retries, cache, audit log) + CLI
+  providers/           provider router, registry, adapters (Upstox, NSE/BSE files, company IR,
+                       regulators, news, data.gov.in, manual), persistence, CLI
+  docintel/            Phase 5 document intelligence: PDF text, layout, periods, units,
+                       line-item taxonomy, statement extraction, arithmetic checks, pipeline, CLI
+  coverage.py          Data Coverage Engine
+  normalization.py     units, amounts, fiscal periods
+backend/migrations/    Alembic migrations 0001-0005 (schema changes only happen here)
+frontend/src/          Next.js 16: company search + confirmation, system status
 ```
 
 Folders for later phases (providers, evidence, agents, ...) are created when a phase needs them, not as empty placeholders.
@@ -65,3 +67,9 @@ Folders for later phases (providers, evidence, agents, ...) are created when a p
 | 15 | Authenticated documented APIs are called with `documented_api=True` (robots.txt skipped), credentials only in headers or redacted query parameters | robots.txt governs crawlers, not contractual APIs; access denials stay final; tokens never reach logs, cache keys, stored URLs or payload archives. |
 | 16 | Coverage engine counts only data that exists; confidence is a category with reasons | Completeness must not be inflated; a quality category must not be read as a probability. |
 | 17 | Manual routes (CSV, documents) are first-class, all-or-nothing and recorded as USER_SUPPLIED | Coverage can be completed legitimately where no API reaches, without pretending the data is provider-verified. |
+| 18 | Financial statements are read from official PDFs by a deterministic layout engine (word positions -> lines -> numeric columns), not a generic table detector and not an LLM | Indian statements are whitespace-aligned, not ruled grids; positions plus strict label patterns are reproducible and testable. An LLM must never read or "fix" numbers. |
+| 19 | Two-stage storage: every value read is staged in `extracted_facts`; only values passing all promotion rules enter `financial_facts` | Nothing read is lost or hidden, and nothing unproven is used. Each refusal has a recorded reason. |
+| 20 | Arithmetic identities validate each statement column (rounding-derived tolerance); a column is trusted only if a check passed in it and none failed | Catches misread columns, wrong units and OCR/parsing errors without external data. |
+| 21 | Periods require one month-end date plus an explicit duration (or "As at"); half-year and nine-month columns are staged, not promoted | Mislabelling a six-month figure as a quarter would silently corrupt every ratio; refusing is safer than guessing. |
+| 22 | Document extraction is ranked first for statement datasets in the router | Company filings (tier 2) outrank aggregators; the router still reports every attempt. |
+| 23 | PDF backend: PyMuPDF 1.26.5 (no dependencies; isolated in `app/docintel/pdf.py`). OCR only through an installed Tesseract | Fast and accurate word positions. **Licence: AGPL-3.0** (or commercial): fine for private research; if EquityOS is ever offered publicly as a network service, its source must be made available under AGPL terms, or the backend can be swapped (pdfminer.six / pypdfium2) without touching the rest. PyMuPDF 2.x was not used: it adds ML dependencies (onnxruntime, numpy) we do not need. |
