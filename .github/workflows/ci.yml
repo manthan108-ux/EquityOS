@@ -8,6 +8,22 @@ on:
 jobs:
   backend:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: equityos
+          POSTGRES_PASSWORD: ci-password
+          POSTGRES_DB: equityos
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U equityos"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql+psycopg://equityos:ci-password@localhost:5432/equityos
     defaults:
       run:
         working-directory: backend

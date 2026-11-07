@@ -5,12 +5,17 @@ named exactly like the field, upper-cased (e.g. DATABASE_URL).
 """
 
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# The single .env lives at the repository root (backend/app/core/config.py -> ../../..).
+# Inside Docker the file is absent and real environment variables are used instead.
+_ROOT_ENV = Path(__file__).resolve().parents[3] / ".env"
+
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(env_file=_ROOT_ENV, env_file_encoding="utf-8", extra="ignore")
 
     app_name: str = "EquityOS API"
     app_version: str = "0.1.0"

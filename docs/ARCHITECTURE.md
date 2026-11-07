@@ -23,7 +23,7 @@ Next.js UI ──► FastAPI API ──► Orchestrator ──► research agent
 4. **Visible failure.** A failed module marks the report sections that depend on it; its output is never invented.
 5. **Standalone vs consolidated and reporting periods are never mixed** without an explicit methodology.
 
-## Current layout (Phase 1)
+## Current layout (through Phase 2)
 
 ```
 backend/app/
@@ -31,6 +31,11 @@ backend/app/
   api/health.py      /health (liveness), /health/ready (DB check)
   core/config.py     Settings from environment variables (pydantic-settings)
   core/database.py   SQLAlchemy engine + session dependency
+  core/identifiers.py ISIN validation (ISO 6166)
+  core/text.py       Name normalisation shared by aliases and the resolver
+  models/            SQLAlchemy models (company master data)
+backend/migrations/  Alembic migrations (schema changes only happen here)
+backend/app/seeds/   Idempotent reference + test-universe seed data
 frontend/src/
   app/               Next.js routes
   features/health/   System status panel
@@ -49,4 +54,5 @@ Folders for later phases (providers, evidence, agents, ...) are created when a p
 | 4 | Backend dependencies pinned in `requirements*.txt` | Reproducible builds and CI. |
 | 5 | LLM layer: provider-independent interface, Groq primary, Gemini fallback, **free tiers only**, no automatic switch to paid models; pause and notify when limits are exhausted; track tokens per report. Introduced in Phase 9. Phases 1-8 do not use an LLM. | Budget constraint of INR 0 for inference. |
 | 6 | PDF engine: HTML/CSS templates (Jinja2) rendered to PDF with headless Chromium (Playwright); Plotly charts embedded as images/SVG. Final confirmation in Phase 11. | Best typographic and layout control (running headers/footers, page numbers, tables) with maintainable templates; WeasyPrint needs native GTK libraries on Windows and ReportLab is laborious for table-heavy layouts. |
-| 7 | Alembic and SQLAlchemy models arrive in Phase 2 | Phase 1 only proves DB connectivity. |
+| 7 | Companies and securities are separate tables; canonical company ID is a UUID | One company, many listings (NSE/BSE); no duplicate companies; IDs survive ticker changes. |
+| 8 | DB tests use a real throwaway PostgreSQL database built from the real migrations | The schema relies on Postgres features (regex CHECKs, UUID defaults); testing migrations is testing the schema. |
