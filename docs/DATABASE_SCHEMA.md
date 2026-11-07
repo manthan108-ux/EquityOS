@@ -32,6 +32,17 @@ exchanges ──< securities >── companies >──< company_aliases
 - **Timestamps** (`created_at`, `updated_at`, timezone-aware) on every table.
 - `ISIN` validity beyond the regex (the ISO 6166 check digit) is enforced in application code (`app/core/identifiers.py`) when seeding or ingesting.
 
+## Implemented (Phase 4): acquisition
+
+| Table | Purpose |
+|---|---|
+| `sources` | Registry of data sources with authority tier (1 exchange files, 2 company, 3 regulator, 4 government, 5 reputable secondary, 6 other) and terms notes |
+| `acquisition_log` | One row per fetch: source, URL, outcome, HTTP status, attempts, bytes, duration. Outcomes: OK, CACHED, BLOCKED_BY_ROBOTS, ACCESS_DENIED, RATE_LIMITED, NOT_FOUND, CLIENT_ERROR, TIMEOUT, SERVER_ERROR, NETWORK_ERROR, INVALID_CONTENT, TOO_LARGE |
+| `documents` | Downloaded files stored on disk under their SHA-256; unique per content hash; type, source, publication date and financial period |
+| `eod_prices` | Official exchange end-of-day prices per security, date and series; unique (security, date, series); keeps source URL, file SHA-256 and retrieval time. Unadjusted for corporate actions. NULL delivery fields mean not published, never zero |
+
+`company_aliases.source` records where an alias came from (for example `NSE namechange.csv (2025-04-09)`); it is NULL for seed and exchange-list aliases.
+
 ## Seed data
 
 `python -m app.seeds.loader` (from `./backend`) loads exchanges, sectors, a few industries and the five-company test universe (Reliance, TCS, Infosys, HDFC Bank, ICICI Bank). It is idempotent and never overwrites existing rows. BSE codes were cross-checked against public secondary sources and ISINs pass the check digit; verification against primary NSE/BSE master files is Phase 4 work.

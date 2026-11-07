@@ -1,48 +1,61 @@
 # Data Sources
 
-Principles: official sources first; respect each site's terms, robots rules and rate limits; never bypass authentication, paywalls or bot protection; cache downloads; report any data we could not obtain.
+Principles (from the project specification): official sources first; respect each site's terms, robots rules and rate limits; never bypass authentication, paywalls, bot protection or access denials; cache downloads; report any data we could not obtain; never present old data as current.
 
-## Company universe (all NSE and BSE listed companies)
+Everything goes through one audited client (`app/acquisition/http.py`) which: identifies itself honestly (`EquityOS-research/0.1 (+repo URL)`, never a browser), obeys robots.txt (RFC 9309), spaces requests per host, retries only transient failures with backoff and `Retry-After`, validates content (some sites answer HTTP 200 with an error page), caches on disk, and writes every fetch to the `acquisition_log` table. `GET /api/providers/status` shows per-source reliability from that log.
 
-EquityOS supports **any** NSE/BSE listed company. The universe is loaded from the exchanges' own public security lists. The five-company seed (Reliance, TCS, Infosys, HDFC Bank, ICICI Bank) is only a test fixture.
+## What works (checked 2026-11-07)
 
-| File | Where to get it | Contains |
+| Source | What we get | Tier | Notes |
+|---|---|---|---|
+| NSE archive: `EQUITY_L.csv`, `SME_EQUITY_L.csv` | Every NSE-listed equity (main board + SME): symbol, name, ISIN, listing date, face value | 1 | Automated: `acquisition.cli nse-equity-list` |
+| NSE archive: `namechange.csv`, `symbolchange.csv` | Official former names and former tickers (e.g. Zomato to Eternal) | 1 | Automated: `acquisition.cli name-history` |
+| NSE archive: `sec_bhavdata_full_DDMMYYYY.csv` | Official end-of-day OHLC, volume, turnover, delivery % for every NSE security, history back to at least 2020 | 1 | Automated: `acquisition.cli prices --exchange NSE` |
+| BSE static: `BhavCopy_BSE_CM_0_0_0_YYYYMMDD_F_0000.CSV` | Official end-of-day OHLC, volume, turnover for every BSE security | 1 | Automated: `... prices --exchange BSE`. BSE throttles with HTTP 406 (clears in about 30 s) and serves HTTP 200 error pages under bursts; the client spaces requests, backs off 30 s and validates content. Older days are often unavailable. |
+| BSE list of scrips (equity) | Every BSE-listed equity: code, name, ISIN, group | 1 | **Manual download** in a browser, then `master_data.cli` (BSE's API is blocked, see below). Can be re-derived from the BSE bhavcopy if needed. |
+| RBI press-release RSS, SEBI announcements RSS | Regulator publications | 3 | `RbiPressReleases`, `SebiAnnouncements` |
+| Mint, Economic Times, Moneycontrol, BusinessLine RSS | Recent headlines and links, filtered locally for a company name | 5 | Headlines are leads, never proof. Feeds hold only recent items: a window, not history. |
+| Company websites | Investor-relations / annual-report / results link discovery from the official site | 2 | Per-site: `ril.com` works, `tcs.com` returns 403 |
+
+## What does NOT work, and why we did not force it
+
+| Source | Result | Decision |
 |---|---|---|
-| NSE `EQUITY_L.csv` | nseindia.com > Market Data > "Securities available for trading" (equity list CSV) | symbol, company name, series, listing date, ISIN, face value |
-| BSE list of scrips (Equity, CSV) | bseindia.com > Market Data > Equity > "List of Scrips" (download) | security code, scrip id, issuer name, status, group, ISIN, industry |
+| NSE interactive APIs and `nsearchives.nseindia.com` | Connection dropped for non-browser clients | Not used. The `archives.nseindia.com` static host is used instead. |
+| BSE `api.bseindia.com` | HTTP 403 | Not used. Static bhavcopy files are used instead. |
+| Yahoo Finance | `robots.txt`: `Disallow: /` for all agents | Not used. Official bhavcopy replaces it. |
+| Google News RSS search | `robots.txt` disallows | Not used. Publisher RSS feeds replace it. |
+| Wikidata (SPARQL and API) | `robots.txt` disallows `/sparql` and `/w/` | Not used. NSE name-history replaces it. |
+| Business Standard RSS, PIB RSS | HTTP 403 | Skipped. |
+| IRDAI feeds | `robots.txt` disallows | Skipped. |
+| `tcs.com` | HTTP 403 | IR discovery fails for this site; documents must come from another permitted route. |
 
-**Why a manual download?** On 2026-11-07 neither exchange could be fetched programmatically from this project: NSE's archive host drops non-browser connections and BSE's API answers HTTP 403. We do not spoof a browser or otherwise work around this. Downloading the file in your browser is ordinary use of the exchange's public website; importing the file is a local operation. If an exchange later offers a permitted automated feed, a provider can replace this step (Phase 4 provider interface).
+## Known gaps (open risks for later phases)
 
-### Where to save the files
+- **Financial statements, quarterly results, shareholding patterns, corporate announcements and XBRL** are normally served by the exchanges' protected APIs, which we do not use. The legitimate routes left are company investor-relations documents (annual reports, results PDFs, presentations) found via IR discovery, and any permitted static files. Phase 5 (document intelligence) therefore depends on company IR sites, and coverage will vary by company. Where data cannot be obtained, reports must say so.
+- **Corporate actions** (splits, bonuses, dividends) are not yet acquired. Stored prices are **unadjusted**; anything comparing prices across such events must adjust first (Phase 7).
+- BSE price history is patchy because BSE removes older files. NSE history is deep.
+- Exchange data is for our own research use only and must not be redistributed.
 
-Save them in `data/master/` at the repository root (git-ignored, so the exchange data is never committed):
+## Setup and commands
 
-```
-EquityOS/data/master/nse_EQUITY_L.csv
-EquityOS/data/master/bse_Equity.csv
-```
-
-### Import
-
-Always preview first: `--dry-run` runs everything, prints the report and rolls back.
+Run from `./backend` with the database up and migrated.
 
 ```bash
-# from ./backend (database running; schema migrated; `python -m app.seeds.loader` run once for exchanges/sectors)
-python -m app.master_data.cli --nse ../data/master/nse_EQUITY_L.csv --bse ../data/master/bse_Equity.csv --dry-run   # preview
-python -m app.master_data.cli --nse ../data/master/nse_EQUITY_L.csv --bse ../data/master/bse_Equity.csv             # import
+python -m app.acquisition.cli probe                    # what each source returns right now
+python -m app.acquisition.cli nse-equity-list          # refresh NSE main + SME lists (add --dry-run to preview)
+python -m app.acquisition.cli name-history             # preview former names/symbols; add --apply to save
+python -m app.acquisition.cli prices --exchange NSE --from 2026-11-03 --to 2026-11-06
+python -m app.acquisition.cli prices --exchange BSE --from 2026-11-03 --to 2026-11-06
 ```
 
-Either flag may be used alone. The importer:
+### BSE company list (manual)
 
-- merges NSE and BSE rows of the same company using the **ISIN issuer key** (ISIN characters 1-7; `IN9...` ISINs are mapped onto the same issuer's `INE...` key, an assumption documented in `app/core/identifiers.py`);
-- is idempotent, never deletes (securities missing from a newer file are only reported), never overwrites an existing company name or verified field;
-- keeps only company securities (ISIN prefix INE/IN9); funds/ETFs (INF) and non-equity instruments are skipped, and rights-entitlement rows never name a company;
-- validates every ISIN (ISO 6166 check digit) and BSE code, and skips and counts bad rows with reasons;
-- fails loudly, changing nothing, if required columns are missing (layout change) instead of guessing;
-- records each file (name, SHA-256, row counts, skip reasons) in `master_data_imports`, and links each security to its last import.
+Save the BSE equity list as `data/master/bse_Equity.csv` (git-ignored) and import:
 
-Sector and industry are **not** in the NSE file and BSE's industry label is stored raw (`companies.exchange_industry`). Assigning the research sector is Phase 8.
+```bash
+python -m app.master_data.cli --bse ../data/master/bse_Equity.csv --dry-run   # preview
+python -m app.master_data.cli --bse ../data/master/bse_Equity.csv             # import
+```
 
-## Other sources (Phase 4 onward)
-
-Company IR websites, annual reports, quarterly results, exchange filings, XBRL, SEBI/RBI/IRDAI/TRAI/CERC/PNGRB/PPAC/CDSCO publications, MoSPI, Economic Survey, public market-data providers, reputable news. Each will be a replaceable provider adapter with caching, retries, rate limiting and source attribution.
+The importer merges NSE and BSE listings by ISIN issuer, keeps only company securities (ISIN prefix INE/IN9; funds and ETFs are skipped), never deletes or overwrites names, records every file (SHA-256, row counts) in `master_data_imports`, and reports skipped rows with examples.
