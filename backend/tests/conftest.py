@@ -79,3 +79,13 @@ def session(db_engine: Engine) -> Iterator[Session]:
         db_session.close()
         outer.rollback()
         connection.close()
+
+
+@pytest.fixture(autouse=True)
+def _fresh_search_index():
+    """The fuzzy-search index is cached per process; tests roll back their data, so reset it."""
+    from app.services.search_index import invalidate_search_index
+
+    invalidate_search_index()
+    yield
+    invalidate_search_index()

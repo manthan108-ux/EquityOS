@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.database import get_engine
-from app.core.identifiers import is_valid_isin
+from app.core.identifiers import is_valid_isin, issuer_key
 from app.core.text import normalize_text
 from app.models import (
     AliasType,
@@ -52,13 +52,16 @@ def seed_test_universe(session: Session) -> None:
         if not is_valid_isin(row["isin"]):
             raise ValueError(f"Refusing to seed {row['legal_name']}: invalid ISIN {row['isin']}")
 
-        company = session.scalar(select(Company).where(Company.legal_name == row["legal_name"]))
+        company = session.scalar(
+            select(Company).where(Company.issuer_key == issuer_key(row["isin"]))
+        )
         if company is not None:
             continue  # already seeded; never overwrite data that may have been verified since
 
         sector = sectors[row["sector"]]
         industry = industries[(sector.id, row["industry"])]
         company = Company(
+            issuer_key=issuer_key(row["isin"]),
             legal_name=row["legal_name"],
             common_name=row["common_name"],
             sector_id=sector.id,

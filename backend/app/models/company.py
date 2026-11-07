@@ -8,6 +8,7 @@ duplicate company records for dual-listed businesses.
 import enum
 import uuid
 from datetime import date
+from decimal import Decimal
 
 from sqlalchemy import (
     CheckConstraint,
@@ -15,6 +16,7 @@ from sqlalchemy import (
     Enum,
     ForeignKey,
     Index,
+    Numeric,
     String,
     Text,
     UniqueConstraint,
@@ -49,14 +51,19 @@ class Company(TimestampMixin, Base):
     __tablename__ = "companies"
     __table_args__ = (
         CheckConstraint("founding_year BETWEEN 1600 AND 2100", name="founding_year_range"),
+        Index("ix_companies_legal_name", "legal_name"),
     )
 
     # Canonical company ID: stable, opaque and independent of any exchange code.
     id: Mapped[uuid.UUID] = mapped_column(
         primary_key=True, server_default=text("gen_random_uuid()")
     )
-    legal_name: Mapped[str] = mapped_column(String(200), unique=True)
-    common_name: Mapped[str] = mapped_column(String(120))
+    # Issuer identity derived from the ISIN (characters 1-7). It is what merges the NSE and BSE
+    # listings of one company. NULL only for companies created without any ISIN.
+    # Names are NOT unique: different issuers can legitimately share one.
+    issuer_key: Mapped[str | None] = mapped_column(String(7), unique=True)
+    legal_name: Mapped[str] = mapped_column(String(300))
+    common_name: Mapped[str] = mapped_column(String(200))
     sector_id: Mapped[int | None] = mapped_column(ForeignKey("sectors.id", ondelete="RESTRICT"))
     industry_id: Mapped[int | None] = mapped_column(
         ForeignKey("industries.id", ondelete="RESTRICT")
@@ -66,6 +73,9 @@ class Company(TimestampMixin, Base):
     headquarters: Mapped[str | None] = mapped_column(String(120))
     founding_year: Mapped[int | None]
     business_classification: Mapped[str | None] = mapped_column(Text)
+    # Industry label exactly as published by the exchange (e.g. BSE). Raw provenance; the
+    # research sector/industry above are assigned separately by the Phase 8 sector engine.
+    exchange_industry: Mapped[str | None] = mapped_column(String(200))
     # Where the identity fields above came from and how far they are verified. NULL fields mean
     # "not verified", never "zero" or "none".
     master_data_source: Mapped[str] = mapped_column(String(200))
@@ -101,11 +111,15 @@ class Security(TimestampMixin, Base):
     symbol: Mapped[str] = mapped_column(String(30))  # NSE symbol, or BSE scrip ID
     security_code: Mapped[str | None] = mapped_column(String(10))  # BSE 6-digit scrip code
     isin: Mapped[str] = mapped_column(String(12))
-    series: Mapped[str | None] = mapped_column(String(10))
+    series: Mapped[str | None] = mapped_column(String(10))  # NSE series or BSE group
+    face_value: Mapped[Decimal | None] = mapped_column(Numeric(12, 4))
     status: Mapped[SecurityStatus] = mapped_column(
         _str_enum(SecurityStatus, "security_status"), default=SecurityStatus.ACTIVE
     )
     listing_date: Mapped[date | None] = mapped_column(Date)
+    last_import_id: Mapped[int | None] = mapped_column(
+        ForeignKey("master_data_imports.id", ondelete="SET NULL")
+    )
 
     company: Mapped[Company] = relationship(back_populates="securities")
     exchange: Mapped[Exchange] = relationship()

@@ -37,7 +37,8 @@ def test_invalid_isins(isin):
 @pytest.mark.parametrize(
     ("raw", "expected"),
     [
-        ("Reliance Industries Ltd.", "reliance industries ltd"),
+        ("Reliance Industries Ltd.", "reliance industries limited"),
+        ("Reliance Industries Limited", "reliance industries limited"),
         ("  HDFC   Bank ", "hdfc bank"),
         ("Hindustan Unilever & Co", "hindustan unilever and co"),
         ("Larsen&Toubro", "larsen and toubro"),
