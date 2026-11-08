@@ -42,13 +42,16 @@ _UNIT_CANON = {
 # OCR drops or garbles the rupee sign: "(fin crore", "(f in crore}", "{t in crore". Accepted ONLY
 # for text that came from OCR: one stray character glued to "in" before the unit word.
 _OCR_UNIT = re.compile(r"[\(\{\[~]\s*\S?\s?in\s+" + _UNIT_WORD)
+# The whole line is a stray glyph (the rupee sign, misread) and the unit word: "f crore", "? lakh".
+# Only for OCR text, and only when nothing else is on the line.
+_OCR_UNIT_LINE = re.compile(r"(?m)^\s*\S{1,2}\s+(crores?|lakhs?|millions?)\s*$")
 
 
 def find_units(text: str, ocr: bool = False) -> set[str]:
     """All reporting units stated in the text ('crore', 'lakh', 'million', ...)."""
     low = text.lower().replace("’", "'").replace("‘", "'")
     found = set()
-    patterns = [*_UNIT_PATTERNS, _OCR_UNIT] if ocr else _UNIT_PATTERNS
+    patterns = [*_UNIT_PATTERNS, _OCR_UNIT, _OCR_UNIT_LINE] if ocr else _UNIT_PATTERNS
     for pattern in patterns:
         for match in pattern.finditer(low):
             unit = _UNIT_CANON.get(match.group(1).strip())

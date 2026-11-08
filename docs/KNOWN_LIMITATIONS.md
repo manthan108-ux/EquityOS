@@ -49,6 +49,16 @@ Honest list, as of 2026-11-08 (Phase 6 added at the end). Each item says what ha
 * CI does not build the Docker images.
 * The frontend was never exercised in a real browser.
 
+## Research sample (2026-11-08)
+* Of the 15 sample companies, 4 have values that pass all checks (ICICI Bank, Reliance, M&M, Wipro
+  partially). Eight need manual filings. Kotak, Tech Mahindra and ITC have documents stored but
+  nothing promoted yet (scanned bank results, image-only annual-report cover, press releases).
+* ZIP result kits (Kotak, M&M) are stored but not opened.
+* A document can only be linked to a company if its text names the company; annual reports whose
+  cover is an image are withheld rather than assumed.
+* Sector and industry on the 10 new companies are curated starting points, not an exchange
+  classification; the Phase 8 sector engine assigns the real ones.
+
 ## Evidence engine (Phase 6)
 * Only ICICI Bank (1,605 values) and Reliance (220) have evidence; TCS, Infosys and HDFC Bank have no
   stored documents. Cross-SOURCE conflict and authority rules are tested on synthetic data only:

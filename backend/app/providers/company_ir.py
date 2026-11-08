@@ -45,6 +45,11 @@ _KINDS = [
 ]
 _NOT_AN_ANNUAL_REPORT = re.compile(r"esg|sustainab|brsr|csr|responsib|climate|tcfd", re.I)
 _RESULT_WORDS = re.compile(r"financial|quarter|half|results|statement", re.I)
+# Shareholder-meeting and procedural documents also contain the word "results".
+_NOT_FINANCIAL_RESULTS = re.compile(
+    r"voting|scrutini|postal[\s_-]*ballot|e-?voting|\bagm\b|notice|proxy|intimation|newspaper|advert",
+    re.I,
+)
 # "2024-25", "2024_25", "FY2025", "FY 25": the fiscal year is the year in which it ends.
 _FY_RANGE = re.compile(r"(20\d{2})\s*[-_/–]\s*(\d{2}|20\d{2})(?!\d)")
 _QUARTER_ENDED = re.compile(
@@ -152,7 +157,9 @@ def extract_ir_links(html: str, base_url: str) -> list[IrLink]:
         primary = f"{text} {filename}"
         for kind, pattern in _KINDS:
             subject = primary if kind != "investor_relations" else f"{primary} {parts.path}"
-            if kind == "financial_results" and not _RESULT_WORDS.search(subject):
+            if kind == "financial_results" and (
+                not _RESULT_WORDS.search(subject) or _NOT_FINANCIAL_RESULTS.search(primary)
+            ):
                 continue
             if kind == "annual_report" and _NOT_AN_ANNUAL_REPORT.search(primary):
                 continue
