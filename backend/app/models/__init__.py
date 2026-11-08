@@ -52,8 +52,13 @@ from app.models.facts import (
 )
 from app.models.imports import MasterDataImport
 from app.models.reference import Exchange, Industry, Sector
+from app.models.sector import Peer, PeerSet, SectorWeightSet, WeightAdjustment
 
 __all__ = [
+    "Peer",
+    "PeerSet",
+    "SectorWeightSet",
+    "WeightAdjustment",
     "AdjustmentKind",
     "AdjustmentOrigin",
     "AdjustmentStatus",

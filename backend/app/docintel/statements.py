@@ -31,7 +31,7 @@ from app.docintel.layout import (
     split_row,
 )
 from app.docintel.ocr import repair_header
-from app.docintel.periods import ColumnPeriod, parse_column_header
+from app.docintel.periods import ColumnPeriod, fiscal_alignment_problem, parse_column_header
 
 MIN_MATCHED_ITEMS = 3  # fewer recognised line items than this: not treated as a statement
 MIN_UNTITLED_ITEMS = 5
@@ -303,6 +303,10 @@ def _read_columns(
                 info.problem = period.problem or "no period"
             elif period.duration_months is None:
                 info.problem = "duration not stated"
+        if info.problem is None and info.period.duration_months is not None:
+            info.problem = fiscal_alignment_problem(
+                info.period.period_end, info.period.duration_months
+            )
         infos.append(info)
     # Two usable columns claiming the same period: we cannot tell them apart, so neither is used.
     seen: dict[tuple[date | None, int | None], ColumnInfo] = {}

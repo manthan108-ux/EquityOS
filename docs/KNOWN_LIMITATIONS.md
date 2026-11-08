@@ -49,6 +49,23 @@ Honest list, as of 2026-11-08 (Phase 6 added at the end). Each item says what ha
 * CI does not build the Docker images.
 * The frontend was never exercised in a real browser.
 
+## Sector and peer engine (Phase 8)
+* Only the 8 companies with values can be compared; the largest groups (3 banks, 3 IT firms) give 2
+  peers each, so every comparison is thin (LOW quality). No company has an overall score yet.
+* ROE/ROA and other annual-only metrics need a common financial year: HDFC and Infosys hold different
+  years from ICICI and TCS, so they often cannot be compared. Valuation multiples need share counts
+  (only ICICI has one) and four quarters.
+* Asset quality (GNPA/NNPA), net interest margin, CASA, EBITDA margin and interest cover are not
+  scored because they are not extracted; the banking and IT pillars are weaker for it.
+* Sector weights are curated judgement with stated reasons, not empirical or optimised, and the
+  sector/industry of the 10 newer sample companies is a curated starting point.
+* A rank among 2-3 peers is coarse (0, 25, 50, 75, 100 with two peers). Size ordering uses annual
+  total income, which for a consolidated bank includes subsidiaries' businesses.
+* Quarterly figures stand in for annual ones only for period-length-independent ratios; the metric is
+  then labelled with its period.
+* Extraction still withholds Kotak, SBI, HCL, Tech Mahindra, ITC, HUL and Maruti (scans, image-only
+  covers, mirrored table layouts, press releases instead of statements).
+
 ## Document typing
 * Documents are typed from content first, then file name, else stored as `other`. Content rules are
   keyword based (statement words, "press release", safe-harbour text) and can mis-type: HUL's

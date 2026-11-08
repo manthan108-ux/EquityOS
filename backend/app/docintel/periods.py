@@ -128,6 +128,26 @@ def _fiscal_label(text: str) -> tuple[date, int] | None:
     return None
 
 
+# Under the project's April-March fiscal-year assumption, the month a period of a given length can
+# end in. A header that says "year ended 30 June" is therefore a misreading (typically a quarter
+# column that picked up the neighbouring "Year ended" heading), and its numbers would be stored as
+# an annual figure. Such a column is withheld instead.
+_ENDING_MONTHS = {12: (3,), 6: (9,), 9: (12,), 3: (3, 6, 9, 12)}
+_LENGTH_NAMES = {12: "year", 6: "six-month", 9: "nine-month", 3: "quarter"}
+
+
+def fiscal_alignment_problem(period_end: date | None, duration_months: int | None) -> str | None:
+    """Why this period length cannot end on this date in an April-March fiscal year, if so."""
+    if period_end is None or duration_months not in _ENDING_MONTHS:
+        return None
+    if period_end.month in _ENDING_MONTHS[duration_months]:
+        return None
+    return (
+        f"a {_LENGTH_NAMES[duration_months]} period cannot end on {period_end:%d %B %Y} in an "
+        "April-March fiscal year; the header was probably read against the wrong column"
+    )
+
+
 def parse_column_header(text: str) -> ColumnPeriod:
     """Read the period of one statement column from its (possibly multi-line) header text."""
     low = " ".join(text.lower().split())
