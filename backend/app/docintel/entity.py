@@ -62,13 +62,82 @@ def _mentions(text: str, names: set[str]) -> bool:
     return any(f" {name} " in padded for name in names)
 
 
+# A results filing opens with a covering letter addressed to the exchanges. They are the recipients,
+# not the issuer, so naming them says nothing about whose document it is.
+_EXCHANGES = re.compile(
+    r"\b(national stock exchange of india|nse|bse|metropolitan stock exchange of india|"
+    r"calcutta stock exchange|bombay stock exchange) (limited|ltd)\b"
+)
+
+
 def _names_an_entity(text: str) -> bool:
     # "<Name> Limited" names an entity; "subject to limited review" does not.
-    return bool(re.search(r"\b[a-z]+ (limited|ltd)\b(?! review)", normalize_text(text)))
+    cleaned = _EXCHANGES.sub(" ", normalize_text(text))
+    return bool(re.search(r"\b[a-z]+ (limited|ltd)\b(?! review)", cleaned))
+
+
+PREFACE_PAGES = 30  # how far to look when the cover is an image
+PREFACE_MENTIONS = 5  # the company's name must appear this many times there
+
+
+def cover_text(pages, names: set[str]) -> str:
+    """The text that stands for the document's cover.
+
+    Normally the first COVER_PAGES pages. Many annual reports open with an image cover and a
+    few image-only pages, so that window holds no text at all and the company could never be
+    confirmed. ONLY in that case the window widens to the first PREFACE_PAGES pages, and the text
+    counts as a cover only if it names the company at least PREFACE_MENTIONS times; a document that
+    merely mentions the company in passing (a subsidiary's deck quoting its parent) does not pass.
+    """
+    cover = "\n".join(p.text for p in pages[:COVER_PAGES])
+    if cover.strip() or not names:
+        return cover
+    preface = "\n".join(p.text for p in pages[:PREFACE_PAGES])
+    padded = f" {normalize_text(preface)} "
+    mentions = sum(padded.count(f" {name} ") for name in names)
+    return preface if mentions >= PREFACE_MENTIONS else cover
+
+
+MIN_DOMINANT_PAGES = 80  # only long reports are judged by dominance
+DOMINANT_MENTIONS = 15
+DOMINANCE_FACTOR = 3
+_ENTITY_PHRASE = re.compile(r"([a-z0-9&]+ [a-z0-9&]+) (?:limited|ltd)\b")
+
+
+def document_dominance(pages, names: set[str]) -> str | None:
+    """A description if one company clearly IS the subject of a long document, else None.
+
+    For annual reports whose cover is artwork and whose statement pages carry no company name. The
+    company must be named at least DOMINANT_MENTIONS times across the whole document AND at least
+    DOMINANCE_FACTOR times as often as the most-named other "<name> Limited" entity. A subsidiary's
+    document that quotes its parent a few times can never pass: the subsidiary is named more.
+    """
+    if not names or len(pages) < MIN_DOMINANT_PAGES:
+        return None
+    text = f" {normalize_text(chr(10).join(p.text for p in pages))} "
+    # one mention counted once: "Tech Mahindra Limited" must not also count as "Tech Mahindra"
+    alternatives = "|".join(re.escape(n) for n in sorted(names, key=len, reverse=True))
+    own = len(re.findall(rf"(?<= )(?:{alternatives})(?= )", text))
+    if own < DOMINANT_MENTIONS:
+        return None
+    others: dict[str, int] = {}
+    for match in _ENTITY_PHRASE.finditer(text):
+        phrase = match.group(1).strip()  # the two words before "limited"
+        if any(name == phrase or name.endswith(f" {phrase}") for name in names):
+            continue
+        others[phrase] = others.get(phrase, 0) + 1
+    rival = max(others.values(), default=0)
+    if own >= DOMINANCE_FACTOR * rival:
+        return f"named {own} times in the document, the next entity {rival} times"
+    return None
 
 
 def check_entity(
-    page_text: str, cover_text: str, names: set[str], first_page_text: str | None = None
+    page_text: str,
+    cover_text: str,
+    names: set[str],
+    first_page_text: str | None = None,
+    dominance: str | None = None,
 ) -> EntityCheck:
     """Decide whether a statement page belongs to the company (see module docstring).
 
@@ -92,4 +161,6 @@ def check_entity(
             return EntityCheck(False, "the document is issued by another entity")
     if _mentions(cover_text, names):
         return EntityCheck(True, "document cover")
+    if dominance:
+        return EntityCheck(True, f"document subject ({dominance})")
     return EntityCheck(False, "neither the page nor the document cover names this company")

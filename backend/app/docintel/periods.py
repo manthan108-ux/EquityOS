@@ -151,6 +151,9 @@ def fiscal_alignment_problem(period_end: date | None, duration_months: int | Non
 def parse_column_header(text: str) -> ColumnPeriod:
     """Read the period of one statement column from its (possibly multi-line) header text."""
     low = " ".join(text.lower().split())
+    # A font that drops the first glyph of a heading: "ear ended" is "year ended" ("ear" is not a
+    # word that can precede "ended" in a statement heading).
+    low = re.sub(r"(?<![a-z])ear ended", "year ended", low)
     audited: bool | None = None
     if re.search(r"\bun[\s-]?audited\b|\breviewed\b|\blimited review\b", low):
         audited = False

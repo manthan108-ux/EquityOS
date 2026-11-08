@@ -183,6 +183,26 @@ Details: [SECTOR_ENGINE.md](SECTOR_ENGINE.md).
   companies without values), not the engine.
 - 684 backend tests.
 
+## Phase 8 close-out - ready for Phase 9 (2026-11-08)
+
+Finished before the LLM layer starts:
+
+* **Prices**: 512 more NSE sessions loaded (`backfill-prices`), so history runs from November 2023;
+  the 200-day average, 1-year return and 52-week range have full windows.
+* **Documents**: ZIP kits are unpacked safely; documents are typed by content; issuer checks handle
+  exchange addressees, image-only covers and whole-document dominance; font and OCR repairs.
+* **Calculations**: EBIT/EBITDA/ROCE/interest cover; shares outstanding derived from paid-up capital
+  and the exchange face value (feeds market cap and P/B).
+* **Retrieval**: `GET /api/companies/{id}/search?q=` and `docintel search` return pages with document
+  and page citations, marked UNTRUSTED. This is what the agents will use instead of opening PDFs.
+* **Review queue**: `GET /api/companies/{id}/review-queue` lists withheld scanned values and open findings.
+* **CI**: migration drift check and a Docker build (Tesseract present) added.
+* **Final run**: calculations, sector analysis and validation re-run for all 15 sample companies:
+  0 validation errors (10 companies with statements; 5 have none: SBI, HCL, HUL, ITC, Maruti).
+  Banks and IT each have 3 peers; no company has an overall score yet because pillar data covers
+  15-55% of the sector weight (minimum 60%). Pillar scores are shown. M&M and Reliance have no peers.
+* Tests: 714 passing, ruff clean, `alembic check` clean.
+
 ## Research sample (2026-11-08)
 
 Peers and sector weights (Phase 8) need more than five companies, so the work widens to a

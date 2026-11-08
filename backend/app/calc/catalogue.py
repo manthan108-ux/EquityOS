@@ -31,10 +31,11 @@ class Ref:
     metrics: tuple[str, ...]  # alternatives in priority order
     shift_months: int = 0  # use the period this many months EARLIER
     period_type: str | None = None  # None = the period type of the metric being calculated
+    static: bool = False  # not tied to a period (a face value): use the current record
 
 
-def ref(*metrics: str, shift: int = 0, ptype: str | None = None) -> Ref:
-    return Ref(tuple(metrics), shift, ptype)
+def ref(*metrics: str, shift: int = 0, ptype: str | None = None, static: bool = False) -> Ref:
+    return Ref(tuple(metrics), shift, ptype, static)
 
 
 @dataclass(frozen=True)
@@ -74,6 +75,9 @@ EQ = "BALANCE.owners_equity"
 ATTR = "INCOME.attributable_profit"
 NII = "INCOME.net_interest_income"
 TA = "BALANCE_SHEET.total_assets"
+EBIT = "INCOME.ebit"
+EBITDA = "INCOME.ebitda"
+FIN = "INCOME.finance_costs"
 
 
 def _growth(code, label, metric, *, profile="ANY", positive=False, types=ALL_TYPES, shift=12):
@@ -259,6 +263,128 @@ CATALOGUE: tuple[Metric, ...] = (
         "inr",
         ALL_TYPES,
         profile="BANK",
+    ),
+    # Shares outstanding are not printed in a statement table, but they follow from two official
+    # figures: paid-up equity capital (statements) and the face value (the exchange's security
+    # list). The printed capital is rounded to the statement's unit, so the share count carries
+    # that rounding (a few thousand shares on billions).
+    Metric(
+        "BALANCE.shares_outstanding",
+        "Shares outstanding (paid-up equity capital / face value)",
+        "DERIVED",
+        (
+            one(
+                "capital / face",
+                {
+                    "capital": ref("BALANCE_SHEET.equity_share_capital", "BALANCE_SHEET.capital"),
+                    "face": ref("SECURITY.face_value", static=True),
+                },
+                note="paid-up equity capital divided by the face value in the exchange's list",
+            ),
+            one(
+                "capital / face",
+                {
+                    "capital": ref("INCOME.paid_up_equity_share_capital"),
+                    "face": ref("SECURITY.face_value", static=True),
+                },
+                note="paid-up equity capital (printed with the results) divided by the face value",
+            ),
+        ),
+        "shares",
+        POSITION_TYPES,
+        anchor=(
+            "BALANCE_SHEET.equity_share_capital",
+            "BALANCE_SHEET.capital",
+            "INCOME.paid_up_equity_share_capital",
+        ),
+    ),
+    # ---- operating profit measures (non-financial companies) -------------------------------------
+    # Defined from the printed lines only, so they are comparable between companies that print them:
+    # EBIT = profit before tax + finance costs; EBITDA = EBIT + depreciation and amortisation. Both
+    # include other income and any exceptional items, because the statements are not split further
+    # here. A company that prints no finance-cost or depreciation line simply has no value.
+    Metric(
+        EBIT,
+        "Profit before tax plus finance costs (EBIT)",
+        "DERIVED",
+        (
+            one(
+                "pbt + finance",
+                {"pbt": ref(P), "finance": ref(FIN)},
+                note="includes other income and exceptional items",
+            ),
+        ),
+        "inr",
+        ALL_TYPES,
+        profile="NONFIN",
+        anchor=(FIN,),
+    ),
+    Metric(
+        EBITDA,
+        "EBIT plus depreciation and amortisation (EBITDA)",
+        "DERIVED",
+        (
+            one(
+                "ebit + depreciation",
+                {"ebit": ref(EBIT), "depreciation": ref("INCOME.depreciation_and_amortisation")},
+                note="includes other income and exceptional items",
+            ),
+        ),
+        "inr",
+        ALL_TYPES,
+        profile="NONFIN",
+        anchor=("INCOME.depreciation_and_amortisation",),
+    ),
+    Metric(
+        "MARGIN.ebit_margin",
+        "EBIT margin (on revenue from operations)",
+        "MARGIN",
+        (one("ebit / revenue * 100", {"ebit": ref(EBIT), "revenue": ref(REV)}),),
+        "percent",
+        ALL_TYPES,
+        profile="NONFIN",
+        anchor=(EBIT,),
+    ),
+    Metric(
+        "MARGIN.ebitda_margin",
+        "EBITDA margin (on revenue from operations)",
+        "MARGIN",
+        (one("ebitda / revenue * 100", {"ebitda": ref(EBITDA), "revenue": ref(REV)}),),
+        "percent",
+        ALL_TYPES,
+        profile="NONFIN",
+        anchor=(EBITDA,),
+    ),
+    Metric(
+        "RATIO.interest_cover",
+        "EBIT / finance costs",
+        "LEVERAGE",
+        (one("ebit / finance", {"ebit": ref(EBIT), "finance": ref(FIN)}),),
+        "x",
+        ALL_TYPES,
+        profile="NONFIN",
+        requires=(("finance", ">", 0),),
+        anchor=(EBIT,),
+    ),
+    Metric(
+        "RETURN.roce",
+        "Return on capital employed (EBIT / (assets - current liabilities))",
+        "RETURN",
+        (
+            one(
+                "ebit / (assets - liabilities) * 100",
+                {
+                    "ebit": ref(EBIT),
+                    "assets": ref(TA),
+                    "liabilities": ref("BALANCE_SHEET.total_current_liabilities"),
+                },
+            ),
+        ),
+        "percent",
+        YEARLY,
+        profile="NONFIN",
+        requires=(("assets", ">", 0),),
+        anchor=(EBIT,),
     ),
     # ---- growth ---------------------------------------------------------------------------------
     _growth("GROWTH.total_income_yoy", "Total income growth, year on year", TOT),

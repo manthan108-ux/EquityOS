@@ -127,3 +127,9 @@ Peer ranks, medians and scores are CALCULATION rows of `evidence_records` (kind 
 | 11 | `research_reports`, `report_sections`, `report_sources`, `investment_theses` |
 
 Management, governance, corporate-announcement and news event tables (`management_events`, `governance_events`, `corporate_announcements`, `news_events`) are added alongside the acquisition and agent phases that populate them.
+
+## Migration 0011 - full-text search
+
+`ix_document_pages_fts`: a GIN index on `to_tsvector('english', document_pages.text)`. It is created
+in SQL because Alembic cannot render the text-search configuration literal; `app/models/base.py`
+lists it in `SQL_ONLY_INDEXES` so the drift check ignores it deliberately.

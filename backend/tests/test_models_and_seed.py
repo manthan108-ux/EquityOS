@@ -7,6 +7,7 @@ from sqlalchemy.exc import IntegrityError, StatementError
 from sqlalchemy.orm import Session
 
 from app.models import AliasType, Base, Company, CompanyAlias, Exchange, Security
+from app.models.base import include_object
 from app.seeds.loader import seed_reference_data, seed_test_universe
 from tests.conftest import alembic_config
 
@@ -173,7 +174,9 @@ def test_deleting_company_cascades_to_securities_and_aliases(session):
 def test_models_match_migrated_schema(db_engine):
     """No drift: Alembic autogenerate against the migrated DB must find nothing to change."""
     with db_engine.connect() as conn:
-        ctx = MigrationContext.configure(conn, opts={"compare_type": True})
+        ctx = MigrationContext.configure(
+            conn, opts={"compare_type": True, "include_object": include_object}
+        )
         assert compare_metadata(ctx, Base.metadata) == []
 
 

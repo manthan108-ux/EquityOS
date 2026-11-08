@@ -24,7 +24,7 @@ from app.calc.catalogue import (
     Variant,
 )
 from app.evidence.ledger import LedgerError, register_calculation
-from app.models import EvidenceRecord, EvidenceResolution
+from app.models import EvidenceRecord, EvidenceResolution, EvidenceStatus
 from app.normalization import month_end
 
 CREATED_BY = "calc-engine"
@@ -62,6 +62,8 @@ class Inputs:
 
     def __init__(self, session: Session, company_id: uuid.UUID) -> None:
         self.s = session
+        self.company_id = company_id
+        self._static: dict[str, EvidenceRecord | None] = {}
         self.usable: dict[Key, int] = {}
         self.blocked: set[Key] = set()
         self.local: dict[Key, EvidenceRecord] = {}  # calculations made in this run
@@ -88,6 +90,22 @@ class Inputs:
         if evidence_id not in self._records:
             self._records[evidence_id] = self.s.get(EvidenceRecord, evidence_id)
         return self._records[evidence_id]
+
+    def static(self, metric: str) -> EvidenceRecord | None:
+        """The company's current record of a static fact (one that has no period)."""
+        if metric not in self._static:
+            self._static[metric] = self.s.scalar(
+                select(EvidenceRecord)
+                .where(
+                    EvidenceRecord.company_id == self.company_id,
+                    EvidenceRecord.metric == metric,
+                    EvidenceRecord.period_end.is_(None),
+                    EvidenceRecord.status == EvidenceStatus.ACTIVE,
+                )
+                .order_by(EvidenceRecord.id.desc())
+                .limit(1)
+            )
+        return self._static[metric]
 
     def has_metric(self, metric: str) -> bool:
         return any(k[0] == metric for k in (*self.usable, *self.local))
@@ -117,6 +135,12 @@ def _profile_of(inputs: Inputs) -> str:
 def _resolve(
     inputs: Inputs, ref: Ref, end: date, ptype: str, basis: str
 ) -> tuple[EvidenceRecord | None, str]:
+    if ref.static:
+        for name in ref.metrics:
+            record = inputs.static(name)
+            if record is not None:
+                return record, name
+        return None, " or ".join(ref.metrics) + " (not recorded for this company)"
     target = shift_month_end(end, ref.shift_months) if ref.shift_months else end
     ptype = ref.period_type or ptype
     for name in ref.metrics:

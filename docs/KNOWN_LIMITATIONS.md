@@ -124,3 +124,19 @@ Honest list, as of 2026-11-08 (Phase 6 added at the end). Each item says what ha
 * Technical indicators are only as long as the stored history (247 sessions); no intraday data.
 * `price_adjustments` and `calculation_gaps` are rebuilt or appended per run; they are derived data.
 
+## Added at the end of Phase 8 (2026-11-08)
+
+* No overall score yet for any company: peer groups are small (2-4 per sector) and several sample
+  companies have no statements at all. Scores appear only when 60% of the sector weight has data.
+* Companies with no stored values, with the recorded reason: **SBI** (results PDFs are scans whose
+  embedded text has corrupted digits), **HCL Tech** (scanned, garbled headers and units), **ITC** and
+  **Maruti Suzuki** (only press releases supplied; full results documents are needed),
+  **HUL** (mirrored table layout), **Kotak** consolidated (values vertically centred between
+  wrapped labels; standalone works).
+* The share count is derived from rounded paid-up capital; for a bank whose capital line is not in
+  the stored statements there is no market cap.
+* Full-text search is lexical (English stemming): it finds words, not meanings, and quoted scanned
+  pages are only as good as the OCR.
+* The review queue lists withheld scanned values and open findings but accepting a value is not yet
+  possible; it must be checked against the page by a person.
+* The Docker CI job runs on GitHub; its result has not been seen from this machine (no `gh`).

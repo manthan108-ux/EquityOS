@@ -85,6 +85,9 @@ class DocumentPage(Base):
     """Plain text of one page, kept for citations and later retrieval."""
 
     __tablename__ = "document_pages"
+    # Migration 0011 adds a GIN index on to_tsvector('english', text) for full-text search (the
+    # research agents' page-cited retrieval). It is created in SQL because Alembic cannot render the
+    # regconfig literal; Alembic skips expression indexes when it compares models and database.
     __table_args__ = (UniqueConstraint("extraction_id", "page_number"),)
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)

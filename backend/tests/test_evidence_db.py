@@ -1288,3 +1288,29 @@ def test_interpretation_may_cite_narrative_evidence_but_not_add_numbers(session,
         )
     with pytest.raises(LedgerError, match="no numeric value"):
         register_calculation(session, co.id, "RATIO.x", "a", {"a": news.id}, created_by="t")
+
+
+# ---- review queue -----------------------------------------------------------------------------------
+
+
+def test_review_queue_lists_withheld_scanned_values_and_open_findings(session, co, client):
+    d = doc(session, co)
+    cell(session, co, d, "INCOME", "net_profit", 5, review=True, promoted=False, page=9)
+    cell(session, co, d, "INCOME", "total_income", 9, review=True, promoted=False, page=9, row=2)
+    balance_sheet(session, co, assets=5000, liabilities=5300, document=d)  # an ERROR finding
+    validate(session, co)
+    body = client.get(f"/api/companies/{co.id}/review-queue").json()
+    assert body["scanned_values_waiting"] == 2 and body["errors"] == 1
+    kinds = [i["kind"] for i in body["items"]]
+    assert kinds.count("SCANNED_VALUE") == 2 and kinds.count("FINDING") == 1
+    scanned = next(i for i in body["items"] if i["kind"] == "SCANNED_VALUE")
+    assert scanned["page"] == 9 and scanned["document_id"] == str(d.id)
+    assert "label" in scanned["detail"] and "NOT in the evidence store" in body["note"]
+    finding = next(i for i in body["items"] if i["kind"] == "FINDING")
+    assert finding["severity"] == "ERROR" and "BALANCE_SHEET_IDENTITY" in finding["summary"]
+
+
+def test_review_queue_is_empty_for_a_clean_company_and_404_for_unknown(session, co, client):
+    body = client.get(f"/api/companies/{co.id}/review-queue").json()
+    assert body["items"] == [] and body["scanned_values_waiting"] == 0
+    assert client.get(f"/api/companies/{uuid.uuid4()}/review-queue").status_code == 404

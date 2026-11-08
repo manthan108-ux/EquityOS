@@ -38,6 +38,9 @@ jobs:
       - run: ruff check .
       - run: ruff format --check .
       - run: pytest -q
+      # the models and the migrations must describe the same database
+      - run: alembic upgrade head
+      - run: alembic check
 
   frontend:
     runs-on: ubuntu-latest
@@ -55,3 +58,12 @@ jobs:
       - run: npm run lint
       # `next build` also type-checks the project.
       - run: npm run build
+
+  docker:
+    # The backend image carries Tesseract (OCR of scanned filings); build it and prove it works.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t equityos-backend ./backend
+      - run: docker run --rm equityos-backend tesseract --version
+      - run: docker run --rm equityos-backend python -c "import app.main"
