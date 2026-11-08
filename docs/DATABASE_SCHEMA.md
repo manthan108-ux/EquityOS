@@ -80,6 +80,16 @@ exchanges ──< securities >── companies >──< company_aliases
 | `financial_facts.derived_from`, `history`; period types HALF_YEAR, NINE_MONTH | Derived-quarter inputs; earlier values replaced by a restatement; cumulative periods |
 | 11 new indexes | Foreign keys of the Phase 5 tables and `financial_facts.payload_id`, `dataset_verifications.company_id`, `documents.source_id` |
 
+## Implemented (Phase 6): evidence store (migrations 0007, 0008)
+
+| Table | Purpose |
+|---|---|
+| `evidence_records` | One citable record: class (FACT / CALCULATION / ASSUMPTION / INTERPRETATION), metric, dimension, period, basis, normalized value and unit (plus the published value/unit for facts), formula or statement text, provider and authority tier, source table + natural key, document and page, source URL, quality inputs in `details`, content hash, status (ACTIVE / SUPERSEDED / WITHDRAWN) and reason. Unique per (source table, source key, content hash). CHECK constraints: facts need a provider and URL, calculations a number and a formula, assumptions and interpretations text, a value needs a unit, a FACT needs a number or a statement |
+| `evidence_links` | `evidence_id` depends on `input_id` with a role (INPUT, CITES, SUPPORTS) and the name used in the formula. No self-links |
+| `evidence_resolutions` | Derived index, rebuilt on every validation run: the one value per (metric, dimension, period, period type, basis), its status, quality with reasons, alternatives and their differences, and whether it is blocked and by which rules |
+| `validation_runs` | One validation of one company: rules version, as-of date, counts, per-rule checked/passed counters. Kept as history |
+| `validation_findings` | Findings of a run: rule, severity, message, metric, period, the evidence ids involved |
+
 ## Seed data
 
 `python -m app.seeds.loader` (from `./backend`) loads exchanges, sectors, a few industries and the five-company test universe (Reliance, TCS, Infosys, HDFC Bank, ICICI Bank). It is idempotent and never overwrites existing rows. BSE codes were cross-checked against public secondary sources and ISINs pass the check digit; verification against primary NSE/BSE master files is Phase 4 work.
@@ -89,7 +99,6 @@ exchanges ──< securities >── companies >──< company_aliases
 | Phase | Tables |
 |---|---|
 | 4 | `sources`, `documents`, `acquisition_jobs` |
-| 6 | `evidence`, `evidence_validation`, `evidence_conflicts` |
 | 7 | `financial_statements`, `income_statements`, `balance_sheets`, `cash_flows`, `quarterly_results`, `segment_financials`, `shareholding_data`, `market_data`, `technical_indicators`, `financial_metrics` |
 | 8 | `sector_profiles`, `sector_weights`, `weight_adjustments`, `peer_sets`, `peers` |
 | 9 | `research_jobs`, `agent_runs`, `agent_outputs`, `validation_results`, `llm_usage` |

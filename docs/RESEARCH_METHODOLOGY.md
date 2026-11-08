@@ -63,8 +63,22 @@ the sources, freshness and verification status. Confidence is a category (HIGH /
 NONE) with written reasons, never a probability. Research proceeds with partial data, but the
 report sections that depend on missing datasets are marked as weaker.
 
-## 6. Planned
+## 6. The evidence store (Phase 6)
 
-Evidence store and validation engine (Phase 6), financial calculations and corporate-action
-adjustment (Phase 7), sector weights and peers (Phase 8), research agents (Phase 9), forecasting,
-valuation and risk (Phase 10), Investment Committee review and the PDF report (Phase 11).
+The four evidence classes of section 1 are now enforced in code and in the database, not by
+convention. See [EVIDENCE_ENGINE.md](EVIDENCE_ENGINE.md).
+
+* Every FACT carries provider, source URL and (for documents) document and page.
+* Source authority (section 2) is applied by one resolver: a stronger source beats a weaker one;
+  equal authority that disagrees by more than 1% is a CONFLICT and no value is used.
+* A CALCULATION is computed by the engine from stored evidence; consolidated and standalone, or
+  quarterly and annual, inputs are refused; units are checked.
+* An ASSUMPTION states what it is, why, and who made it.
+* An INTERPRETATION cites evidence and may contain only numbers found in it.
+* Validation errors block the figures involved, and everything built on them.
+
+## 7. Planned
+
+Financial calculations and corporate-action adjustment (Phase 7), sector weights and peers
+(Phase 8), research agents (Phase 9), forecasting, valuation and risk (Phase 10), Investment
+Committee review and the PDF report (Phase 11).
