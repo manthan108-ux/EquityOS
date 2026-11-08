@@ -505,12 +505,48 @@ def _read_block(
         return None
     if not primary and not any(c.usable for c in block.columns):
         return None  # a disclosure table without a readable period column is not staged
+    _drop_serial_number_columns(block)
     _mark_duplicates(block)
     return block
 
 
 _ENUMERATOR = re.compile(r"^\(?([ivx]{1,4}|[a-z])[.)]", re.IGNORECASE)
 _PAREN_ENUMERATOR = re.compile(r"^\(\s*(\d{1,2}|[ivx]+|[a-z])\s*\)", re.IGNORECASE)
+
+
+_SERIAL_CELL = re.compile(r"^\(?\d{1,2}\)?$")
+MAX_SERIAL = 40
+
+
+def _drop_serial_number_columns(block: StatementBlock) -> None:
+    """A column of item numbers ("1", "2", ... "9") is a serial-number column, not a period.
+
+    Deliberately narrow: every cell is a whole number up to 40 with no decimal point, there are at
+    least three of them, and every other column that has values is mostly written with decimals (as
+    amounts in these tables are). The column is marked as a note-style column and its cells are
+    removed, so its (often borrowed) heading can no longer clash with the real period column.
+    """
+    by_column: dict[int, list[CellFact]] = {}
+    for fact in block.facts:
+        by_column.setdefault(fact.column_index, []).append(fact)
+    for index, cells in by_column.items():
+        if len(cells) < 3 or not all(
+            _SERIAL_CELL.match(c.raw_value.strip())
+            and c.value is not None
+            and 0 <= abs(c.value) <= MAX_SERIAL
+            for c in cells
+        ):
+            continue
+        others = [c for i, cs in by_column.items() if i != index for c in cs]
+        if len(others) < 3 * len(cells) // 2:
+            continue
+        decimal = sum(1 for c in others if "." in c.raw_value)
+        if decimal / len(others) < 0.7:
+            continue
+        column = block.column(index)
+        column.is_note = True
+        column.problem = "serial-number column (item numbers, not a period)"
+        block.facts = [f for f in block.facts if f.column_index != index]
 
 
 def _is_continuation(label: str) -> bool:

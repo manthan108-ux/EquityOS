@@ -58,6 +58,13 @@ def _print_run(document: Document, run: DocumentExtraction, seconds: float) -> N
 
 def cmd_extract(args) -> int:
     data_dir = data_root()
+    router = None
+    if getattr(args, "llm", False):
+        from app.llm.providers import default_router
+
+        router = default_router()
+        if not router.providers:
+            raise SystemExit("--llm needs GROQ_API_KEY or GEMINI_API_KEY in .env")
     with Session(get_engine()) as session:
         if args.document_id:
             doc = session.get(Document, uuid.UUID(args.document_id))
@@ -86,7 +93,9 @@ def cmd_extract(args) -> int:
             print(f"{company.common_name}: {len(docs)} document(s) to process")
         for doc in docs:
             started = time.monotonic()
-            report = extract_document(session, doc, data_dir, promote=not args.no_promote)
+            report = extract_document(
+                session, doc, data_dir, promote=not args.no_promote, llm_router=router
+            )
             session.commit()
             _print_run(doc, report.extraction, time.monotonic() - started)
     return 0
@@ -370,6 +379,11 @@ def main(argv: list[str] | None = None) -> int:
     group.add_argument("--symbol")
     group.add_argument("--document-id")
     p.add_argument("--all", action="store_true", help="re-run documents already processed")
+    p.add_argument(
+        "--llm",
+        action="store_true",
+        help="let the LLM interpret column headers the reader cannot assign (values unchanged)",
+    )
     p.add_argument("--no-promote", action="store_true", help="stage values only")
     p = sub.add_parser("show")
     p.add_argument("--document-id", required=True)

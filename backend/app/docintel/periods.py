@@ -154,6 +154,13 @@ def parse_column_header(text: str) -> ColumnPeriod:
     # A font that drops the first glyph of a heading: "ear ended" is "year ended" ("ear" is not a
     # word that can precede "ended" in a statement heading).
     low = re.sub(r"(?<![a-z])ear ended", "year ended", low)
+    low = re.sub(
+        r"(?<=\d)(?=(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*(?![a-z]))", " ", low
+    )
+    low = re.sub(
+        r"\b((?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*)(?=\d{4}\b)", r"\1 ", low
+    )
+    # Table cells that lost the space between day, month and year ("30June 2026", "June2026").
     audited: bool | None = None
     if re.search(r"\bun[\s-]?audited\b|\breviewed\b|\blimited review\b", low):
         audited = False

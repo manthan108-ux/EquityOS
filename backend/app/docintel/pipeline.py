@@ -472,6 +472,7 @@ def extract_document(
     use_ocr: bool | None = None,
     promote: bool = True,
     content: PdfContent | None = None,
+    llm_router=None,
 ) -> ExtractionReport:
     """Run the full pipeline on one stored document. Every outcome is recorded, never raised.
 
@@ -491,7 +492,14 @@ def extract_document(
     try:
         with session.begin_nested():
             report = _extract(
-                session, document, data_dir, run, use_ocr=use_ocr, promote=promote, content=content
+                session,
+                document,
+                data_dir,
+                run,
+                use_ocr=use_ocr,
+                promote=promote,
+                content=content,
+                llm_router=llm_router,
             )
     except Exception as exc:  # noqa: BLE001 - recorded on the run instead of aborting a batch
         run.status = ExtractionStatus.FAILED
@@ -528,6 +536,7 @@ def _extract(
     use_ocr: bool | None,
     promote: bool,
     content: PdfContent | None,
+    llm_router=None,
 ) -> ExtractionReport:
     issues: list[dict] = []
 
@@ -622,7 +631,50 @@ def _extract(
                     "detail": f"shareholding scan skipped after {type(exc).__name__}",
                 }
             )
+    if llm_router is not None:
+        from app.llm.tables import read_missing_tables
+
+        extra, table_outcome = read_missing_tables(
+            content.pages, blocks, document.doc_type, llm_router
+        )
+        if extra:
+            replaced = {b.page_number for b in extra}
+            blocks = [
+                b
+                for b in blocks
+                if not (b.page_number in replaced and b.statement == extra[0].statement)
+            ] + extra
+        if table_outcome.pages_asked:
+            issues.append(
+                {
+                    "page": None,
+                    "code": "LLM_TABLE_READING",
+                    "detail": (
+                        f"{table_outcome.provider}/{table_outcome.model}: "
+                        f"{table_outcome.pages_asked} page(s) sent, {table_outcome.blocks_built} "
+                        f"table(s) built, {table_outcome.values_dropped} value(s) dropped as not "
+                        f"on the page, {table_outcome.failed_calls} call(s) failed"
+                    ),
+                }
+            )
     blocks = inherit_context(merge_continuations(blocks))
+    if llm_router is not None:
+        from app.llm.headers import resolve_headers
+
+        outcome = resolve_headers(blocks, {p.number: p.text for p in content.pages}, llm_router)
+        if outcome.asked:
+            issues.append(
+                {
+                    "page": None,
+                    "code": "LLM_HEADER_READING",
+                    "detail": (
+                        f"{outcome.provider}/{outcome.model}: {outcome.resolved} of "
+                        f"{outcome.asked} column header(s) interpreted, {outcome.refused} "
+                        f"refused, {outcome.failed_calls} call(s) failed; values still need "
+                        "arithmetic checks"
+                    ),
+                }
+            )
     _persist_narrative(session, run, document, content, issues)
 
     doc_latest = max(

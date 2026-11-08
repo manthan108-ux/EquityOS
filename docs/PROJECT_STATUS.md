@@ -183,6 +183,23 @@ Details: [SECTOR_ENGINE.md](SECTOR_ENGINE.md).
   companies without values), not the engine.
 - 684 backend tests.
 
+## Phase 9 - LLM intelligence and data recovery (2026-11-08)
+
+* **Providers**: Groq (`openai/gpt-oss-120b`) and Gemini (`gemini-3.5-flash`) both authenticate and return
+  correct structured JSON, on the host and inside Docker. Retry, backoff, fallback, secret scrubbing and
+  malformed-answer handling are tested with mocked HTTP. See [LLM_LAYER.md](LLM_LAYER.md).
+* **Recovered with the new documents** (validated, 0 errors): ITC 638 values (consolidated and standalone, Q2
+  and H1 FY27, balance sheet, cash flow; quarters-vs-half-year 39/39), HCL 157 (June 2026 quarter, both bases),
+  HUL 170 (quarter, half-year, year; quarters-vs-half-year 13/13).
+* **Not recovered**: SBI and Maruti (the new files are press releases and presentations; SBI results remain
+  scans), see [KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md).
+* **Engine changes found on real files**: fused dates, garbled rupee units, serial-number columns, heading
+  readers and a table reader that takes column assignment from geometry, not from the model.
+* **Upstox**: connector exists with mocked tests; feature flag `UPSTOX_ENABLED` added; no token yet, so nothing
+  is called.
+* **Scores**: still no overall score for any company (pillar coverage 10-55% of sector weight; minimum 60%).
+  Peer groups are now: banks 3, IT 4, FMCG 1 (thin).
+
 ## Phase 8 close-out - ready for Phase 9 (2026-11-08)
 
 Finished before the LLM layer starts:

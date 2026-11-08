@@ -22,6 +22,10 @@ services:
       # Inside the compose network the database host is the service name `db`, port 5432.
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-equityos}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-equityos}
       CORS_ORIGINS: '["http://localhost:3000"]'
+      # LLM keys come from .env (never baked into the image); empty = provider unused.
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      UPSTOX_ANALYTICS_TOKEN: ${UPSTOX_ANALYTICS_TOKEN:-}
     # The SAME folder your machine uses (DATA_DIR, default ./data): documents, HTTP cache and the
     # manual-ingestion inbox are shared between local runs and Docker, and survive container
     # rebuilds and `docker compose down -v` because they live on your disk, not in the container.
