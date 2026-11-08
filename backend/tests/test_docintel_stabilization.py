@@ -850,7 +850,9 @@ def test_storage_api_reports_the_shared_state(session, company, tmp_path, monkey
     _ = uuid, Word
 
 
-def test_inbox_ingests_real_pdfs_refuses_the_rest_and_moves_files(session, company, tmp_path):
+def test_inbox_ingests_real_pdfs_refuses_only_wrong_issuer_and_bad_files(
+    session, company, tmp_path
+):
     from app.docintel.inbox import guess_doc_type, inbox_dir, ingest_inbox
 
     root = tmp_path / "data"
@@ -878,10 +880,9 @@ def test_inbox_ingests_real_pdfs_refuses_the_rest_and_moves_files(session, compa
         results["subsidiary-results.pdf"].status == "REFUSED"
         and "not from the selected company" in results["subsidiary-results.pdf"].detail
     )
-    assert (
-        results["mystery.pdf"].status == "REFUSED"
-        and "could not tell" in results["mystery.pdf"].detail
-    )
+    # a document that cannot be typed is stored as company material, not refused for that reason
+    assert results["mystery.pdf"].status == "STORED" and results["mystery.pdf"].doc_type == "other"
+    assert (folder / "done" / "mystery.pdf").exists()
     assert results["notes.txt"].status == "REFUSED" and results["fake.pdf"].status == "REFUSED"
     assert (folder / "done" / "RIL-annual-report-2026.pdf").exists()
     assert (

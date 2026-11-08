@@ -49,6 +49,13 @@ Honest list, as of 2026-11-08 (Phase 6 added at the end). Each item says what ha
 * CI does not build the Docker images.
 * The frontend was never exercised in a real browser.
 
+## Document typing
+* Documents are typed from content first, then file name, else stored as `other`. Content rules are
+  keyword based (statement words, "press release", safe-harbour text) and can mis-type: HUL's
+  result PDFs contain safe-harbour text, so content alone would call them presentations. Both types
+  go through extraction, so nothing is lost, but the label can be off.
+* Press releases and `other` documents are stored and issuer-checked but not extracted.
+
 ## Research sample (2026-11-08)
 * Of the 15 sample companies, 4 have values that pass all checks (ICICI Bank, Reliance, M&M, Wipro
   partially). Eight need manual filings. Kotak, Tech Mahindra and ITC have documents stored but
