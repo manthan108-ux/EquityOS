@@ -77,8 +77,22 @@ convention. See [EVIDENCE_ENGINE.md](EVIDENCE_ENGINE.md).
 * An INTERPRETATION cites evidence and may contain only numbers found in it.
 * Validation errors block the figures involved, and everything built on them.
 
-## 7. Planned
+## 7. Calculations (Phase 7)
 
-Financial calculations and corporate-action adjustment (Phase 7), sector weights and peers
-(Phase 8), research agents (Phase 9), forecasting, valuation and risk (Phase 10), Investment
+See [CALCULATION_ENGINE.md](CALCULATION_ENGINE.md). Rules in force:
+
+* Ratios use one basis and one period type; consolidated and standalone are calculated separately.
+* A ratio is annual (returns) or period-matched; a quarter is never annualised silently.
+* Growth is refused when the base period is zero or a loss.
+* Trailing twelve months = four reported quarters, or last year + year-to-date - prior year-to-date;
+  the two methods must agree.
+* Valuation multiples state the statement date and the price date they combine; a split or bonus
+  between them is applied through a visible adjustment factor.
+* Prices are adjusted for splits, bonuses and consolidations only. Technical indicators use the
+  adjusted series and say when history is too short.
+* Averages use opening and closing balances (the opening balance must exist).
+
+## 8. Planned
+
+Sector weights and peers (Phase 8), research agents (Phase 9), forecasting, valuation and risk (Phase 10), Investment
 Committee review and the PDF report (Phase 11).

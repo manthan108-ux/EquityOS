@@ -93,8 +93,8 @@ def resolution_for(session: Session, record: EvidenceRecord) -> EvidenceResoluti
 
 def _require_usable(session: Session, record: EvidenceRecord) -> None:
     """A FACT/CALCULATION may be built on only when it is its key's resolved, unblocked value."""
-    if record.source_table == "eod_prices":
-        return  # one official end-of-day file per day: nothing to reconcile it against
+    if record.source_table in ("eod_prices", "price_adjustments"):
+        return  # derived directly from the official price files: nothing to reconcile against
     resolution = resolution_for(session, record)
     if record.evidence_class is EvidenceClass.CALCULATION and record.source_table is None:
         # calculations made by the ledger are not resolved against sources; blocked via lineage
@@ -213,13 +213,20 @@ def register_calculation(
     created_by: str,
     result_unit: str | None = None,
     spans_periods: bool = False,
+    dimension: str = "",
+    notes: list[str] | None = None,
+    definition: str | None = None,
+    period_type_label: str | None = None,
     now: datetime | None = None,
 ) -> EvidenceRecord:
     """Compute `expression` over stored evidence and record the result with its lineage.
 
     `inputs` maps each name used in the formula to an evidence id. The value is computed here.
     `spans_periods=True` is required when inputs belong to different period ends (growth, CAGR);
-    even then quarterly and annual figures cannot be combined.
+    even then quarterly and annual figures cannot be combined, EXCEPT when the caller names the
+    result's period (`period_type_label="TTM"`): a trailing-twelve-month figure built as
+    "year + year-to-date - prior year-to-date" legitimately combines annual and cumulative
+    inputs, and the label says what the result is.
     """
     if not _METRIC.match(metric):
         raise LedgerError(f"metric {metric!r} must look like 'RATIO.return_on_equity'")
@@ -255,7 +262,7 @@ def register_calculation(
             f"inputs mix {' and '.join(sorted(bases))} figures; one basis only (never mixed)"
         )
     types = {r.period_type for r in measured if r.period_type}
-    if len(types) > 1:
+    if len(types) > 1 and period_type_label is None:
         raise LedgerError(f"inputs mix {' and '.join(sorted(types))} periods")
     ends = {r.period_end for r in measured if r.period_end}
     if len(ends) > 1 and not spans_periods:
@@ -271,7 +278,7 @@ def register_calculation(
         raise LedgerError(f"calculation refused: {exc}") from exc
     period_end = max(ends) if ends else None
     basis = next(iter(bases)) if bases else None
-    period_type = next(iter(types)) if types else None
+    period_type = period_type_label or (next(iter(types)) if types else None)
     weakest = max((r.authority_tier or 6 for r in measured), default=None)
     aliases = {alias: r.id for alias, r in sorted(records.items())}
     digest = _digest(
@@ -301,6 +308,7 @@ def register_calculation(
         evidence_class=EvidenceClass.CALCULATION,
         kind="CALCULATION",
         metric=metric,
+        dimension=dimension,
         period_end=period_end,
         period_type=period_type,
         basis=basis,
@@ -324,6 +332,9 @@ def register_calculation(
                 for alias, r in sorted(records.items())
             },
             "spans_periods": spans_periods,
+            "notes": notes or [],
+            "mixed_period_types": sorted(types) if len(types) > 1 else None,
+            "definition": definition,
             "assumption_inputs": [
                 a for a, r in records.items() if r.evidence_class is EvidenceClass.ASSUMPTION
             ],
@@ -340,21 +351,28 @@ def register_calculation(
                 evidence_id=record.id, input_id=source.id, role=LinkRole.INPUT, alias=alias
             )
         )
-    # A recalculation of the same quantity replaces the earlier one (which stays, as SUPERSEDED).
-    earlier = session.scalars(
-        select(EvidenceRecord).where(
-            EvidenceRecord.company_id == company_id,
-            EvidenceRecord.evidence_class == EvidenceClass.CALCULATION,
-            EvidenceRecord.source_table.is_(None),
-            EvidenceRecord.metric == metric,
-            EvidenceRecord.period_end == period_end,
-            EvidenceRecord.period_type == period_type,
-            EvidenceRecord.basis == basis,
-            EvidenceRecord.status == EvidenceStatus.ACTIVE,
-            EvidenceRecord.id != record.id,
-        )
+    # A recalculation of the same quantity by the same method replaces the earlier one (which
+    # stays, as SUPERSEDED). A DIFFERENT method for the same quantity (two ways to get a trailing
+    # twelve-month figure) is kept: if the two disagree that is a conflict worth seeing.
+    earlier_query = select(EvidenceRecord).where(
+        EvidenceRecord.company_id == company_id,
+        EvidenceRecord.evidence_class == EvidenceClass.CALCULATION,
+        EvidenceRecord.source_table.is_(None),
+        EvidenceRecord.metric == metric,
+        EvidenceRecord.dimension == dimension,
+        EvidenceRecord.period_end == period_end,
+        EvidenceRecord.period_type == period_type,
+        EvidenceRecord.basis == basis,
+        EvidenceRecord.status == EvidenceStatus.ACTIVE,
+        EvidenceRecord.id != record.id,
     )
-    for old in earlier:
+    if definition is not None:
+        method = definition.split("#")[0]
+        text = EvidenceRecord.details["definition"].as_string()
+        earlier_query = earlier_query.where(
+            text.like(f"{method}#%") if "#" in definition else text == definition
+        )
+    for old in session.scalars(earlier_query):
         old.status = EvidenceStatus.SUPERSEDED
         old.status_reason = f"recalculated as evidence {record.id}"
         old.status_changed_at = stamp

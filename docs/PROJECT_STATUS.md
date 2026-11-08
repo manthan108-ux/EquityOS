@@ -8,8 +8,8 @@
 | 4 | Data acquisition (+ 4b multi-source provider router, coverage engine) | Complete |
 | 5 | Document intelligence | Complete |
 | 6 | Evidence and validation engine | Complete |
-| 7 | Financial calculation engine | Next |
-| 8 | Sector and peer engine | Pending |
+| 7 | Financial calculation engine | Complete |
+| 8 | Sector and peer engine | Next |
 | 9 | Research agent system (LLM layer starts here) | Pending |
 | 10 | Forecasting, valuation and risk | Pending |
 | 11 | Investment Committee and PDF generation | Pending |
@@ -130,6 +130,32 @@ Details: [EVIDENCE_ENGINE.md](EVIDENCE_ENGINE.md); limits: [KNOWN_LIMITATIONS.md
   rate line) were fixed. TCS, Infosys, HDFC Bank: nothing to validate (no documents).
 - 557 backend tests (114 new for this phase); the cross-source conflict rules have been exercised
   with synthetic data only because no second real provider has supplied fundamentals yet.
+
+## Phase 7 - financial calculation engine (2026-11-08)
+
+Details: [CALCULATION_ENGINE.md](CALCULATION_ENGINE.md).
+
+- 37 fundamental metrics (45 definitions, counting the TTM methods) declared as data (growth, margins, returns, bank ratios, leverage,
+  liquidity, cash flow, trailing twelve months by two methods), calculated per basis and period
+  through the evidence ledger; missing or blocked inputs become recorded gaps with the reason.
+- Corporate-action price adjustment: from stored actions or implied by the exchange's reference
+  price (standard ratios only; unexplained gaps recorded, not applied). 25 technical indicators on
+  adjusted prices with reproducible, digest-checked evidence; valuation multiples (market cap, P/B,
+  P/E on trailing and annual EPS) with explicit adjustment-factor evidence across splits.
+- Calculation quality is capped by the weakest input; method-based calculations are recomputed on
+  each validation run.
+- CLI `python -m app.calc.cli` and a read-only API (`/metrics`, `/metrics/gaps`, `/technicals`,
+  `/price-adjustments`, `/calculation-run`).
+- **Real results:** ICICI Bank 220 calculations (69 gaps), Reliance 62 (73 gaps), 0 validation
+  errors after the run, identical on a second run. ICICI FY2026 consolidated ROE 15.04%, ROA 1.86%,
+  profit growth 6.23%, P/E 19.05x (trailing) / 20.7x (annual), P/B 2.90x, market cap about
+  Rs 11.25 lakh crore; the bank income identity holds exactly.
+- 631 backend tests (74 new for this phase: indicator maths against hand calculations, adjustment
+  detection, every ratio against hand-calculated values, bank and non-financial profiles, both TTM
+  methods, split/bonus handling, tamper detection, API).
+- Not possible yet and not approximated: EBITDA, EBIT, operating margin, interest cover, ROCE
+  (depreciation and finance costs are not extracted); Reliance market cap and P/B (no share count);
+  corporate actions (none acquired, so only price-implied events are available).
 
 ## Universe load (2026-11-07)
 

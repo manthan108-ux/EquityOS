@@ -7,6 +7,14 @@ from app.models.acquisition import (
     Source,
 )
 from app.models.base import Base
+from app.models.calc import (
+    AdjustmentKind,
+    AdjustmentOrigin,
+    AdjustmentStatus,
+    CalculationGap,
+    CalculationRun,
+    PriceAdjustment,
+)
 from app.models.company import AliasType, Company, CompanyAlias, Security, SecurityStatus
 from app.models.docintel import (
     DocumentExtraction,
@@ -46,6 +54,12 @@ from app.models.imports import MasterDataImport
 from app.models.reference import Exchange, Industry, Sector
 
 __all__ = [
+    "AdjustmentKind",
+    "AdjustmentOrigin",
+    "AdjustmentStatus",
+    "CalculationGap",
+    "CalculationRun",
+    "PriceAdjustment",
     "EvidenceClass",
     "EvidenceLink",
     "EvidenceRecord",
