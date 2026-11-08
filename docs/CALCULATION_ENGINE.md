@@ -120,3 +120,17 @@ Typical gaps are honest ones: prior years not stored (growth, CAGR, averages), n
 cash-flow statement for Reliance, no share count for Reliance (no market cap, P/B). All 25 technical
 indicators could be calculated from the 247 stored sessions (the 1-year return and 200-day average
 are close to the limit; a shorter history would produce recorded gaps, not shorter windows).
+
+## 8. Additions at the end of Phase 8
+
+* Non-financial operating measures defined from printed lines only: EBIT (PBT + finance costs,
+  which includes other income and exceptional items, and says so), EBITDA, EBIT/EBITDA margins,
+  interest cover (only when finance cost > 0) and ROCE (annual only, needs positive assets).
+* `BALANCE.shares_outstanding` = paid-up equity capital / face value. The face value is a static FACT
+  (`SECURITY.face_value`, no period) synchronised from the exchange security list; the capital
+  comes from the balance sheet, or from the capital line printed with the results. Market cap uses
+  a shareholding table first and this derived count second, and a bonus or split after the
+  statement date is applied through the explicit adjustment-factor evidence.
+* `backfill-prices --from --to` loads NSE bhavcopy sessions for a date range (skips days already
+  stored); it was used to extend history from 247 sessions to about 750 so the 200-day average,
+  one-year return and 52-week range have full windows.

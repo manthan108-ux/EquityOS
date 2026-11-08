@@ -7,6 +7,7 @@ from sqlalchemy import create_engine, pool
 
 from app.core.config import get_settings
 from app.models import Base
+from app.models.base import include_object
 
 config = context.config
 if config.config_file_name is not None:
@@ -30,6 +31,7 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         compare_type=True,
+        include_object=include_object,
     )
     with context.begin_transaction():
         context.run_migrations()
@@ -38,7 +40,12 @@ def run_migrations_offline() -> None:
 def run_migrations_online() -> None:
     engine = create_engine(_database_url(), poolclass=pool.NullPool)
     with engine.connect() as connection:
-        context.configure(connection=connection, target_metadata=target_metadata, compare_type=True)
+        context.configure(
+            connection=connection,
+            target_metadata=target_metadata,
+            compare_type=True,
+            include_object=include_object,
+        )
         with context.begin_transaction():
             context.run_migrations()
 

@@ -82,11 +82,14 @@ ITEMS: tuple[Item, ...] = (
         "total_expenditure_excl_provisions",
         INCOME,
         r"total expenditure \(?excluding provisions and contingencies\)?",
+        # a serial number printed beside a wrapped label can end up inside it: "(4+5) 6 (excluding"
+        r"total expenditure( \d{1,2})? \(?excluding provisions and contingencies\)?",
     ),
     _i(
         "operating_profit_before_provisions",
         INCOME,
         r"operating profit( before provisions and contingencies)?",
+        r"operating profit \(?\(?profit before provisions and contingencies\)?\)?",
     ),
     # Two different items that look alike. Results filings print "Provisions (other than tax) and
     # contingencies"; banks' annual accounts (Form B) print "Provisions and contingencies", which

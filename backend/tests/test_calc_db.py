@@ -904,3 +904,211 @@ def test_api_404s_and_no_run_yet(session, co, client):
     assert client.get(f"/api/companies/{co.id}/calculation-run").status_code == 404
     assert client.get(f"/api/companies/{co.id}/metrics").json() == []
     assert client.post(f"/api/companies/{co.id}/metrics").status_code == 405
+
+
+# ---- EBIT, EBITDA, interest cover, ROCE -------------------------------------------------------------
+
+
+def test_operating_profit_measures_match_hand_calculation(session, co):
+    d = doc(session, co)
+    non_financial_year(
+        session,
+        co,
+        d,
+        FY26,
+        revenue=1100,
+        other=55,
+        pbt=200,
+        tax=50,
+        profit=150,
+        cap=100,
+        reserves=500,
+        assets=2400,
+        eps=15,
+    )
+    fact(session, co, "INCOME", "finance_costs", 40, end=FY26, document=d)
+    fact(session, co, "INCOME", "depreciation_and_amortisation", 60, end=FY26, document=d)
+    fact(session, co, "BALANCE_SHEET", "total_current_liabilities", 600, end=FY26, document=d)
+    run(session, co)
+    v = lambda m: value(session, co, m, FY26)  # noqa: E731
+    assert v("INCOME.ebit") == 240 * CR  # 200 + 40
+    assert v("INCOME.ebitda") == 300 * CR  # 240 + 60
+    assert near(v("MARGIN.ebit_margin"), "21.818182")  # 240 / 1100
+    assert near(v("MARGIN.ebitda_margin"), "27.272727")  # 300 / 1100
+    assert v("RATIO.interest_cover") == D("6")  # 240 / 40
+    assert near(v("RETURN.roce"), "13.333333")  # 240 / (2400 - 600)
+    ebit = calc(session, co, "INCOME.ebit", FY26)
+    assert any("other income" in n for n in ebit.details["notes"])
+
+
+def test_a_company_that_prints_no_depreciation_has_no_ebitda_but_keeps_ebit(session, co):
+    d = doc(session, co)
+    non_financial_year(
+        session,
+        co,
+        d,
+        FY26,
+        revenue=1100,
+        other=55,
+        pbt=200,
+        tax=50,
+        profit=150,
+        cap=100,
+        reserves=500,
+        assets=2400,
+        eps=15,
+    )
+    fact(session, co, "INCOME", "finance_costs", 40, end=FY26, document=d)
+    report = run(session, co)
+    assert calc(session, co, "INCOME.ebit", FY26) is not None
+    assert calc(session, co, "INCOME.ebitda", FY26) is None
+    gap = next(g for g in report.gaps if g.metric == "INCOME.ebitda")
+    assert "depreciation_and_amortisation" in gap.reason
+    assert calc(session, co, "RETURN.roce", FY26) is None  # needs current liabilities too
+
+
+def test_zero_finance_costs_give_no_interest_cover_not_infinity(session, co):
+    d = doc(session, co)
+    non_financial_year(
+        session,
+        co,
+        d,
+        FY26,
+        revenue=1100,
+        other=55,
+        pbt=200,
+        tax=50,
+        profit=150,
+        cap=100,
+        reserves=500,
+        assets=2400,
+        eps=15,
+    )
+    fact(session, co, "INCOME", "finance_costs", 0, end=FY26, document=d)
+    report = run(session, co)
+    assert calc(session, co, "RATIO.interest_cover", FY26) is None
+    gap = next(g for g in report.gaps if g.metric == "RATIO.interest_cover")
+    assert "undefined or misleading" in gap.reason
+
+
+def test_banks_do_not_get_ebit_style_measures(session, co):
+    d = doc(session, co)
+    bank_year(session, co, d, FY26, Basis.CONSOLIDATED)
+    fact(session, co, "INCOME", "finance_costs", 5, end=FY26, document=d)
+    report = run(session, co)
+    assert calc(session, co, "INCOME.ebit", FY26) is None
+    assert not [g for g in report.gaps if g.metric in ("INCOME.ebit", "RETURN.roce")]
+
+
+# ---- shares outstanding from paid-up capital and face value -----------------------------------------
+
+
+def set_face_value(session, company, value):
+    for sec in session.scalars(select(Security).where(Security.company_id == company.id)):
+        sec.face_value = D(str(value))
+    session.flush()
+
+
+def test_shares_outstanding_are_derived_from_capital_and_the_exchanges_face_value(session, co):
+    d = doc(session, co)
+    non_financial_year(
+        session,
+        co,
+        d,
+        FY26,
+        revenue=1100,
+        other=0,
+        pbt=200,
+        tax=50,
+        profit=150,
+        cap=100,
+        reserves=500,
+        assets=2400,
+        eps=15,
+    )
+    set_face_value(session, co, 10)
+    run(session, co)
+    face = session.scalar(
+        select(EvidenceRecord).where(
+            EvidenceRecord.metric == "SECURITY.face_value",
+            EvidenceRecord.status == EvidenceStatus.ACTIVE,
+        )
+    )
+    assert face.value == D(10) and face.unit == "inr_per_share" and face.period_end is None
+    assert face.kind == "SECURITY" and face.provider_code == "NSE_ARCHIVES"
+    shares_rec = calc(session, co, "BALANCE.shares_outstanding", FY26)
+    assert (
+        shares_rec.value == D(100) * CR / D(10) and shares_rec.unit == "shares"
+    )  # 10 crore shares
+    assert any("face value" in n for n in shares_rec.details["notes"])
+    assert {i["metric"] for i in shares_rec.details["inputs"].values()} == {
+        "BALANCE_SHEET.equity_share_capital",
+        "SECURITY.face_value",
+    }
+
+
+def test_market_cap_uses_the_derived_share_count_and_book_multiple_follows(session, co, two_years):
+    set_face_value(session, co, 10)
+    add_prices(session, listing(session, co), [300] * 30)
+    run(session, co)
+    cap = session.scalar(
+        select(EvidenceRecord).where(EvidenceRecord.metric == "VALUATION.market_cap")
+    )
+    assert cap.value == 300 * 10 * CR  # 300 per share x (100 crore / 10) shares
+    assert any("shares outstanding as at" in n for n in cap.details["notes"])
+    pb = session.scalar(
+        select(EvidenceRecord).where(EvidenceRecord.metric == "VALUATION.price_to_book")
+    )
+    assert pb is not None and pb.value == D(5)  # 3,000 crore market cap / 600 crore of equity
+
+
+def test_no_face_value_means_no_share_count_and_a_stated_reason(session, co):
+    d = doc(session, co)
+    non_financial_year(
+        session,
+        co,
+        d,
+        FY26,
+        revenue=1100,
+        other=0,
+        pbt=200,
+        tax=50,
+        profit=150,
+        cap=100,
+        reserves=500,
+        assets=2400,
+        eps=15,
+    )
+    for sec in session.scalars(select(Security).where(Security.company_id == co.id)):
+        sec.face_value = None
+    session.flush()
+    add_prices(session, listing(session, co), [300] * 30)
+    report = run(session, co)
+    assert calc(session, co, "BALANCE.shares_outstanding", FY26) is None
+    gap = next(g for g in report.gaps if g.metric == "BALANCE.shares_outstanding")
+    assert "SECURITY.face_value" in gap.reason
+    cap = next(g for g in report.gaps if g.metric == "VALUATION.market_cap")
+    assert "could not be derived" in cap.reason
+
+
+def test_a_split_after_the_statement_adjusts_the_derived_share_count(session, co, two_years):
+    set_face_value(session, co, 10)
+    sec = listing(session, co)
+    add_prices(session, sec, [300] * 30)
+    session.add(
+        CorporateAction(
+            company_id=co.id,
+            provider_code="UPSTOX_FUNDAMENTALS",
+            action_type="Bonus",
+            effective_date=date(2026, 6, 1),
+            ratio_text="1:1",
+            source_url="https://x.invalid",
+            retrieved_at=NOW,
+        )
+    )
+    session.flush()
+    run(session, co)
+    cap = session.scalar(
+        select(EvidenceRecord).where(EvidenceRecord.metric == "VALUATION.market_cap")
+    )
+    assert cap.value == 300 * 20 * CR  # the bonus doubled the share count

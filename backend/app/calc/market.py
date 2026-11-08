@@ -214,7 +214,9 @@ def run_market(
         )
 
     # market capitalisation = price x shares outstanding
-    found = _latest(inputs, "SHAREHOLDING.total.shares", ("",), price_date)
+    found = _latest(inputs, "SHAREHOLDING.total.shares", ("",), price_date) or _latest(
+        inputs, "BALANCE.shares_outstanding", ("ANNUAL", "QUARTERLY"), price_date
+    )
     market_cap = None
     if found is None:
         result.gaps.append(
@@ -223,7 +225,9 @@ def run_market(
                 price_date,
                 None,
                 None,
-                "missing input: SHAREHOLDING.total.shares (shares outstanding) is not stored",
+                "missing input: SHAREHOLDING.total.shares (shares outstanding) is not stored and "
+                "BALANCE.shares_outstanding could not be derived from paid-up capital and the "
+                "face value",
             )
         )
     else:

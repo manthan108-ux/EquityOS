@@ -371,7 +371,7 @@ def test_every_catalogue_formula_uses_exactly_its_declared_inputs():
                 variant.expression,
             )
         assert metric.period_types and metric.profile in ("ANY", "BANK", "NONFIN")
-        assert metric.unit in (None, "inr", "percent", "x", "ratio", "days")
+        assert metric.unit in (None, "inr", "percent", "x", "ratio", "days", "shares")
 
 
 def test_catalogue_codes_look_right_and_derived_inputs_exist():
@@ -384,7 +384,12 @@ def test_catalogue_codes_look_right_and_derived_inputs_exist():
             for r in variant.inputs.values():
                 for name in r.metrics:
                     derived = name in BY_CODE
-                    statement = name.split(".")[0] in ("INCOME", "BALANCE_SHEET", "CASH_FLOW")
+                    statement = name.split(".")[0] in (
+                        "INCOME",
+                        "BALANCE_SHEET",
+                        "CASH_FLOW",
+                        "SECURITY",
+                    )
                     assert derived or statement, (metric.code, name)
     assert BANK_GROUP_CAVEAT <= codes
 
@@ -398,10 +403,25 @@ def test_ttm_has_two_methods_with_a_named_period():
     assert (year.period_type, year.shift_months) == ("ANNUAL", 6)
 
 
-def test_unsupportable_metrics_are_not_in_the_catalogue():
-    # EBITDA, EBIT, operating margin, interest cover and ROCE need data we do not extract yet
-    banned = ("ebitda", "ebit", "operating_margin", "interest_cover", "roce")
-    assert not [m.code for m in CATALOGUE if any(b in m.code.lower() for b in banned)]
+def test_operating_profit_measures_are_defined_from_printed_lines_for_non_financials_only():
+    by = {m.code: m for m in CATALOGUE}
+    # an undefined "operating margin" is still not offered: nothing here defines operating profit
+    assert not [c for c in by if "operating_margin" in c.lower()]
+    for code in (
+        "INCOME.ebit",
+        "INCOME.ebitda",
+        "MARGIN.ebit_margin",
+        "MARGIN.ebitda_margin",
+        "RATIO.interest_cover",
+        "RETURN.roce",
+    ):
+        assert by[code].profile == "NONFIN", code  # a bank's interest is its raw material
+    ebit = by["INCOME.ebit"].variants[0]
+    assert set(names_in(ebit.expression)) == {"pbt", "finance"} and "other income" in ebit.note
+    ebitda = by["INCOME.ebitda"].variants[0]
+    assert ebitda.inputs["depreciation"].metrics == ("INCOME.depreciation_and_amortisation",)
+    assert by["RATIO.interest_cover"].requires == (("finance", ">", 0),)
+    assert by["RETURN.roce"].period_types == ("ANNUAL",)
 
 
 def test_shift_month_end():

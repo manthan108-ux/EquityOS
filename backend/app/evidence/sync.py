@@ -41,7 +41,9 @@ from app.models import (
     ExtractedFact,
     FinancialFact,
     LinkRole,
+    MasterDataImport,
     PeriodType,
+    Security,
     ShareholdingFact,
     Source,
     ValidationStatus,
@@ -52,7 +54,8 @@ T_FINANCIAL = "financial_facts"
 T_DISCLOSURE = "extracted_facts"
 T_SHAREHOLDING = "shareholding_facts"
 T_SECTION = "document_sections"
-SYNC_TABLES = (T_FINANCIAL, T_DISCLOSURE, T_SHAREHOLDING, T_SECTION)
+T_SECURITY = "securities"
+SYNC_TABLES = (T_FINANCIAL, T_DISCLOSURE, T_SHAREHOLDING, T_SECTION, T_SECURITY)
 
 DISCLOSURE_KINDS = ("SEGMENT", "RATIOS", "NOTE", "SHAREHOLDING")
 PRIMARY_STATEMENTS = ("INCOME", "BALANCE_SHEET", "CASH_FLOW")
@@ -424,6 +427,46 @@ def _shareholding_drafts(
     return drafts
 
 
+def _security_drafts(session: Session, company_id: uuid.UUID, tiers: dict[str, int]) -> list[Draft]:
+    """The face value printed in the exchange's own security list, as a static FACT.
+
+    It is not tied to a period (a face value changes only on a split, which the price-adjustment
+    events record), so it has no resolution; it is what turns paid-up capital into a share count.
+    """
+    drafts = []
+    for security in session.scalars(select(Security).where(Security.company_id == company_id)):
+        if security.face_value is None or security.face_value <= 0:
+            continue
+        source = (
+            session.get(MasterDataImport, security.last_import_id)
+            if security.last_import_id
+            else None
+        )
+        exchange = source.exchange_code if source else "NSE"
+        name = source.filename if source else "security-list"
+        drafts.append(
+            Draft(
+                source_table=T_SECURITY,
+                source_id=f"{security.id}|face_value",
+                evidence_class=EvidenceClass.FACT,
+                kind="SECURITY",
+                metric="SECURITY.face_value",
+                period_end=None,
+                value=security.face_value,
+                unit="inr_per_share",
+                original_value=security.face_value,
+                original_unit="inr_per_share",
+                provider_code="NSE_ARCHIVES",
+                tier=tiers.get("NSE_ARCHIVES", 1),
+                source_url=f"master-data://{exchange}/{name}",
+                dimension=f"{exchange}:{security.symbol}",
+                retrieved_at=source.imported_at if source else None,
+                details={"listing": security.symbol, "isin": security.isin},
+            )
+        )
+    return drafts
+
+
 def _section_drafts(session: Session, company_id: uuid.UUID, tiers: dict[str, int]) -> list[Draft]:
     """Narrative sections (auditor's report, policies, MD&A) as text FACTs.
 
@@ -516,6 +559,7 @@ def sync_company(
         *_disclosure_drafts(session, company_id, tiers, report),
         *_shareholding_drafts(session, company_id, tiers),
         *_section_drafts(session, company_id, tiers),
+        *_security_drafts(session, company_id, tiers),
     ]
     existing = list(
         session.scalars(

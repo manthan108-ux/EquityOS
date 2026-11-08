@@ -8,6 +8,7 @@ python -m app.providers.cli compare --symbols RELIANCE,TCS,INFY,HDFCBANK,ICICIBA
 python -m app.providers.cli ingest-document --symbol TCS --type annual_report --file F.pdf --period FY2025
 python -m app.providers.cli import-financials --file financials.csv
 python -m app.providers.cli fetch-documents --symbol RELIANCE --kind annual_report --limit 3
+python -m app.providers.cli backfill-prices --from 2023-11-01 --to 2025-11-06
 """
 
 import argparse
@@ -259,6 +260,64 @@ def cmd_import_financials(args, providers, router) -> int:
     return 0
 
 
+def cmd_backfill_prices(args, providers, router) -> int:
+    """Official NSE end-of-day files for past days that are not stored yet.
+
+    Resumable and polite: days that already have NSE prices are skipped without a request, every
+    other day is one request through the polite client (robots.txt, pacing, backoff), and each day
+    is committed on its own, so an interruption loses at most one day. Weekends and exchange
+    holidays have no file (reported as such, not as failures).
+    """
+    from datetime import date, timedelta
+
+    from sqlalchemy import func
+
+    from app.models import EodPrice, Exchange
+    from app.providers.exchange_files import BhavcopyProvider, store_prices
+
+    start, end = date.fromisoformat(args.start), date.fromisoformat(args.end)
+    if start > end:
+        raise SystemExit("--from must not be after --to")
+    provider = BhavcopyProvider(providers_client(providers), "NSE")
+    done = missing = stored_rows = 0
+    with Session(get_engine()) as session:
+        nse = session.scalar(select(Exchange.id).where(Exchange.code == "NSE"))
+        have = set(
+            session.scalars(
+                select(EodPrice.trade_date)
+                .join(Security, Security.id == EodPrice.security_id)
+                .where(Security.exchange_id == nse, EodPrice.trade_date.between(start, end))
+                .group_by(EodPrice.trade_date)
+                .having(func.count() > 500)  # a real market day, not a stray row
+            )
+        )
+        day = start
+        while day <= end:
+            if day.weekday() < 5 and day not in have:
+                fetch = provider.fetch(day)
+                if fetch.ok:
+                    report = store_prices(session, "NSE", provider.parse(fetch), fetch)
+                    session.commit()
+                    done += 1
+                    stored_rows += report.stored
+                    print(f"{day}: {report.stored} rows stored", flush=True)
+                else:
+                    missing += 1
+                    print(f"{day}: no file ({fetch.status.value})", flush=True)
+            day += timedelta(days=1)
+    print(f"{done} day(s) stored ({stored_rows} rows), {missing} without a file")
+    return 0
+
+
+def providers_client(providers):
+    """The shared polite client behind the providers (they were all built from one)."""
+    for p in providers:
+        client = getattr(p, "_client", None)
+        if client is not None:
+            return client
+    raise SystemExit("no HTTP client available")
+
+
 def cmd_fetch_documents(args, providers, router) -> int:
     kind_to_dataset = {
         "annual_report": Dataset.ANNUAL_REPORTS,
@@ -351,6 +410,9 @@ def main(argv: list[str] | None = None) -> int:
     )
     p = sub.add_parser("import-financials")
     p.add_argument("--file", required=True)
+    p = sub.add_parser("backfill-prices")
+    p.add_argument("--from", dest="start", required=True, help="first day, YYYY-MM-DD")
+    p.add_argument("--to", dest="end", required=True, help="last day, YYYY-MM-DD")
     p = sub.add_parser("fetch-documents")
     p.add_argument("--symbol", required=True)
     p.add_argument(
@@ -378,6 +440,7 @@ def main(argv: list[str] | None = None) -> int:
         "ingest-document": cmd_ingest_document,
         "import-financials": cmd_import_financials,
         "fetch-documents": cmd_fetch_documents,
+        "backfill-prices": cmd_backfill_prices,
     }
     try:
         return handlers[args.command](args, providers, router)

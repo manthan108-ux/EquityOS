@@ -93,7 +93,7 @@ def resolution_for(session: Session, record: EvidenceRecord) -> EvidenceResoluti
 
 def _require_usable(session: Session, record: EvidenceRecord) -> None:
     """A FACT/CALCULATION may be built on only when it is its key's resolved, unblocked value."""
-    if record.source_table in ("eod_prices", "price_adjustments"):
+    if record.source_table in ("eod_prices", "price_adjustments", "securities"):
         return  # derived directly from the official price files: nothing to reconcile against
     resolution = resolution_for(session, record)
     if record.evidence_class is EvidenceClass.CALCULATION and record.source_table is None:

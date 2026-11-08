@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_engine
 from app.core.storage import StoragePathError, data_root, resolve_inside, storage_report
+from app.docintel.archives import unpack_company_archives
 from app.docintel.association import (
     build_issuer_index,
     check_document_text,
@@ -65,6 +66,12 @@ def cmd_extract(args) -> int:
             docs = [doc]
         else:
             company = find_company(session, args.symbol)
+            # results kits (ZIP) are opened first so their PDFs are processed like any other
+            for archive, outcomes in unpack_company_archives(session, company.id, data_dir):
+                stored = sum(1 for o in outcomes if o.status == "STORED")
+                if outcomes:
+                    print(f"opened {archive.title or archive.url[-50:]}: {stored} new PDF(s)")
+            session.commit()
             if args.all:
                 docs = list(
                     session.scalars(
@@ -291,6 +298,23 @@ def cmd_derive_quarters(args) -> int:
     return 1 if report.count("INCONSISTENT") else 0
 
 
+def cmd_search(args) -> int:
+    """Search the pages of a company's stored documents (what the research agents will use)."""
+    from app.retrieval.search import SearchError, search_company_documents
+
+    with Session(get_engine()) as session:
+        company = find_company(session, args.symbol)
+        try:
+            hits = search_company_documents(session, company.id, args.query, limit=args.limit)
+        except SearchError as exc:
+            raise SystemExit(str(exc)) from exc
+    print(f"{company.common_name}: {len(hits)} page(s) for {args.query!r}")
+    for h in hits:
+        print(f"  [{h.rank:.2f}] {h.citation} ({h.doc_type}, {h.text_method})")
+        print(f"      {h.snippet[:220]}")
+    return 0
+
+
 def cmd_ingest_inbox(args) -> int:
     """Ingest PDFs you saved in data/inbox/<SYMBOL>/ (for sites that refuse automated access)."""
     from app.docintel.inbox import inbox_dir, ingest_inbox
@@ -353,6 +377,10 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--symbol", required=True)
     p.add_argument("--statement", choices=["INCOME", "BALANCE_SHEET", "CASH_FLOW"])
     sub.add_parser("ocr-status")
+    p = sub.add_parser("search")
+    p.add_argument("--symbol", required=True)
+    p.add_argument("query")
+    p.add_argument("--limit", type=int, default=5)
     p = sub.add_parser("ingest-inbox")
     p.add_argument("--symbol", required=True)
     p.add_argument(
@@ -378,6 +406,7 @@ def main(argv: list[str] | None = None) -> int:
         "ocr-status": cmd_ocr_status,
         "storage-check": cmd_storage_check,
         "ingest-inbox": cmd_ingest_inbox,
+        "search": cmd_search,
         "derive-quarters": cmd_derive_quarters,
         "audit-associations": cmd_audit_associations,
     }

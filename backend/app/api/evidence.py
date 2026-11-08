@@ -349,3 +349,126 @@ def evidence_summary(company_id: uuid.UUID, session: SessionDep) -> EvidenceSumm
         last_run_errors=run.errors if run else None,
         last_run_warnings=run.warnings if run else None,
     )
+
+
+# ---- review queue ------------------------------------------------------------------------
+
+
+class ReviewItem(BaseModel):
+    kind: str  # SCANNED_VALUE | FINDING
+    severity: str
+    summary: str
+    document_id: uuid.UUID | None = None
+    page: int | None = None
+    detail: dict
+
+
+class ReviewQueue(BaseModel):
+    company_id: uuid.UUID
+    scanned_values_waiting: int
+    errors: int
+    warnings: int
+    items: list[ReviewItem]
+    note: str
+
+
+@router.get("/api/companies/{company_id}/review-queue", response_model=ReviewQueue)
+def review_queue(company_id: uuid.UUID, session: SessionDep, limit: int = 200) -> ReviewQueue:
+    """What a person should look at before relying on this company's numbers.
+
+    Scanned values the OCR cross-check could not confirm are withheld from the evidence store and
+    listed here with their document and page; open ERROR and WARNING findings of the latest
+    validation run are listed too. Read-only: nothing here changes any value.
+    """
+    from app.models import Document, DocumentExtraction, ExtractedFact
+
+    _company(session, company_id)
+    limit = min(max(limit, 1), 1000)
+    pending = list(
+        session.execute(
+            select(ExtractedFact, Document)
+            .join(DocumentExtraction, DocumentExtraction.id == ExtractedFact.extraction_id)
+            .join(Document, Document.id == ExtractedFact.document_id)
+            .where(
+                Document.company_id == company_id,
+                Document.association_status != "MISMATCH",
+                DocumentExtraction.superseded_at.is_(None),
+                ExtractedFact.needs_review.is_(True),
+            )
+            .order_by(Document.retrieved_at.desc(), ExtractedFact.page_number)
+            .limit(limit)
+        )
+    )
+    items: list[ReviewItem] = [
+        ReviewItem(
+            kind="SCANNED_VALUE",
+            severity="INFO",
+            summary=(
+                f"{f.statement} {f.canonical_item} {f.period_end or ''}: read as {f.raw_value!r}"
+            ),
+            document_id=f.document_id,
+            page=f.page_number,
+            detail={
+                "label": f.raw_label,
+                "raw_value": f.raw_value,
+                "unit": f.original_unit,
+                "reason_withheld": f.not_promoted_reason,
+                "ocr_confidence": str(f.ocr_confidence) if f.ocr_confidence is not None else None,
+                "document": d.title or d.url,
+            },
+        )
+        for f, d in pending
+    ]
+    run = session.scalar(
+        select(ValidationRun)
+        .where(ValidationRun.company_id == company_id)
+        .order_by(ValidationRun.id.desc())
+        .limit(1)
+    )
+    errors = warnings = 0
+    if run is not None:
+        errors, warnings = run.errors, run.warnings
+        for f in session.scalars(
+            select(ValidationFinding)
+            .where(
+                ValidationFinding.run_id == run.id,
+                ValidationFinding.severity.in_(["ERROR", "WARNING"]),
+            )
+            .order_by(ValidationFinding.severity, ValidationFinding.id)
+            .limit(limit)
+        ):
+            items.append(
+                ReviewItem(
+                    kind="FINDING",
+                    severity=f.severity.value,
+                    summary=f"{f.rule_code}: {f.message}",
+                    detail={
+                        "metric": f.metric,
+                        "period_end": str(f.period_end) if f.period_end else None,
+                        "evidence_ids": f.evidence_ids or [],
+                    },
+                )
+            )
+    total = session.scalar(
+        select(func.count())
+        .select_from(ExtractedFact)
+        .join(DocumentExtraction, DocumentExtraction.id == ExtractedFact.extraction_id)
+        .join(Document, Document.id == ExtractedFact.document_id)
+        .where(
+            Document.company_id == company_id,
+            Document.association_status != "MISMATCH",
+            DocumentExtraction.superseded_at.is_(None),
+            ExtractedFact.needs_review.is_(True),
+        )
+    )
+    return ReviewQueue(
+        company_id=company_id,
+        scanned_values_waiting=total or 0,
+        errors=errors,
+        warnings=warnings,
+        items=items[:limit],
+        note=(
+            "Withheld scanned values are NOT in the evidence store. Compare each with its page "
+            "(GET /api/documents/{id}/pages/{n}) before accepting it; nothing is accepted here."
+        ),
+    )

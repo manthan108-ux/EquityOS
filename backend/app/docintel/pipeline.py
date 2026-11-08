@@ -28,7 +28,13 @@ from app.core.text import normalize_text
 from app.docintel import taxonomy, validate
 from app.docintel.association import build_issuer_index
 from app.docintel.disclosures import extract_shareholding, find_group_entities, find_sections
-from app.docintel.entity import COVER_PAGES, EntityCheck, check_entity, company_names
+from app.docintel.entity import (
+    EntityCheck,
+    check_entity,
+    company_names,
+    cover_text,
+    document_dominance,
+)
 from app.docintel.ocr import LOW_CONFIDENCE, OcrError, cross_check, read_region
 from app.docintel.pdf import PdfContent, read_pdf
 from app.docintel.statements import (
@@ -632,7 +638,8 @@ def _extract(
     page_text = {p.number: p.text for p in content.pages}
     page_method = {p.number: p.method for p in content.pages}
     ocr_review = _OcrReview(content)
-    cover = "\n".join(p.text for p in content.pages[:COVER_PAGES])
+    cover = cover_text(content.pages, names)
+    dominance = document_dominance(content.pages, names)
     promoter = _Promoter(session, document, doc_latest) if promote else None
     facts_total = 0
     checks = {id(b): validate.run_checks(b) for b in blocks}
@@ -645,6 +652,7 @@ def _extract(
             cover,
             names,
             first_page_text=content.pages[0].text if content.pages else None,
+            dominance=dominance,
         )
         if not entity.confirmed and document.company_id is not None:
             block.issues.append(
