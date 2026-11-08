@@ -18,6 +18,19 @@ from app.models.docintel import (
     GroupEntity,
     ValidationStatus,
 )
+from app.models.evidence import (
+    EvidenceClass,
+    EvidenceLink,
+    EvidenceRecord,
+    EvidenceResolution,
+    EvidenceStatus,
+    LinkRole,
+    Quality,
+    ResolutionStatus,
+    Severity,
+    ValidationFinding,
+    ValidationRun,
+)
 from app.models.facts import (
     Basis,
     CorporateAction,
@@ -33,6 +46,17 @@ from app.models.imports import MasterDataImport
 from app.models.reference import Exchange, Industry, Sector
 
 __all__ = [
+    "EvidenceClass",
+    "EvidenceLink",
+    "EvidenceRecord",
+    "EvidenceResolution",
+    "EvidenceStatus",
+    "LinkRole",
+    "Quality",
+    "ResolutionStatus",
+    "Severity",
+    "ValidationFinding",
+    "ValidationRun",
     "GroupEntity",
     "DocumentLinkEvent",
     "DocumentSection",

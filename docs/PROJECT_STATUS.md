@@ -7,8 +7,8 @@
 | 3 | Company resolution (+ full-universe master import) | Complete |
 | 4 | Data acquisition (+ 4b multi-source provider router, coverage engine) | Complete |
 | 5 | Document intelligence | Complete |
-| 6 | Evidence and validation engine | Next |
-| 7 | Financial calculation engine | Pending |
+| 6 | Evidence and validation engine | Complete |
+| 7 | Financial calculation engine | Next |
 | 8 | Sector and peer engine | Pending |
 | 9 | Research agent system (LLM layer starts here) | Pending |
 | 10 | Forecasting, valuation and risk | Pending |
@@ -103,6 +103,33 @@ Full report: [PHASE5_STABILIZATION.md](PHASE5_STABILIZATION.md); limits: [KNOWN_
   403. Manual `ingest-inbox` added. PDF licence alternatives tested (pdfminer.six reproduces
   PyMuPDF with no wrong values); not switched.
 - 443 backend tests.
+
+## Phase 6 - evidence store and validation engine (2026-11-08)
+
+Details: [EVIDENCE_ENGINE.md](EVIDENCE_ENGINE.md); limits: [KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md).
+
+- Evidence store (migrations 0007, 0008): every fact, calculation, assumption and interpretation is a
+  record with provenance, authority tier, quality, status and links to what it was built from.
+  Facts are mirrored from the Phase 4/5 tables by natural key (nothing is edited; changes create a
+  new version and supersede the old); narrative evidence (auditor flags, news) is supported.
+- Source authority and conflicts: stronger source wins; equal-authority disagreement over 1% is a
+  CONFLICT and no value is used; rounding-aware agreement; wrong-company and failed-issuer documents
+  excluded. Quality HIGH / MEDIUM / LOW with reasons.
+- Validation rules (balance sheet, income, cash flow, quarters vs cumulative, signs, year-on-year
+  jumps, staleness, document discrepancies) with per-rule counts of checks performed and passed;
+  ERROR findings block the values involved and everything built on them.
+- Ledger for later phases: `resolved_value`, `register_calculation` (engine computes the value,
+  units tracked, one basis, one period type), `register_assumption`, `register_interpretation`
+  (every number must come from cited evidence), `register_text_fact`, `price_evidence`.
+  Every active calculation is recomputed on each run; stale inputs are flagged.
+- CLI `python -m app.evidence.cli` (validate, validate-all, summary, findings, resolved, show,
+  check-claim) and a read-only API.
+- **Real results:** ICICI Bank 1,605 values and Reliance 220 values validated with 0 errors and
+  0 warnings (ICICI: 10/10 balance-sheet, 14/14 income, 8/8 cash-flow, 8/8 roll-forward and 36/36
+  quarter-sum checks). Two defects found only on real data (shareholding units, cash-flow exchange
+  rate line) were fixed. TCS, Infosys, HDFC Bank: nothing to validate (no documents).
+- 557 backend tests (114 new for this phase); the cross-source conflict rules have been exercised
+  with synthetic data only because no second real provider has supplied fundamentals yet.
 
 ## Universe load (2026-11-07)
 

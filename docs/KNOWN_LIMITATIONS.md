@@ -1,6 +1,6 @@
 # Known limitations
 
-Honest list, as of 2026-11-08. Each item says what happens instead of a wrong answer.
+Honest list, as of 2026-11-08 (Phase 6 added at the end). Each item says what happens instead of a wrong answer.
 
 ## Data coverage
 * Only ICICI Bank and Reliance have stored documents with extracted statements. TCS and Infosys
@@ -47,3 +47,23 @@ Honest list, as of 2026-11-08. Each item says what happens instead of a wrong an
   until you approve pruning.
 * CI does not build the Docker images.
 * The frontend was never exercised in a real browser.
+
+## Evidence engine (Phase 6)
+* Only ICICI Bank (1,605 values) and Reliance (220) have evidence; TCS, Infosys and HDFC Bank have no
+  stored documents. Cross-SOURCE conflict and authority rules are tested on synthetic data only:
+  no second provider (Upstox) has supplied fundamentals yet, so none has run on real data.
+* Identity and sum rules need the relevant line items to be present. Where a statement lacks one the
+  rule does not run (the run reports how many checks were actually performed).
+* A claim's figures are matched by value and rounding, not by meaning: "profit rose 12%" passes if a
+  cited value is 12% even when the cited 12% is something else. Direction words ("rose", "fell") and
+  number words ("three segments") are not checked. Agent output still needs the Phase 9 review.
+* Calculations carry the rounding of their inputs but do not propagate it numerically.
+* Prices are not bulk-mirrored; `price_evidence` creates them on demand and they are UNADJUSTED
+  until Phase 7 applies corporate actions.
+* Plausibility thresholds (5x year change, 550/200-day staleness) are heuristics and only warn.
+* Evidence ids change when a source value, location or the evidence hash scheme changes (the
+  1,605 ICICI records were re-created once during development). Calculations built on replaced
+  inputs are flagged, by design.
+* `evidence_resolutions` is rebuilt from scratch on each validation run; it holds no original data.
+* The API is read-only; there is no review screen for findings.
+
