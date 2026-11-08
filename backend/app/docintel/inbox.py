@@ -9,8 +9,9 @@ and run `python -m app.docintel.cli ingest-inbox`. Each file is:
 
 * checked to be a real PDF (magic bytes) of reasonable size, never trusted by name;
 * checked against its own first page for WHO issued it (a subsidiary's file is refused);
-* typed (annual report / quarterly result / presentation / ...) from its content, unless the file
-  name carries a clear hint - the guess is reported, and a file that cannot be typed is left alone;
+* typed (annual report / quarterly result / press release / presentation / ...) from its CONTENT
+  first and its file name only when the content is not conclusive. A file that cannot be typed is
+  stored as 'other' company material, never refused for that reason;
 * given its period from its own statements when extraction runs (never from the file name alone);
 * stored content-addressed; the inbox file is MOVED to `inbox/<SYMBOL>/done/` on success and to
   `inbox/<SYMBOL>/rejected/` with a `.reason.txt` on refusal, so nothing is ingested twice.
@@ -24,7 +25,7 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 
 from app.core.storage import INBOX_SUBDIR
-from app.docintel.pdf import first_pages_text
+from app.docintel.pdf import first_pages_text, page_count
 from app.providers.documents import AssociationMismatch
 from app.providers.manual import ingest_document_file
 
@@ -59,10 +60,66 @@ _TEXT_HINTS = [
         ),
     ),
 ]
+_PRESS_RELEASE = re.compile(r"press release|media release|media statement", re.I)
+# Words that appear in the primary statements of Indian companies and banks. A document whose first
+# pages are mostly such tables is a financial statement, whatever its file is called.
+_STATEMENT_MARKERS = [
+    re.compile(p, re.I)
+    for p in (
+        r"revenue from operations",
+        r"total income",
+        r"profit before tax",
+        r"statement of (consolidated |standalone )?(profit|assets|cash)",
+        r"balance sheet",
+        r"total assets",
+        r"equity share capital",
+        r"interest earned",
+        r"(₹|`|rs\.?|inr)?\s*(in )?(crore|million|lakh)",
+        r"earnings per (equity )?share",
+    )
+]
+LONG_REPORT_PAGES = 80
+SHORT_DOCUMENT_PAGES = 12
 
 
-def guess_doc_type(file_name: str, first_pages: list[str]) -> str | None:
-    """Document type from the file name, else from the first pages; None if unsure."""
+def classify_content(pages: list[str], page_count: int | None) -> str | None:
+    """Document type from what the first pages say, or None if the content is not conclusive.
+
+    Content outranks the file name: a two-page "Annual Integrated Report" press release is a press
+    release, and statements with no title page are results, whatever the file is called.
+    """
+    text = "\n".join(pages[:3])
+    if not text.strip():
+        return None
+    head = (pages[0] if pages else "")[:700]
+    short = page_count is not None and page_count <= SHORT_DOCUMENT_PAGES
+    if short and _PRESS_RELEASE.search(head):
+        return "press_release"
+    long_report = page_count is not None and page_count >= LONG_REPORT_PAGES
+    if long_report and _TEXT_HINTS[0][1].search(text):
+        return "annual_report"
+    for kind in ("earnings_transcript", "investor_presentation"):
+        pattern = dict(_TEXT_HINTS)[kind]
+        if pattern.search(text):
+            return kind
+    markers = sum(1 for m in _STATEMENT_MARKERS if m.search(text))
+    if markers >= 3:
+        return "annual_report" if long_report else "quarterly_result"
+    if page_count is None or page_count < LONG_REPORT_PAGES:
+        if dict(_TEXT_HINTS)["quarterly_result"].search(text):
+            return "quarterly_result"
+    return None
+
+
+def guess_doc_type(file_name: str, first_pages: list[str], page_count: int | None = None) -> str:
+    """Document type: from the content if it is conclusive, else from the file name, else 'other'.
+
+    A document is never refused for being hard to type: 'other' documents are stored (and issuer
+    checked) as company material; only the financial types are sent through extraction.
+    """
+    by_content = classify_content(first_pages, page_count)
+    if by_content:
+        return by_content
     for kind, pattern in _NAME_HINTS:
         if pattern.search(file_name):
             return kind
@@ -70,7 +127,7 @@ def guess_doc_type(file_name: str, first_pages: list[str]) -> str | None:
     for kind, pattern in _TEXT_HINTS:
         if pattern.search(text):
             return kind
-    return None
+    return "other"
 
 
 def inbox_dir(root: Path, symbol: str) -> Path:
@@ -119,13 +176,7 @@ def _one(session: Session, company_id, root: Path, path: Path) -> InboxOutcome:
     if path.stat().st_size > MAX_FILE_BYTES:
         return InboxOutcome(path.name, "REFUSED", "file is larger than 200 MB")
     pages = first_pages_text(path, 3)
-    kind = guess_doc_type(path.name, pages)
-    if kind is None:
-        return InboxOutcome(
-            path.name,
-            "REFUSED",
-            "could not tell what kind of document this is; use ingest-document with --type",
-        )
+    kind = guess_doc_type(path.name, pages, page_count(path))
     try:
         document, created = ingest_document_file(
             session, path, company_id=company_id, doc_type=kind, data_dir=root

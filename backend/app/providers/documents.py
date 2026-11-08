@@ -35,6 +35,8 @@ ALLOWED_DOC_TYPES = {
     "investor_presentation",
     "earnings_transcript",
     "corporate_announcement",
+    "press_release",
+    "shareholder_meeting",
     "xbrl",
     "regulatory_publication",
     "other",

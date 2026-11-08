@@ -203,6 +203,36 @@ confirming the issuer when an annual report's cover is an image; the full result
 dense scanned bank statements (Kotak) need a better second reading than Tesseract gives at this
 quality, so a text-layer PDF from the exchange is preferable.
 
+### Your manual filings ingested (2026-11-08)
+
+Eight companies' PDFs were ingested from `data/inbox/`. **Documents are now typed by their content
+first and their file name only when the content is inconclusive; a file that cannot be typed is
+stored as `other` company material instead of being refused** (the issuer check, wrong company,
+non-PDF and oversize still refuse). Content typing found that Maruti's and ITC's "results" and
+"annual report" files are press releases (relabelled), TCS's three untitled statement files are
+results, and HCL's file is a market-research report (stored as `other`).
+
+Values that pass every check, after extraction and a calculation run:
+
+| Company | Values (evidence) | Calculations | Main reason the rest were withheld |
+|---|---|---|---|
+| ICICI Bank | 1,826 | 220 | (already complete) |
+| TCS | 568 | 144 | annual-report statements: reporting unit not printed in a recognisable form, duration not stated |
+| M&M | 518 | 47 | - |
+| HDFC Bank | 527 | 56 | scanned results: headers that cannot be assigned to a column, misread characters |
+| Axis Bank | 586 | 76 | Q1 results: issuer read as another entity; September results: several dates in a header |
+| Reliance | 283 | 62 | (already complete) |
+| Infosys | 215 | 55 | one validation warning |
+| Wipro | 70 | 33 | current-quarter column did not pass |
+| SBI, Kotak, Tech Mahindra, HCL, ITC, HUL, Maruti | 0 | - | see below |
+
+Why the seven have nothing yet (recorded reasons, not guesses): **SBI** results PDFs contain no
+recognisable statement tables and the annual report cannot confirm the issuer; **HUL** headers
+carry no date or more than one duration/date; **HCL** headers carry no date or duration;
+**Kotak** scanned pages with a poor text layer; **Tech Mahindra** image-only cover; **ITC** and
+**Maruti** supplied press releases, which hold no statement tables (their results annexes, or the
+exchange filing PDFs, are needed); **HUL/HCL/SBI** need column-header handling for their layouts.
+
 ## Licence gate (2026-11-08)
 
 PyMuPDF is AGPL-3.0. EquityOS stays private until it is replaced (pdfminer.six + pypdfium2 tested)

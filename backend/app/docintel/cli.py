@@ -9,6 +9,7 @@ python -m app.docintel.cli ocr-status
 """
 
 import argparse
+import shutil
 import sys
 import time
 import uuid
@@ -302,6 +303,15 @@ def cmd_ingest_inbox(args) -> int:
             folder.mkdir(parents=True, exist_ok=True)
             print(f"Created {folder}. Save the company's PDFs there, then run this again.")
             return 0
+        if args.retry_rejected:
+            # Files refused earlier (for example by an older, name-based rule) get another look.
+            rejected = folder / "rejected"
+            for path in sorted(rejected.glob("*.pdf")) if rejected.is_dir() else []:
+                shutil.move(str(path), str(folder / path.name))
+                reason = rejected / (path.name + ".reason.txt")
+                if reason.exists():
+                    reason.unlink()
+                print(f"re-examining {path.name}")
         outcomes = ingest_inbox(session, company.id, root, args.symbol)
         session.commit()
     for o in outcomes:
@@ -345,6 +355,9 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("ocr-status")
     p = sub.add_parser("ingest-inbox")
     p.add_argument("--symbol", required=True)
+    p.add_argument(
+        "--retry-rejected", action="store_true", help="re-examine files in rejected/ by content"
+    )
     p = sub.add_parser("derive-quarters")
     p.add_argument("--symbol", required=True)
     p.add_argument("--dry-run", action="store_true")

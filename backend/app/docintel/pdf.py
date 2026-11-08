@@ -116,6 +116,24 @@ def first_pages_text(source: "Path | bytes", count: int = 6) -> list[str]:
             return []
 
 
+def page_count(source: "Path | bytes") -> int | None:
+    """Number of pages, or None if the file cannot be read."""
+    try:
+        import pymupdf  # noqa: PLC0415
+    except ImportError:  # pragma: no cover
+        return None
+    try:
+        doc = (
+            pymupdf.open(stream=source, filetype="pdf")
+            if isinstance(source, bytes)
+            else pymupdf.open(source, filetype="pdf")
+        )
+    except Exception:  # noqa: BLE001 - an unreadable file simply has no page count
+        return None
+    with doc:
+        return None if doc.needs_pass else doc.page_count
+
+
 def ocr_available() -> bool:
     """True if Tesseract is installed (see ocr.find_tesseract)."""
     return find_tesseract() is not None
