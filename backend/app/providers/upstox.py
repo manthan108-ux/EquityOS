@@ -274,6 +274,8 @@ class UpstoxFundamentalsProvider:
         return token.strip() if token and token.strip() else None
 
     def is_configured(self) -> bool:
+        if self._token_override is None and not get_settings().upstox_enabled:
+            return False  # feature flag off: behaves exactly like "no token"
         return self._token() is not None
 
     # ---- HTTP ------------------------------------------------------------------------------
@@ -316,7 +318,10 @@ class UpstoxFundamentalsProvider:
         if dataset not in SPEC.datasets:
             return fail(Outcome.UNSUPPORTED, f"Upstox does not offer {dataset.value}")
         if not self.is_configured():
-            return fail(Outcome.UNCONFIGURED, "No Upstox token configured (UPSTOX_ANALYTICS_TOKEN)")
+            return fail(
+                Outcome.UNCONFIGURED,
+                "Upstox is not configured (no UPSTOX_ANALYTICS_TOKEN, or UPSTOX_ENABLED=false)",
+            )
         if not company.isin:
             return fail(Outcome.NO_DATA, "Company has no ISIN; Upstox is keyed by ISIN")
 

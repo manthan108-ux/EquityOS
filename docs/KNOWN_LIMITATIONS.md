@@ -140,3 +140,14 @@ Honest list, as of 2026-11-08 (Phase 6 added at the end). Each item says what ha
 * The review queue lists withheld scanned values and open findings but accepting a value is not yet
   possible; it must be checked against the page by a person.
 * The Docker CI job runs on GitHub; its result has not been seen from this machine (no `gh`).
+
+## Added in Phase 9 (2026-11-08)
+
+* **SBI, Maruti**: the new files are press releases and analyst presentations; their tables are not statements,
+  and the SBI results PDFs remain scans with corrupted digits. No values exist for either.
+* **HUL**: values come from the LLM table reader and heading reader and pass the identities and the
+  quarters-vs-half-year check; the annual-report statements and the Excel-style one-page PDF are still not read.
+* **HCL**: one document's statements are read (consolidated and standalone, June 2026 quarter); the second PDF
+  (cash-flow pages, OCR text) has no dates in its column headings and is not promoted.
+* No company has an overall score yet: pillar coverage is 10-55% of sector weight (minimum 60%).
+* LLM runs are not perfectly repeatable and free-tier quotas limit batch size.

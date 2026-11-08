@@ -439,3 +439,19 @@ def test_response_with_the_wrong_basis_is_not_stored(session, reliance):
     assert result.outcome is Outcome.OK  # consolidated call was right
     assert "STANDALONE: invalid response" in result.message
     assert {f.basis for f in session.scalars(select(FinancialFact))} == {Basis.CONSOLIDATED}
+
+
+def test_feature_flag_switches_the_connector_off_even_with_a_token(monkeypatch, session, reliance):
+    from app.core.config import Settings
+
+    def settings(enabled):
+        return Settings(upstox_analytics_token="t" * 20, upstox_enabled=enabled, _env_file=None)
+
+    monkeypatch.setattr("app.providers.upstox.get_settings", lambda: settings(False))
+    provider = UpstoxFundamentalsProvider(client=None)
+    assert not provider.is_configured()
+    result = provider.acquire(session, reliance, Dataset.BALANCE_SHEET)
+    assert result.outcome is Outcome.UNCONFIGURED and "UPSTOX_ENABLED" in result.message
+
+    monkeypatch.setattr("app.providers.upstox.get_settings", lambda: settings(True))
+    assert UpstoxFundamentalsProvider(client=None).is_configured()

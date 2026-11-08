@@ -33,7 +33,18 @@ class Settings(BaseSettings):
     # Upstox free read-only Analytics Token (1 year), from the Upstox Developer Apps page.
     upstox_analytics_token: str | None = None
     upstox_access_token: str | None = None  # alternative: a normal daily OAuth access token
+    # Feature flag: set UPSTOX_ENABLED=false to switch the connector off even when a token is set.
+    upstox_enabled: bool = True
     data_gov_in_api_key: str | None = None  # free key from data.gov.in
+
+    # LLM providers (free tiers). Keys live only in .env; model names are configuration, not code.
+    groq_api_key: str | None = None
+    gemini_api_key: str | None = None
+    groq_model: str = "openai/gpt-oss-120b"
+    gemini_model: str = "gemini-3.5-flash"
+    llm_primary: str = "groq"  # groq | gemini ; the other one is the fallback
+    llm_timeout_seconds: float = 90.0
+    llm_max_attempts: int = 3
 
     # Origins allowed to call the API from a browser (the Next.js dev server by default).
     cors_origins: list[str] = ["http://localhost:3000"]

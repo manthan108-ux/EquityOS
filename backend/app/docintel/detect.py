@@ -19,6 +19,9 @@ _UNIT_PATTERNS = [
     # Some annual-report fonts map the rupee sign to the letter H: "(H crore)". Only in brackets and
     # only directly before a unit word, so ordinary text such as "H crore" cannot match.
     re.compile(r"\(\s*h\s+" + _UNIT_WORD + r"\s*\)"),
+    # The same font renders the rupee sign and the space as stray letters: "(Uncrores)",
+    # "('tincrores)". Only these exact damaged forms, only in brackets, only before crore(s).
+    re.compile(r"\('?(?:un|tin|fin)(crores?)\)"),
 ]
 _UNIT_CANON = {
     "crore": "crore",
