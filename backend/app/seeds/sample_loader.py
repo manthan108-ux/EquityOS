@@ -196,6 +196,11 @@ def cmd_status(_args) -> int:
                     f"{waiting} PDF(s) waiting in {folder.relative_to(root.parent)}: "
                     "ingest-inbox, extract"
                 )
+            elif docs:
+                step = (
+                    f"{docs} document(s) stored but no value passed the checks yet: see "
+                    "`python -m app.docintel.cli show --document-id ...` for the reasons"
+                )
             elif spec.documents == "AUTOMATIC":
                 step = "download via company IR (python -m app.providers.cli), then extract"
             else:

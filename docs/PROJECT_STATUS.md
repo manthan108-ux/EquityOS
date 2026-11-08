@@ -179,6 +179,30 @@ stand-alone and consolidated results PDF). `python -m app.seeds.sample_loader st
 company, what is held and the next step; `plan` / `apply --yes` fill only EMPTY sector, industry and
 website fields (10 companies) and write an audit row. Folders for the manual companies exist.
 
+### Sample status after the first automatic downloads (2026-11-08)
+
+Approved by you: empty sector, industry and website fields were filled on the 10 new companies
+(audited in `master_data_imports`; four reference industries added). Filings were then downloaded
+through each company's own investor pages (robots.txt honoured) and run through document
+intelligence (Tesseract in Docker for scans):
+
+| Company | Stored | Result of extraction |
+|---|---|---|
+| M&M | 2 results documents | 470 values pass all checks (consolidated + standalone); calculation run made |
+| Wipro | 2 results documents | 36 values pass (prior-year column only; the current quarter did not pass), so the newest period is 2025-09-30 and validation warns it is stale; 27 scanned values await review |
+| Kotak | 2 scanned results PDFs + 1 ZIP results kit | nothing promoted: scanned pages with a poor text layer ("KOTAI( MAHINDRA BANI<"), arithmetic checks fail on misread digits; the ZIP is not supported |
+| Tech Mahindra | FY2026 integrated annual report (683 pages) | nothing promoted: the cover is an image, so no page can confirm the issuer (53 statements, several pass their checks) |
+| ITC | 2 press releases + 2 shareholder-voting PDFs | nothing: press releases carry no statement tables; the voting PDFs were wrongly classified as results (classifier fixed, files relabelled); a results document naming ITC Hotels Limited was correctly stored but NOT linked |
+
+Fixes made on the way: the link classifier no longer treats voting results, postal ballots, AGM
+notices, intimations or newspaper advertisements as financial results; OCR text that renders
+"rupee in crore" as a lone "f crore" line is now recognised as a unit (OCR text only).
+
+Still to do for the new layouts (next work block, ideally with your manual PDFs): ZIP result kits;
+confirming the issuer when an annual report's cover is an image; the full results annexure for ITC;
+dense scanned bank statements (Kotak) need a better second reading than Tesseract gives at this
+quality, so a text-layer PDF from the exchange is preferable.
+
 ## Licence gate (2026-11-08)
 
 PyMuPDF is AGPL-3.0. EquityOS stays private until it is replaced (pdfminer.six + pypdfium2 tested)
