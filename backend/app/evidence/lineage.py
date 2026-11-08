@@ -49,9 +49,70 @@ def lineage_findings(session: Session, company_id: uuid.UUID) -> list[Finding]:
             continue
         mine = links.get(record.id, [])
         if record.evidence_class is EvidenceClass.CALCULATION:
-            out.extend(_check_calculation(record, mine, records))
+            if (record.details or {}).get("method"):
+                out.extend(_check_method_calculation(session, record))
+            else:
+                out.extend(_check_calculation(record, mine, records))
         elif record.evidence_class is EvidenceClass.INTERPRETATION:
             out.extend(_check_interpretation(record, mine, records))
+    return out
+
+
+def _check_method_calculation(session: Session, record: EvidenceRecord) -> list[Finding]:
+    """Calculations that run an algorithm over stored rows (technical indicators) are recomputed
+    by the method that made them; they have no per-row links."""
+    from app.calc.technical import InsufficientHistory
+    from app.calc.technical_store import METHOD, recompute
+
+    where = dict(metric=record.metric, period_end=record.period_end, blocks=[record.id])
+    details = record.details or {}
+    if details.get("method") != METHOD:
+        return [
+            Finding(
+                "CALC_NOT_REPRODUCIBLE",
+                Severity.ERROR,
+                f"{record.metric}: unknown calculation method {details.get('method')!r}",
+                evidence_ids=[record.id],
+                **where,
+            )
+        ]
+    try:
+        value, digest = recompute(session, record)
+    except (InsufficientHistory, KeyError, ValueError) as exc:
+        return [
+            Finding(
+                "CALC_NOT_REPRODUCIBLE",
+                Severity.ERROR,
+                f"{record.metric} {record.period_end}: cannot be recomputed from the stored "
+                f"prices ({exc})",
+                evidence_ids=[record.id],
+                **where,
+            )
+        ]
+    out = []
+    if digest != details.get("price_digest"):
+        out.append(
+            Finding(
+                "CALC_INPUT_NOT_CURRENT",
+                Severity.ERROR,
+                f"{record.metric} {record.period_end}: the prices or adjustment events it used "
+                "have changed since it was calculated; recalculate",
+                evidence_ids=[record.id],
+                **where,
+            )
+        )
+    if record.value is None or abs(value - record.value) > RECOMPUTE_TOLERANCE:
+        out.append(
+            Finding(
+                "CALC_RECOMPUTE_MISMATCH",
+                Severity.ERROR,
+                f"{record.metric} {record.period_end}: stored {record.value} but the stored "
+                f"prices give {value}",
+                evidence_ids=[record.id],
+                details={"stored": str(record.value), "recomputed": str(value)},
+                **where,
+            )
+        )
     return out
 
 
@@ -119,7 +180,7 @@ def _check_calculation(
                 **where,
             )
         )
-    if len(types) > 1:
+    if len(types) > 1 and not (record.details or {}).get("mixed_period_types"):
         out.append(
             Finding(
                 "CALC_MIXED_PERIOD",

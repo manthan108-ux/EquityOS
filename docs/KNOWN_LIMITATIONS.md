@@ -67,3 +67,25 @@ Honest list, as of 2026-11-08 (Phase 6 added at the end). Each item says what ha
 * `evidence_resolutions` is rebuilt from scratch on each validation run; it holds no original data.
 * The API is read-only; there is no review screen for findings.
 
+## Calculation engine (Phase 7)
+* Only ICICI Bank and Reliance can be calculated; TCS, Infosys and HDFC Bank have no stored statements.
+* No EBITDA, EBIT, operating margin, interest cover or ROCE: depreciation and finance costs are not
+  extracted from documents yet. Free cash flow and debt / equity need cash-flow and borrowings items
+  that Reliance's stored statements do not contain, so they are gaps.
+* Growth, CAGR and average-balance metrics need earlier periods; only two financial years and a few
+  quarters are stored, so most of these are gaps for older periods.
+* Market cap and P/B need a share count; only ICICI's annual-report shareholding table supplies one
+  (as at 31 March 2026, used with the November price and adjusted for later splits/bonuses only if a
+  corporate action or a price-implied event is known).
+* No corporate actions are acquired. Price adjustment therefore relies on the exchange's reference
+  price; a split on a day whose prior session is missing from our data could be misread as an
+  unexplained gap (it would be recorded, not applied). Dividends and rights are not adjusted, so
+  returns are price returns, not total returns.
+* Consolidated bank ratios mix in subsidiaries' businesses (insurance); the stored caveat says so,
+  but the engine does not split them out.
+* "Operating cash flow + capital expenditure" assumes capital expenditure is stored as an outflow
+  (negative); a positive value is refused.
+* EPS-based trailing figures are sums of reported EPS; share-count changes make them approximate.
+* Technical indicators are only as long as the stored history (247 sessions); no intraday data.
+* `price_adjustments` and `calculation_gaps` are rebuilt or appended per run; they are derived data.
+

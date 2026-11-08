@@ -90,6 +90,17 @@ exchanges ──< securities >── companies >──< company_aliases
 | `validation_runs` | One validation of one company: rules version, as-of date, counts, per-rule checked/passed counters. Kept as history |
 | `validation_findings` | Findings of a run: rule, severity, message, metric, period, the evidence ids involved |
 
+## Implemented (Phase 7): calculation engine (migration 0009)
+
+| Table | Purpose |
+|---|---|
+| `price_adjustments` | Derived, rebuilt each run: split/bonus/consolidation events per listing with factor, kind (SPLIT, BONUS, CONSOLIDATION, SPLIT_OR_BONUS, UNEXPLAINED), origin (stored corporate action or implied by the exchange's reference price), status (APPLIED / REPORTED_ONLY), confidence (EXPLICIT, CONFIRMED, SINGLE_EXCHANGE, NOT_CLASSIFIED), the prices behind it and a link to the corporate-action row |
+| `calculation_runs` | One run per company: engine version, as-of date, profile (BANK / NONFIN), counts, summary (by category, gaps by metric, adjustments, skipped corporate actions) |
+| `calculation_gaps` | For each run, every metric that could not be calculated, for which period and basis, and why (missing inputs, failed precondition, blocked input) |
+
+Calculated numbers themselves are CALCULATION rows of `evidence_records` (kinds CALCULATION and
+TECHNICAL); `ADJUSTMENT.cumulative_factor` and `PRICE.close` are FACT rows there.
+
 ## Seed data
 
 `python -m app.seeds.loader` (from `./backend`) loads exchanges, sectors, a few industries and the five-company test universe (Reliance, TCS, Infosys, HDFC Bank, ICICI Bank). It is idempotent and never overwrites existing rows. BSE codes were cross-checked against public secondary sources and ISINs pass the check digit; verification against primary NSE/BSE master files is Phase 4 work.
@@ -99,7 +110,6 @@ exchanges ──< securities >── companies >──< company_aliases
 | Phase | Tables |
 |---|---|
 | 4 | `sources`, `documents`, `acquisition_jobs` |
-| 7 | `financial_statements`, `income_statements`, `balance_sheets`, `cash_flows`, `quarterly_results`, `segment_financials`, `shareholding_data`, `market_data`, `technical_indicators`, `financial_metrics` |
 | 8 | `sector_profiles`, `sector_weights`, `weight_adjustments`, `peer_sets`, `peers` |
 | 9 | `research_jobs`, `agent_runs`, `agent_outputs`, `validation_results`, `llm_usage` |
 | 10 | `forecasts`, `forecast_assumptions`, `valuations`, `valuation_assumptions`, `valuation_sensitivities`, `scenarios`, `risk_assessments` |

@@ -29,6 +29,7 @@ from app.models import (
     EvidenceResolution,
     EvidenceStatus,
     ExtractedFact,
+    Quality,
     Severity,
     ValidationFinding,
     ValidationRun,
@@ -136,6 +137,47 @@ def _blocked_ids(
     return blocked
 
 
+_RANK = {Quality.LOW: 0, Quality.MEDIUM: 1, Quality.HIGH: 2}
+
+
+def _limit_by_inputs(
+    session: Session, company_id: uuid.UUID, resolved: dict[Key, Resolved]
+) -> None:
+    """A calculation is no better than its weakest input (an assumption caps it at MEDIUM)."""
+    inputs_of: dict[int, list[int]] = defaultdict(list)
+    for evidence_id, input_id in session.execute(
+        select(EvidenceLink.evidence_id, EvidenceLink.input_id)
+        .join(EvidenceRecord, EvidenceRecord.id == EvidenceLink.evidence_id)
+        .where(EvidenceRecord.company_id == company_id)
+    ):
+        inputs_of[evidence_id].append(input_id)
+    by_id = {r.selected.id: r for r in resolved.values() if r.selected is not None}
+    done: set[int] = set()
+
+    def settle(evidence_id: int, trail: frozenset) -> Quality | None:
+        r = by_id.get(evidence_id)
+        if r is None:
+            return None
+        if evidence_id not in done and evidence_id not in trail:
+            for input_id in inputs_of.get(evidence_id, []):
+                if r.selected.cls != "CALCULATION":
+                    continue
+                q = settle(input_id, trail | {evidence_id})
+                if q is None:
+                    q = Quality.MEDIUM  # an assumption or text: not independently verified
+                    reason = f"built on evidence {input_id} that is not a verified fact"
+                else:
+                    reason = f"limited by input evidence {input_id} ({q.value})"
+                if _RANK[q] < _RANK[r.quality]:
+                    r.quality = q
+                    r.quality_reasons = [*r.quality_reasons, reason]
+            done.add(evidence_id)
+        return r.quality
+
+    for evidence_id in list(by_id):
+        settle(evidence_id, frozenset())
+
+
 def _review_findings(session: Session, company_id: uuid.UUID, sync: SyncReport) -> list[Finding]:
     out: list[Finding] = []
     pending = session.scalar(
@@ -194,6 +236,7 @@ def validate_company(
         r = resolve_group(members)
         r.quality, r.quality_reasons = grade(r)
         resolved[key] = r
+    _limit_by_inputs(session, company_id, resolved)
 
     context = Context(resolved=resolved, facts=facts, today=today)
     findings = run_rules(context)
