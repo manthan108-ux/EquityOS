@@ -157,6 +157,34 @@ Details: [CALCULATION_ENGINE.md](CALCULATION_ENGINE.md).
   (depreciation and finance costs are not extracted); Reliance market cap and P/B (no share count);
   corporate actions (none acquired, so only price-implied events are available).
 
+## Research sample (2026-11-08)
+
+Peers and sector weights (Phase 8) need more than five companies, so the work widens to a
+15-company sample defined in `backend/app/seeds/sample_universe.py`: banks (ICICI, HDFC, Kotak, Axis,
+SBI), IT services (TCS, Infosys, Wipro, Tech Mahindra, HCL Tech), FMCG (ITC, HUL), automobiles
+(M&M, Maruti) and Reliance. All 15 already exist in the master data with 247 NSE sessions of
+prices (the bhavcopy files cover the whole market). What they lack is documents and a
+sector/industry assignment.
+
+Document access was probed with the polite client (robots.txt honoured, no bypass):
+
+| How filings can be obtained | Companies |
+|---|---|
+| Stored already | ICICI Bank, Reliance |
+| Automatic (investor pages expose document links) | Kotak, Wipro, Tech Mahindra, ITC, M&M |
+| Manual: download in a browser into `data/inbox/<SYMBOL>/` | HDFCBANK, AXISBANK, SBIN, TCS, INFY, HCLTECH, HINDUNILVR, MARUTI (HTTP 403, robots.txt, or no investor pages) |
+
+Per filing, the most useful are the latest annual report and the last 2-3 quarterly results (the
+stand-alone and consolidated results PDF). `python -m app.seeds.sample_loader status` shows, per
+company, what is held and the next step; `plan` / `apply --yes` fill only EMPTY sector, industry and
+website fields (10 companies) and write an audit row. Folders for the manual companies exist.
+
+## Licence gate (2026-11-08)
+
+PyMuPDF is AGPL-3.0. EquityOS stays private until it is replaced (pdfminer.six + pypdfium2 tested)
+or deliberately published under AGPL; the report generator must use a permissive library. Details:
+[LICENCES.md](LICENCES.md).
+
 ## Universe load (2026-11-07)
 
 BSE list imported from the manually downloaded file (5,139 rows, 4,855 usable). 284 BSE rows were skipped and reported: 276 funds/ETFs (INF ISINs), 6 non-equity instruments, and 2 equities with no valid ISIN (A.D.S. Diagnostics 523031, Pushpsons Industries 531562). The 5 pre-existing seed companies were verified unchanged apart from previously empty fields being filled.

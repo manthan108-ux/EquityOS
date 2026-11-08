@@ -40,8 +40,9 @@ Honest list, as of 2026-11-08 (Phase 6 added at the end). Each item says what ha
 * Only English text; no deskewing or table-line detection.
 
 ## Engineering
-* PyMuPDF is AGPL-3.0 (see PHASE5_STABILIZATION.md 2.7). pdfminer.six is a tested MIT alternative
-  for text and positions; not switched.
+* PyMuPDF is AGPL-3.0. Decision (see [LICENCES.md](LICENCES.md)): keep it while EquityOS is private;
+  replace it (pdfminer.six + pypdfium2, tested) or publish under AGPL before any public use. Gate for
+  Phase 12.
 * The API has no authentication and no upload endpoint by design.
 * Superseded extraction runs are kept (audit); `document_pages` text of old runs uses disk space
   until you approve pruning.
