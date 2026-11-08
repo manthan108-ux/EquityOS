@@ -66,6 +66,8 @@ def _check_method_calculation(session: Session, record: EvidenceRecord) -> list[
 
     where = dict(metric=record.metric, period_end=record.period_end, blocks=[record.id])
     details = record.details or {}
+    if details.get("method") in ("peer.v1", "score.v1"):
+        return _check_sector_calculation(session, record, where)
     if details.get("method") != METHOD:
         return [
             Finding(
@@ -114,6 +116,38 @@ def _check_method_calculation(session: Session, record: EvidenceRecord) -> list[
             )
         )
     return out
+
+
+def _check_sector_calculation(
+    session: Session, record: EvidenceRecord, where: dict
+) -> list[Finding]:
+    """Peer statistics and sector scores: recomputed from the evidence they are linked to."""
+    from app.sector.store import recompute
+
+    value, problems = recompute(session, record)
+    if problems:
+        return [
+            Finding(
+                "CALC_INPUT_NOT_CURRENT",
+                Severity.ERROR,
+                f"{record.metric} {record.period_end}: {'; '.join(problems)}",
+                evidence_ids=[record.id],
+                **where,
+            )
+        ]
+    if record.value is None or abs(value - record.value) > RECOMPUTE_TOLERANCE:
+        return [
+            Finding(
+                "CALC_RECOMPUTE_MISMATCH",
+                Severity.ERROR,
+                f"{record.metric} {record.period_end}: stored {record.value} but its inputs "
+                f"give {value}",
+                evidence_ids=[record.id],
+                details={"stored": str(record.value), "recomputed": str(value)},
+                **where,
+            )
+        ]
+    return []
 
 
 def _check_calculation(

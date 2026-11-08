@@ -272,6 +272,9 @@ def grade(resolved: Resolved) -> tuple[Quality, list[str]]:
     if other_differ:
         level = min(level, Quality.MEDIUM, key=_rank)
         reasons.append(f"{other_differ} other document(s) print a different figure (restated?)")
+    if details.get("thin_peer_group"):
+        level = Quality.LOW
+        reasons.append("fewer peers than the minimum for a reliable comparison")
     if details.get("unit_unstated"):
         level = Quality.LOW
         reasons.append("the unit is not stated in the source")

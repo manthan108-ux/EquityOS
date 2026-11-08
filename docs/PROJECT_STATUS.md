@@ -9,8 +9,8 @@
 | 5 | Document intelligence | Complete |
 | 6 | Evidence and validation engine | Complete |
 | 7 | Financial calculation engine | Complete |
-| 8 | Sector and peer engine | Next |
-| 9 | Research agent system (LLM layer starts here) | Pending |
+| 8 | Sector and peer engine | Complete |
+| 9 | Research agent system (LLM layer starts here) | Next |
 | 10 | Forecasting, valuation and risk | Pending |
 | 11 | Investment Committee and PDF generation | Pending |
 | 12 | Final testing and deployment | Pending |
@@ -156,6 +156,32 @@ Details: [CALCULATION_ENGINE.md](CALCULATION_ENGINE.md).
 - Not possible yet and not approximated: EBITDA, EBIT, operating margin, interest cover, ROCE
   (depreciation and finance costs are not extracted); Reliance market cap and P/B (no share count);
   corporate actions (none acquired, so only price-implied events are available).
+
+## Phase 8 - sector and peer engine (2026-11-08)
+
+Details: [SECTOR_ENGINE.md](SECTOR_ENGINE.md).
+
+- Peer selection by statement profile, sector, industry and size, with a recorded reason for every
+  company left out; comparisons per metric on the period most peers share, one basis per company.
+- Curated, versioned, documented sector weight sets (banking, IT services, FMCG, automobiles, oil and
+  gas, generic) with a stated reason for every weight. They are project judgement, never derived from
+  data and never LLM output.
+- Relative standing (share of peers beaten), pillar scores and a weighted overall, all CALCULATION
+  evidence linked to the values used and recomputed by validation; thin groups (< 3 peers) graded LOW;
+  **no overall score unless 60% of the sector's weight has data**.
+- CLI `python -m app.sector.cli` and read-only API (`/peers`, `/scorecard`, `/sector-weights`).
+- **A safeguard found on the way (Phase 5 layer):** the first manual-document extraction stored 52
+  quarter values for TCS and HDFC Bank as "annual" figures ending 30 June 2025, because a quarter
+  column picked up the neighbouring "Year ended" heading and its arithmetic was consistent. A general
+  fiscal-alignment rule now withholds any period whose length cannot end on that date in an
+  April-March year (12 months must end in March, 6 in September, 9 in December); the values were
+  re-extracted and the dependent calculations retired automatically.
+- **Real result, honestly:** peers are found (banks and IT services have 2 each, so thin), 6-9
+  metrics compared per company, pillar scores for growth, profitability, balance sheet and momentum
+  where data exists, **no overall score for anyone yet** (15-45% of weight covered). M&M and Reliance
+  have no peer with data. The limit is data coverage (common financial years, share counts, the seven
+  companies without values), not the engine.
+- 684 backend tests.
 
 ## Research sample (2026-11-08)
 

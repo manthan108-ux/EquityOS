@@ -929,3 +929,75 @@ def test_disclosure_endpoints_return_validated_values_with_pages(session, compan
     assert client.get(f"/api/companies/{company.id}/disclosures").json() == []
     assert client.get(f"/api/documents/{doc.id}/sections").status_code == 200
     assert client.get(f"/api/documents/{uuid.uuid4()}/sections").status_code == 404
+
+
+# ---- fiscal alignment: a quarter column that picked up "Year ended" must be withheld --------------
+
+
+def test_fiscal_alignment_problem_rules():
+    from datetime import date
+
+    from app.docintel.periods import fiscal_alignment_problem as problem
+
+    assert problem(date(2026, 3, 31), 12) is None
+    assert problem(date(2026, 9, 30), 6) is None
+    assert problem(date(2026, 12, 31), 9) is None
+    for month_end in (date(2026, 6, 30), date(2026, 9, 30), date(2026, 12, 31), date(2026, 3, 31)):
+        assert problem(month_end, 3) is None
+    assert "year period cannot end on 30 June 2025" in problem(date(2025, 6, 30), 12)
+    assert problem(date(2026, 6, 30), 6) is not None  # no six-month period ends in June
+    assert problem(date(2026, 3, 31), 9) is not None
+    assert problem(None, 12) is None and problem(date(2026, 6, 30), None) is None
+
+
+def test_a_header_that_claims_a_year_ending_in_june_is_not_used():
+    from app.docintel.layout import Column, Line, Word
+    from app.docintel.statements import _read_columns
+
+    def words(text, x0, x1, y):
+        return Line([Word(x0, y, x1, y + 8, text)])
+
+    columns = [
+        Column(0, 372, 405, 4),
+        Column(1, 426, 459, 4),
+        Column(2, 480, 514, 4),
+        Column(3, 534, 568, 4),
+    ]
+    header = [
+        words("Three months ended", 399, 467, 91),
+        words("Year ended", 524, 560, 91),
+        Line(
+            [
+                Word(366, 103, 393, 111, "June 30,"),
+                Word(417, 103, 450, 111, "March 31,"),
+                Word(474, 103, 501, 111, "June 30,"),
+                Word(526, 103, 558, 111, "March 31,"),
+            ]
+        ),
+        Line(
+            [
+                Word(372, 113, 387, 121, "2026"),
+                Word(426, 113, 442, 121, "2026"),
+                Word(480, 113, 496, 121, "2025"),
+                Word(534, 113, 550, 121, "2026"),
+            ]
+        ),
+    ]
+    infos = _read_columns(header, columns, "INCOME")
+    usable = [
+        (i.period.period_end.isoformat(), i.period.duration_months) for i in infos if i.usable
+    ]
+    assert ("2025-06-30", 12) not in usable  # the misread "year ended 30 June 2025"
+    assert ("2026-03-31", 12) in usable
+    wrong = next(i for i in infos if i.period.period_end and i.period.period_end.year == 2025)
+    assert wrong.problem  # withheld, whichever safeguard caught it
+
+    # A single, unambiguous "Year ended June 30, 2025" is caught by the fiscal-alignment rule itself.
+    one = [Column(0, 100, 140, 4)]
+    lines = [
+        words("Year ended", 100, 140, 20),
+        words("June 30,", 100, 140, 30),
+        words("2025", 100, 140, 40),
+    ]
+    (info,) = _read_columns(lines, one, "INCOME")
+    assert not info.usable and "cannot end on 30 June 2025" in info.problem

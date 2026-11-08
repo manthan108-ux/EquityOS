@@ -92,7 +92,14 @@ See [CALCULATION_ENGINE.md](CALCULATION_ENGINE.md). Rules in force:
   adjusted series and say when history is too short.
 * Averages use opening and closing balances (the opening balance must exist).
 
-## 8. Planned
+## 8. Sector and peer comparison (Phase 8)
 
-Sector weights and peers (Phase 8), research agents (Phase 9), forecasting, valuation and risk (Phase 10), Investment
+See [SECTOR_ENGINE.md](SECTOR_ENGINE.md). Peers share the statement profile and sector; comparisons use
+one basis and the same period for company and peers; sector weights are curated, versioned judgement
+with stated reasons; scores are relative standing (not quality, not a forecast); thin peer groups are
+marked and graded LOW; no overall score is published unless 60% of the sector's weight has data.
+
+## 9. Planned
+
+Research agents (Phase 9), forecasting, valuation and risk (Phase 10), Investment
 Committee review and the PDF report (Phase 11).

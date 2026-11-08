@@ -101,6 +101,18 @@ exchanges ──< securities >── companies >──< company_aliases
 Calculated numbers themselves are CALCULATION rows of `evidence_records` (kinds CALCULATION and
 TECHNICAL); `ADJUSTMENT.cumulative_factor` and `PRICE.close` are FACT rows there.
 
+## Implemented (Phase 8): sector and peer engine (migration 0010)
+
+| Table | Purpose |
+|---|---|
+| `sector_weight_sets` | Versioned curated pillar weights per sector (sum 100) with a written reason for each weight, the statement profile they fit and a note that they are project judgement. Unique per sector and version |
+| `peer_sets` | One analysis run per company: sector, weight set used, selection criteria (profile, order, basis, minimum), candidates considered, peers chosen, thin flag, summary (compared metrics, gaps, rejected candidates and why, pillar scores, overall or why withheld, weight coverage) |
+| `peers` | The chosen peers of a run: rank, tier (same industry / same sector), size and ratio, reason |
+| `weight_adjustments` | For each pillar of a run: base weight, adjusted weight and why (a pillar without usable data is dropped and the rest scaled) |
+
+Peer ranks, medians and scores are CALCULATION rows of `evidence_records` (kind SECTOR, methods
+`peer.v1` and `score.v1`) with INPUT links to the exact values compared.
+
 ## Seed data
 
 `python -m app.seeds.loader` (from `./backend`) loads exchanges, sectors, a few industries and the five-company test universe (Reliance, TCS, Infosys, HDFC Bank, ICICI Bank). It is idempotent and never overwrites existing rows. BSE codes were cross-checked against public secondary sources and ISINs pass the check digit; verification against primary NSE/BSE master files is Phase 4 work.
@@ -110,7 +122,6 @@ TECHNICAL); `ADJUSTMENT.cumulative_factor` and `PRICE.close` are FACT rows there
 | Phase | Tables |
 |---|---|
 | 4 | `sources`, `documents`, `acquisition_jobs` |
-| 8 | `sector_profiles`, `sector_weights`, `weight_adjustments`, `peer_sets`, `peers` |
 | 9 | `research_jobs`, `agent_runs`, `agent_outputs`, `validation_results`, `llm_usage` |
 | 10 | `forecasts`, `forecast_assumptions`, `valuations`, `valuation_assumptions`, `valuation_sensitivities`, `scenarios`, `risk_assessments` |
 | 11 | `research_reports`, `report_sections`, `report_sources`, `investment_theses` |

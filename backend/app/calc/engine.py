@@ -9,13 +9,22 @@ from collections import Counter
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.calc.adjust import AdjustmentReport, rebuild_adjustments
 from app.calc.market import MarketResult, run_market
 from app.calc.metrics import FundamentalsResult, Gap, Inputs, run_fundamentals
 from app.evidence.engine import ValidationReport, validate_company
-from app.models import CalculationGap, CalculationRun, Company
+from app.models import (
+    CalculationGap,
+    CalculationRun,
+    Company,
+    EvidenceClass,
+    EvidenceLink,
+    EvidenceRecord,
+    EvidenceStatus,
+)
 
 ENGINE_VERSION = "7.0"
 
@@ -37,6 +46,50 @@ class CalculationReport:
         return len(self.fundamentals.calculated) + len(self.market.calculated)
 
 
+ENGINE_AUTHORS = ("calc-engine", "sector-engine")
+
+
+def retire_stale_calculations(session: Session, company_id: uuid.UUID, now: datetime) -> int:
+    """Withdraw calculations made by the engines whose inputs are no longer current.
+
+    A source value that was withdrawn or superseded (for example, a mislabelled period removed by a
+    stricter extraction rule) leaves the calculations built on it pointing at dead evidence. The
+    engines recompute what can still be computed; what cannot is retired here, with the reason.
+    Only calculations made by the engines themselves are touched: an agent's claim or an assumption
+    is never retired automatically (validation keeps flagging it instead). Repeats until no more
+    chains of dependent calculations are left.
+    """
+    retired = 0
+    while True:
+        stale = []
+        for record in session.scalars(
+            select(EvidenceRecord).where(
+                EvidenceRecord.company_id == company_id,
+                EvidenceRecord.evidence_class == EvidenceClass.CALCULATION,
+                EvidenceRecord.status == EvidenceStatus.ACTIVE,
+                EvidenceRecord.created_by.in_(ENGINE_AUTHORS),
+            )
+        ):
+            dead = [
+                link.input_id
+                for link in session.scalars(
+                    select(EvidenceLink).where(EvidenceLink.evidence_id == record.id)
+                )
+                if (source := session.get(EvidenceRecord, link.input_id)) is None
+                or source.status is not EvidenceStatus.ACTIVE
+            ]
+            if dead:
+                stale.append((record, dead))
+        if not stale:
+            return retired
+        for record, dead in stale:
+            record.status = EvidenceStatus.WITHDRAWN
+            record.status_reason = f"input evidence {dead[0]} is no longer current"[:200]
+            record.status_changed_at = now
+            retired += 1
+        session.flush()
+
+
 def calculate_company(
     session: Session,
     company_id: uuid.UUID,
@@ -52,6 +105,7 @@ def calculate_company(
         raise ValueError(f"no company {company_id}")
     if validate_first:
         validate_company(session, company_id, today=today, now=now)
+    retire_stale_calculations(session, company_id, now)
     adjustments = rebuild_adjustments(session, company_id, now=now)
     fundamentals = run_fundamentals(session, company_id, now=now)
     # The market run needs the derived equity / TTM EPS made just above.
