@@ -398,7 +398,8 @@ for vehicle volumes, attrition and utilisation. See `docs/RESEARCH_WORKFLOW.md` 
 * Axis Bank is now AUTOMATIC with a complete report (readiness 88.6): its consolidated balance sheet
   (deposits, advances) validates, so consolidated P/B exists. Because P/B now exists, Axis's Phase 8
   relative score moved from 22.8 to 40.5 (valuation pillar present, weight coverage 100%); no scoring
-  rule changed. HDFC and SBI scores are unchanged (48.8, 43.3).
+  rule changed. HDFC, SBI, Kotak, TCS and the other IT scores are unchanged; ICICI moved from 72.5 to 71.2 because it is
+  ranked against Axis, whose valuation data changed.
 * Price history: a close that falls by a common split/bonus factor while the exchange's reference
   price shows no gap is flagged `PRICE_GAP_ONLY` and carried into the report, never applied. It found
   HDFC Bank (2025-08-26, factor 2.02) and Reliance (2024-10-28, factor 1.99) among the 24 companies.
