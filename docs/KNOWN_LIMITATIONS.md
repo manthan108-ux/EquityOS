@@ -248,3 +248,15 @@ Honest list, as of 2026-11-08 (Phase 6 added at the end). Each item says what ha
   Curves are conventions, not benchmarks. Scores are labelled with the effective config version 1.2.
 * Browser tests mock the backend; they do not exercise the real API.
 
+## Added in Phase 13 (2026-11-11)
+* Only the 24 pilot companies have a stored website. For any other ticker the fetch reports
+  `NO_WEBSITE`; add one with `set-website` (no automatic source is permitted: NSE/BSE terms are
+  unresolved and Wikidata's SPARQL endpoint is disallowed by its robots.txt).
+* Script-driven investor sites (Britannia, IOC, TMPV) expose no static file list; sites that return
+  HTTP 403 (Godrej, Nestle) or disallow document paths in robots.txt (ONGC) cannot be fetched. These
+  are reported, not worked around.
+* The HTTP client caps a download at 60 MB; larger annual reports fail with `TOO_LARGE`.
+* A link's period is a hint from its text. Annual statement PDFs published as separate files are
+  stored as `quarterly_result` type because the link text says "Financial Statement"; extraction
+  reads the real period from the document.
+* Two-up detection needs two statement titles on one line; other multi-column spreads are not split.

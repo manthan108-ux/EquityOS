@@ -313,3 +313,26 @@ class XbrlFact(Base):
     is_nil: Mapped[bool] = mapped_column(Boolean, default=False)
     mapped_statement: Mapped[str | None] = mapped_column(String(20))
     mapped_item: Mapped[str | None] = mapped_column(String(80))
+
+
+class EvidenceFetchRun(Base):
+    """One automatic attempt to collect a company's public documents from its own website.
+
+    Records what happened at every step so the dashboard can say *why* evidence is missing:
+    no website known, the site refused automated access, nothing published that we could find,
+    documents downloaded, and so on. It never stores document content; documents live in
+    `documents` with their own provenance.
+    """
+
+    __tablename__ = "evidence_fetch_runs"
+    __table_args__ = (Index("ix_evidence_fetch_runs_company", "company_id", "started_at"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    company_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"))
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    status: Mapped[str] = mapped_column(String(30))
+    website: Mapped[str | None] = mapped_column(String(500))
+    candidates_found: Mapped[int] = mapped_column(Integer, default=0)
+    downloaded: Mapped[int] = mapped_column(Integer, default=0)
+    detail: Mapped[dict | None] = mapped_column(JSONB)

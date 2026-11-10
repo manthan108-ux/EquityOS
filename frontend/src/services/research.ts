@@ -97,7 +97,37 @@ export type StepState = {
   error: string | null;
   resumed_without_rerun: boolean;
   finished_at: string | null;
+  detail?: { evidence_fetch?: EvidenceFetch | null } | null;
 };
+/** What the automatic fetch of the company's public documents did (DOCUMENTS step). */
+export type EvidenceFetch = {
+  status: string;
+  website: string | null;
+  candidates?: number;
+  downloaded?: number;
+  notes?: string[];
+};
+
+const FETCH_TEXT: Record<string, string> = {
+  NO_WEBSITE: "No company website is stored, so no documents could be fetched automatically.",
+  SITE_UNREACHABLE: "The company website refused or could not be reached (this is respected, not bypassed).",
+  NOTHING_FOUND:
+    "The company website was reachable but no downloadable reports were found (many sites load them with scripts).",
+  DOWNLOAD_FAILED: "Documents were found on the company website but none could be downloaded.",
+  UP_TO_DATE: "Already holds the latest documents found on the company website.",
+  RECENT: "The company website was checked recently, so it was not checked again.",
+  ERROR: "Fetching documents from the company website failed; research continued with what is stored.",
+};
+
+/** Plain-language summary of the automatic document fetch, or null when none was attempted. */
+export function describeFetch(f: EvidenceFetch | null | undefined): string | null {
+  if (!f) return null;
+  if (f.status === "FETCHED") {
+    const n = f.downloaded ?? 0;
+    return `Downloaded ${n} new document${n === 1 ? "" : "s"} from the company's own website.`;
+  }
+  return FETCH_TEXT[f.status] ?? null;
+}
 export type SessionStatus = {
   id: string;
   company_id: string;

@@ -6,6 +6,7 @@ run `python -m app.docintel.cli xbrl --symbol <SYMBOL> --file <file.xml>` (XBRL)
 **Resume research**. Companies lacking evidence are shown as *awaiting evidence*, not blocked.
 
 ## Done
+* Automatic evidence fetch from the company's own website (Phase 13); BPCL went from no documents to a score with no upload.
 * Basis-safe P/B; verified corporate actions (HDFC Bank bonus applied, raw prices preserved);
   adjusted prices stored separately; bank NIM/NPA/CAR/CASA in absolute scoring; offline XBRL reader
   with raw preservation; browser tests in CI.
@@ -26,7 +27,7 @@ verification and raw prices stay untouched.
 6. Upstox-only companies lack D&A, finance costs and borrowings (operating margin, debt/equity).
 
 ## Engineering backlog (no new data needed)
-1. Reprocess all 24 companies against the new parsers and publish a coverage/parser-gap report.
+1. Reprocess all 24 companies against the new parsers (two-up pages, heading durations) and publish a coverage/parser-gap report; add websites with `set-website` for companies beyond the 24.
 2. Source-health and ingestion-status view on the dashboard (source unavailable / not published /
    retrieved but extraction failed / not disclosed / unmapped / validated / conflict).
 3. Score-history explanation when scores move; recalculate only when validated data changes.

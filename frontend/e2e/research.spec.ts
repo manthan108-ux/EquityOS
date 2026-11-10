@@ -112,3 +112,17 @@ test("a session whose extraction step failed shows the failure", async ({ page }
   await start(page).click();
   await expect(page.getByText("document unreadable").first()).toBeVisible();
 });
+
+test("the progress list explains what the automatic document fetch did", async ({ page }) => {
+  const state = freshState();
+  const s = session();
+  s.steps = s.steps.map((x) =>
+    x.step === "DOCUMENTS"
+      ? { ...x, detail: { evidence_fetch: { status: "FETCHED", website: "https://x.com", downloaded: 2 } } }
+      : x,
+  );
+  state.session = s;
+  await open(page, state);
+  await start(page).click();
+  await expect(page.getByText("Downloaded 2 new documents from the company's own website.")).toBeVisible();
+});

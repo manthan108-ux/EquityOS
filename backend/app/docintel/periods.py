@@ -148,6 +148,20 @@ def fiscal_alignment_problem(period_end: date | None, duration_months: int | Non
     )
 
 
+def stated_duration(text: str) -> int | None:
+    """The one period length (in months) the text names ('for the year ended ...'), else None.
+
+    Used for a statement-wide heading that states the length once for every column. If the text
+    names several different lengths it says nothing definite, so the answer is None.
+    """
+    low = " ".join(text.lower().split())
+    low = re.sub(r"(?<![a-z])ear ended", "year ended", low)
+    found = {
+        months for pattern, months in _DURATIONS if pattern.search(_PREVIOUS_YEAR.sub(" ", low))
+    }
+    return found.pop() if len(found) == 1 else None
+
+
 def parse_column_header(text: str) -> ColumnPeriod:
     """Read the period of one statement column from its (possibly multi-line) header text."""
     low = " ".join(text.lower().split())

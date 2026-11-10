@@ -18,6 +18,7 @@ import {
   fetchSession,
   fetchUploads,
   generateReport,
+  describeFetch,
   resumeResearch,
   startResearch,
   updatePreferences,
@@ -113,6 +114,9 @@ function Steps({ session }: { session: SessionStatus }) {
           )}
           {s.status === "SKIPPED" && <span className="text-xs text-zinc-500">(not needed)</span>}
           {s.error && <span className="text-xs text-red-600">{s.error}</span>}
+          {s.step === "DOCUMENTS" && describeFetch(s.detail?.evidence_fetch) && (
+            <span className="text-xs text-zinc-500">{describeFetch(s.detail?.evidence_fetch)}</span>
+          )}
         </li>
       ))}
     </ol>

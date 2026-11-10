@@ -426,3 +426,15 @@ No new documents were available, so everything uses the stored evidence.
 * **Browser tests** (`frontend/e2e`, Playwright, in CI): 10 scenarios. Frontend unit tests: 53.
 * Also: the CI formatting check was failing on migrations 0013/0014 (unformatted); fixed.
 
+### Phase 13 - automatic evidence fetch from company websites (2026-11-11)
+* New `acquisition/evidence_fetch.py`, table `evidence_fetch_runs` (migration 0017, applied), CLI
+  `python -m app.providers.cli fetch-evidence --symbol S [--force]` and `set-website`. The research
+  background job now runs it inside the DOCUMENTS step; tests and the inline path stay offline.
+* Statement reader: side-by-side (two-up) statement pages are split; a duration stated once in the
+  heading is applied to the columns (`docintel/statements.py`, `periods.stated_duration`).
+* Dashboard progress list explains what the fetch did (downloaded N / refused / nothing found / ...).
+* Pilot on the 8 companies that had no document: BPCL 0 -> 4 documents, 355 promoted facts, score
+  UNAVAILABLE -> ABSOLUTE 78.58 (readiness 43.2 -> 64.1). Hyundai: 1 presentation. Godrej and Nestle:
+  HTTP 403 (recorded). ONGC: robots.txt disallows its document path (respected). Britannia, IOC,
+  TMPV: script-driven sites, nothing static to read.
+* Tests: 28 new fetch tests, 8 layout tests, 3 + 1 frontend/browser tests.
