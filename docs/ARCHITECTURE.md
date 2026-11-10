@@ -120,3 +120,11 @@ Folders for later phases (providers, evidence, agents, ...) are created when a p
 | 68 | Threshold curves are labelled CONVENTION and lower confidence | They have a rationale but are not validated industry benchmarks. |
 | 69 | Absolute gate: >=6 metrics, critical pillars present, >=60% of the weight that has a data source, fresh data | Missing sources are a platform gap, but the score must rest on most of what can be measured. |
 | 70 | Hybrid is refused until a calibration (>=8 companies per group, rank correlation >=0.6) passes | Averaging unlike scales is misleading. |
+| 71 | Data requirements are a curated registry per kind of company (seven profiles), each item CRITICAL / IMPORTANT / OPTIONAL | One list for all industries would ask banks for EBITDA and IT for vehicle volumes. |
+| 72 | Research readiness is a separate score from the financial score; eligibility needs every rule (no critical gap, score floor, component floor, no open validation error) | A high average must not hide one missing critical metric. |
+| 73 | Figures no extractor can read from a document are never requested by upload and never block research | Asking for a file that changes nothing is a dead end for the user. |
+| 74 | The orchestrator keeps per-stage input fingerprints; a resumed run repeats only stages whose inputs changed | Interrupted or repeated research must not redo extraction and calculation. |
+| 75 | An ASSISTED company gets no report until the user uploads or explicitly continues; a COMPLETE report is refused while any critical item is missing | Never present an incomplete report as complete. |
+| 76 | Only uploads declared as published filings, with a confirmed issuer, feed the shared evidence; others stay private in the vault | The next researcher benefits from validated public filings without exposing private material or licensed data. |
+| 77 | A user's confirmation can link an unreadable-issuer document but cannot make a nameless statement page count as the company's | The entity check protects against subsidiaries' statements. |
+| 78 | Research endpoints require an API key; no key configured = refuse everything; resources belong to their creator | Upload and report generation must not be open to anyone who can reach the server. |

@@ -358,3 +358,24 @@ def test_bank_specific_gaps_are_reported_and_never_replaced_by_non_bank_metrics(
     # the bank profile has no generic industrial metrics to fall back on
     codes = {s.code for s in registry.PROFILES["BANK"].metrics}
     assert not codes & {"LEVERAGE.debt_to_equity", "MARGIN.ebitda_margin", "RATIO.interest_cover"}
+
+
+def test_bank_coverage_reads_the_evidence_codes_the_disclosure_reader_really_writes(seeded):  # noqa: F811
+    """Regression: the report once looked for ASSET_QUALITY.* codes and so denied that a bank with
+    validated RATIOS.gross_npa_ratio / capital_adequacy_ratio evidence had them."""
+    from app.sector.bank_coverage import coverage
+    from tests.research_helpers import evidence
+
+    bank = mk_company(seeded, "RatioBank", "banking", "private_sector_bank")
+    for code in (
+        "RATIOS.gross_npa_ratio",
+        "RATIOS.net_npa_ratio",
+        "RATIOS.capital_adequacy_ratio",
+        "RATIOS.net_interest_margin",
+    ):
+        evidence(seeded, bank, code, 1.5, kind="DISCLOSURE", unit="percent", basis="STANDALONE")
+    result = coverage(seeded)["RatioBank"]
+    assert (
+        result["gross_npa"] and result["net_npa"] and result["capital_adequacy"] and result["nim"]
+    )
+    assert result["casa"] is False

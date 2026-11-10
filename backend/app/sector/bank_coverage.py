@@ -51,31 +51,31 @@ CONCEPTS: tuple[BankConcept, ...] = (
     BankConcept(
         "nim",
         "Net interest margin",
-        ("RATIO.net_interest_margin",),
+        ("RATIOS.net_interest_margin",),
         "needs average earning assets; or the bank's reported NIM from its results presentation",
     ),
     BankConcept(
         "gross_npa",
         "Gross NPA ratio",
-        ("ASSET_QUALITY.gross_npa_ratio",),
+        ("RATIOS.gross_npa_ratio",),
         "regulatory disclosures / investor presentation (not in the statements themselves)",
     ),
     BankConcept(
         "net_npa",
         "Net NPA ratio",
-        ("ASSET_QUALITY.net_npa_ratio",),
+        ("RATIOS.net_npa_ratio",),
         "regulatory disclosures / investor presentation",
     ),
     BankConcept(
         "capital_adequacy",
         "Capital adequacy ratio",
-        ("CAPITAL.capital_adequacy_ratio",),
+        ("RATIOS.capital_adequacy_ratio",),
         "Pillar 3 / regulatory disclosure in the results",
     ),
     BankConcept(
         "casa",
         "CASA ratio",
-        ("RATIO.casa_ratio",),
+        ("RATIOS.casa_ratio",),
         "investor presentation or the deposit breakdown in the annual report",
     ),
 )

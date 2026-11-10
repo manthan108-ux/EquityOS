@@ -1,3 +1,4 @@
+import ResearchWorkspace from "@/features/research/ResearchWorkspace";
 import ScoreCard from "@/features/scoring/ScoreCard";
 import type { CompanySummary } from "@/services/api";
 
@@ -40,21 +41,12 @@ export default function CompanyConfirmation({
             value={company.industry ?? "Not classified"}
           />
         </dl>
-        <div className="mt-6">
-          <button
-            type="button"
-            disabled
-            className="cursor-not-allowed rounded-lg bg-zinc-200 px-4 py-2 text-sm font-medium text-zinc-500 dark:bg-zinc-800"
-          >
-            Start research
-          </button>
-          <p className="mt-2 text-xs text-zinc-500">
-            The research pipeline is still under construction (data acquisition,
-            evidence, agents and report generation arrive in later phases), so
-            research cannot be started yet.
-          </p>
-        </div>
       </section>
+      <ResearchWorkspace
+        key={`research-${company.id}`}
+        companyId={company.id}
+        companyName={company.common_name}
+      />
       <ScoreCard key={company.id} companyId={company.id} ticker={nse?.symbol} />
     </>
   );
