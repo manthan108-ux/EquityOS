@@ -410,3 +410,19 @@ def test_the_template_and_requirements_endpoints_are_informative(client, seeded)
     c = complete_company(seeded, "Req Bank", *BANK)
     req = client.get(f"/api/research/requirements/{c.id}", headers=ALICE).json()
     assert req["profile"] == "BANK" and any(r["id"] == "nim" for r in req["requirements"])
+
+
+def test_an_upload_can_be_reprocessed_by_its_owner_only(client, reliance):  # noqa: F811
+    sid = start(client, reliance)["id"]
+    up = post_files(
+        client,
+        sid,
+        [("files", ("q2.pdf", results_pdf(), "application/pdf"))],
+        licence="PUBLIC_FILING",
+    ).json()["uploads"][0]
+    again = client.post(f"/api/research/uploads/{up['id']}/reprocess", headers=ALICE)
+    assert again.status_code == 200 and again.json()["status"] == "ACCEPTED"
+    assert (
+        client.post(f"/api/research/uploads/{up['id']}/reprocess", headers=BOB).status_code == 404
+    )
+    assert client.post(f"/api/research/uploads/{up['id']}/reprocess").status_code == 401

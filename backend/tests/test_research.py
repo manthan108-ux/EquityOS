@@ -7,6 +7,7 @@ from sqlalchemy import select
 
 from app.models import ResearchReport, ResearchSession, ResearchStep
 from app.research import orchestrator
+from app.research import preferences as pf
 from app.research import readiness as rd
 from app.research import report as rp
 from app.research import requirements as rq
@@ -67,11 +68,14 @@ def test_requirements_differ_by_industry_instead_of_one_list_for_all():
     assert imp["BANK"]["pb"] == rq.CRITICAL and imp["FMCG"]["pb"] == rq.IMPORTANT
 
 
-def test_figures_no_extractor_can_read_are_not_requested_by_upload():
+def test_only_figures_no_extractor_can_read_are_excluded_from_upload_requests():
     for profile in rq.PROFILE_DEFS:
         for r in rq.requirements_for(profile):
-            if r.id in ("attrition", "utilization", "vehicle_volumes", "volume_growth"):
-                assert not r.upload_helps and r.importance != rq.CRITICAL
+            if r.id == "volume_growth":
+                assert r.extractor == rq.NONE and not r.upload_helps
+            if r.id in ("attrition", "utilization", "vehicle_volumes"):
+                assert r.extractor == rq.OPERATING_TEXT and r.upload_helps
+                assert r.importance != rq.CRITICAL  # never holds research back on its own
 
 
 def test_profile_selection_splits_energy_from_the_generic_scoring_profile():
@@ -114,20 +118,22 @@ def test_a_missing_critical_metric_forces_assisted_research_however_high_the_sco
     assert s.action == "UPLOAD" and "depreciation_and_amortisation" in " ".join(s.missing_inputs)
 
 
-def test_a_missing_optional_metric_does_not_block(seeded):  # noqa: F811
+def test_a_missing_optional_metric_does_not_block_and_is_not_requested_by_default(seeded):  # noqa: F811
     c = complete_company(
         seeded, "No capex IT", *IT, skip=("capex", "free_cash_flow", "debt_to_equity")
     )
     r = rd.evaluate(seeded, c, today=TODAY)
     assert r.eligibility == rd.AUTOMATIC
-    optional = {s.req.id for s in r.missing(rq.OPTIONAL)}
-    assert {"capex", "debt_to_equity"} <= optional
+    assert r.by_id("capex") is None and not r.missing(rq.OPTIONAL)  # optional items are off
+    asked = rd.evaluate(seeded, c, today=TODAY, prefs=pf.Preferences(include_optional=True))
+    assert asked.eligibility == rd.AUTOMATIC  # still never blocks
+    assert {"capex", "debt_to_equity"} <= {s.req.id for s in asked.missing(rq.OPTIONAL)}
 
 
 def test_stale_annual_figures_do_not_count(seeded):  # noqa: F811
     c = complete_company(seeded, "Old IT", *IT, skip=("revenue",))
     old = evidence(seeded, c, "INCOME.revenue_from_operations", 50, end=FY25 - timedelta(days=400))
-    r = rd.evaluate(seeded, c, today=TODAY)
+    r = rd.evaluate(seeded, c, today=TODAY, prefs=pf.Preferences(period_mode="LATEST_ANNUAL"))
     s = r.by_id("revenue")
     assert s.status == rd.STALE and s.evidence_id == old.id and "older" in s.reason
     assert r.eligibility == rd.ASSISTED
@@ -168,7 +174,7 @@ def test_bank_gaps_name_the_banking_figures_and_the_documents_that_hold_them(see
     assert {m["id"] for m in missing} == {"nim", "gross_npa", "net_npa", "advances", "deposits"}
     nim = next(m for m in missing if m["id"] == "nim")
     assert nim["why_it_matters"] and nim["affects"] and nim["document"]
-    assert nim["basis_required"].startswith("standalone") and nim["preferred_period"]
+    assert nim["basis_required"].startswith("not applicable") and nim["preferred_period"]
     assert nim["upload_helps"] and "substitute" in nim["alternative"]
     assert "sector_analysis" in nim["sections"]
 
@@ -181,12 +187,22 @@ def test_high_document_coverage_cannot_hide_a_missing_critical_metric(seeded):  
 
 
 def test_figures_that_cannot_be_read_from_any_document_say_so(seeded):  # noqa: F811
-    c = complete_company(seeded, "Auto", *AUTO)
-    r = rd.evaluate(seeded, c, today=TODAY)
-    vol = r.by_id("vehicle_volumes")
+    c = complete_company(seeded, "Food", *FMCG)
+    r = rd.evaluate(seeded, c, today=TODAY, prefs=pf.Preferences(include_optional=True))
+    vol = r.by_id("volume_growth")
     assert vol.status == rd.MISSING and vol.action == "NOT_RESOLVABLE_BY_UPLOAD"
     assert not vol.req.upload_helps and "no extractor" in vol.reason
-    assert r.eligibility == rd.AUTOMATIC  # an important, unreadable figure does not block
+    assert r.eligibility == rd.AUTOMATIC  # an unreadable optional figure never blocks
+
+
+def test_an_important_operating_figure_is_requested_but_does_not_block(seeded):  # noqa: F811
+    c = complete_company(seeded, "Auto", *AUTO, skip=("vehicle_volumes",))
+    r = rd.evaluate(seeded, c, today=TODAY)
+    vol = r.by_id("vehicle_volumes")
+    assert vol.status == rd.MISSING and vol.action == "UPLOAD" and vol.req.upload_helps
+    assert r.components["sector_metrics"]["score"] == 0.0
+    assert r.components["sector_metrics"]["gating"] is False
+    assert r.eligibility == rd.AUTOMATIC  # important, not critical: disclosed, not blocking
 
 
 def test_a_stored_unprocessed_document_is_extracted_not_requested_again(seeded):  # noqa: F811
@@ -213,12 +229,20 @@ def test_a_held_document_that_lacks_the_figure_is_not_asked_for_blindly(seeded):
     assert s.action == "UPLOAD" and "already holds a matching document" in s.reason
 
 
-def test_different_basis_is_noted_not_mixed(seeded):  # noqa: F811
+def test_the_basis_is_the_users_and_is_never_switched_silently(seeded):  # noqa: F811
     c = complete_company(seeded, "Standalone IT", *IT, skip=("net_profit",))
     evidence(seeded, c, "INCOME.net_profit", 5, basis="STANDALONE")
-    r = rd.evaluate(seeded, c, today=TODAY)
-    assert r.by_id("net_profit").basis == "STANDALONE"
-    assert any("standalone figures only" in x for x in r.reasons)
+    r = rd.evaluate(seeded, c, today=TODAY)  # default: consolidated
+    s = r.by_id("net_profit")
+    assert s.status == rd.MISSING and s.value is None
+    assert "not available on the consolidated basis you chose" in s.reason
+    assert s.other_basis["basis"] == "STANDALONE" and s.action == "CHANGE_BASIS_OR_UPLOAD"
+    assert r.eligibility == rd.ASSISTED
+    own = rd.evaluate(seeded, c, today=TODAY, prefs=pf.Preferences(basis="STANDALONE"))
+    assert own.by_id("net_profit").basis == "STANDALONE"  # honoured when the user asks for it
+    assert (
+        own.by_id("revenue").status == rd.MISSING
+    )  # ...and revenue (consolidated only) is not borrowed
 
 
 def test_sections_report_which_parts_of_the_report_are_affected(seeded):  # noqa: F811

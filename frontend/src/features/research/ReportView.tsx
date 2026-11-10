@@ -32,6 +32,8 @@ function Items({ items }: { items: ReportItem[] }) {
             <span className="font-medium">{show(i)}</span>
             <span className="ml-2 text-xs text-zinc-500">
               {i.period_end ?? ""} {i.basis?.toLowerCase() ?? ""}
+              {i.dimension ? ` (${i.dimension.replace(/_/g, " ")})` : ""}
+              {i.period_note ? ` · ${i.period_note}` : ""}
               {i.source.page ? ` · p.${i.source.page}` : ""}
               {i.source.evidence_id ? ` · evidence #${i.source.evidence_id}` : ""}
             </span>
@@ -155,6 +157,9 @@ export default function ReportView({ report }: { report: Report }) {
         <p className="mt-1 text-xs text-zinc-600 dark:text-zinc-400">
           Research readiness {c.readiness.score} ({c.readiness.eligibility.toLowerCase()}, confidence{" "}
           {c.readiness.confidence.toLowerCase()}). {c.readiness.note}. As of {c.meta.as_of}.
+          {c.meta.preferences
+            ? ` Basis: ${c.meta.preferences.basis.toLowerCase()}; period: ${c.meta.preferences.period_label ?? c.meta.preferences.period_mode}.`
+            : ""}
         </p>
       </div>
       {c.sections.map((s) => (

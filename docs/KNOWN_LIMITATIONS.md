@@ -199,3 +199,20 @@ Honest list, as of 2026-11-08 (Phase 6 added at the end). Each item says what ha
   requirement.
 * The scorer still treats bank NPA / capital adequacy as having no source although ICICI has
   validated disclosure values.
+
+## Added in Phase 11b (2026-11-10)
+
+* Scanned results filings (SBI, HDFC Q2 FY27) have an embedded OCR text layer with misread digits and
+  Tesseract confidence of about 50-65%; statement values from them are accepted only when arithmetic
+  identities confirm them, so most of their statements are not read. A text-based filing, XBRL or
+  Excel results file would fix this.
+* Key figures from presentations are read only from simple tables, sentences and single-quarter
+  slide bullets; multi-panel slides are skipped rather than guessed.
+* SBI reports domestic and whole-bank NIM; only the domestic one is in its press-release table (the
+  whole-bank NIM is in a sentence without a table period) and is labelled domestic.
+* Gross advances and total deposits from a release are labelled as such; they are not the net
+  balance-sheet advances, and credit-deposit ratio and provisions still need the statements.
+* The operating readers need the period in the sentence; monthly sales releases and quarterly fact
+  sheets of Maruti, M&M, TVS, TCS and Infosys were not among the stored documents, so only two
+  real figures could be checked (Maruti quarterly volume, TCS annual attrition).
+* The frontend tests mock the API; there is no browser end-to-end test.

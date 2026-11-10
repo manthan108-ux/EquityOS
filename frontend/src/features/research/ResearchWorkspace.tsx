@@ -3,11 +3,14 @@
 import { useEffect, useRef, useState } from "react";
 
 import AccessKey, { useApiKey } from "@/features/research/AccessKey";
+import PreferencesPanel from "@/features/research/PreferencesPanel";
 import ReportView from "@/features/research/ReportView";
 import {
   ApiError,
   clarifyUpload,
   continueWithAvailable,
+  DEFAULT_PREFERENCES,
+  downloadReportPdf,
   fetchMissing,
   fetchReport,
   fetchReports,
@@ -17,8 +20,10 @@ import {
   generateReport,
   resumeResearch,
   startResearch,
+  updatePreferences,
   uploadDocuments,
   type MissingAssessment,
+  type Preferences,
   type Readiness,
   type Report,
   type ReportRow,
@@ -65,6 +70,8 @@ const UPLOAD_BADGE: Record<string, string> = {
 };
 const ACTION: Record<string, string> = {
   UPLOAD: "Upload the document below",
+  CHANGE_BASIS_OR_UPLOAD:
+    "Exists on the other basis: change the basis preference, or upload the statements on the basis you chose",
   EXTRACT_HELD: "EquityOS already holds a matching document: resume to process it",
   RECALCULATE: "Inputs exist: resume to recalculate",
   REFRESH_MARKET_DATA: "Needs fresh exchange price data (refreshed by EquityOS, not by you)",
@@ -223,6 +230,12 @@ function MissingItem({ m }: { m: Requirement }) {
         )}
       </dl>
       {m.reason && <p className="mt-2 text-xs text-zinc-500">Why it is missing: {m.reason}</p>}
+      {m.other_basis_available && (
+        <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
+          Available on the {m.other_basis_available.basis?.toLowerCase()} basis for{" "}
+          {m.other_basis_available.period_end}: not used unless you change the basis preference.
+        </p>
+      )}
       <p className="mt-1 text-xs font-medium">{ACTION[m.action] ?? m.action}</p>
     </li>
   );
@@ -490,14 +503,20 @@ export default function ResearchWorkspace({
         </p>
       )}
       {!session && (
-        <div>
+        <div className="space-y-4">
+          <PreferencesPanel
+            value={DEFAULT_PREFERENCES}
+            busy={busy || !key}
+            applyLabel="Start research with these preferences"
+            onApply={(p) => act(() => startResearch(companyId, p))}
+          />
           <button
             type="button"
             disabled={!key || busy}
             onClick={() => act(() => startResearch(companyId))}
             className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-40 dark:bg-zinc-100 dark:text-zinc-900"
           >
-            {busy ? "Starting…" : "Start research"}
+            {busy ? "Starting…" : "Start research with the defaults"}
           </button>
           <p className="mt-2 text-xs text-zinc-500">
             EquityOS first checks whether it holds enough validated evidence. If it does, research
@@ -527,6 +546,14 @@ export default function ResearchWorkspace({
               </div>
             )}
           </div>
+
+          <PreferencesPanel
+            key={JSON.stringify(session.preferences)}
+            value={session.preferences}
+            log={session.preference_log}
+            busy={busy || running}
+            onApply={(p: Preferences) => act(() => updatePreferences(session.id, p))}
+          />
 
           {r && <ReadinessPanel r={r} />}
 
@@ -658,7 +685,29 @@ export default function ResearchWorkspace({
               </ul>
             </section>
           )}
-          {report && <ReportView report={report} />}
+          {report && (
+            <div>
+              <button
+                type="button"
+                onClick={() => {
+                  downloadReportPdf(report.id)
+                    .then((blob) => {
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement("a");
+                      a.href = url;
+                      a.download = `equityos-report-v${report.version}.pdf`;
+                      a.click();
+                      URL.revokeObjectURL(url);
+                    })
+                    .catch((e) => setError(msg(e)));
+                }}
+                className="mb-2 rounded-lg border px-3 py-1.5 text-sm"
+              >
+                Download this report as PDF
+              </button>
+              <ReportView report={report} />
+            </div>
+          )}
         </>
       )}
     </section>

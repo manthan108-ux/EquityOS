@@ -30,6 +30,7 @@ from sqlalchemy.orm import Session
 
 from app.models import Company, ResearchSession, ResearchStep, Security
 from app.research import clock
+from app.research import preferences as pf
 from app.research import readiness as rd
 from app.research import report as rp
 from app.research import requirements as rq
@@ -82,11 +83,44 @@ class Context:
     llm_router: object | None = None
 
 
+def session_prefs(sess: ResearchSession) -> pf.Preferences:
+    """The preferences a session was started with (or last changed to)."""
+    return pf.Preferences.from_dict(sess.preferences or {})
+
+
+def set_preferences(
+    session: Session, sess: ResearchSession, prefs: pf.Preferences, by: str
+) -> bool:
+    """Record a preference choice. Every change is appended to the session's log, so a saved
+    session can always say which basis and period each stage of it was researched under."""
+    current = sess.preferences or None
+    if current and pf.Preferences.from_dict(current) == prefs:
+        return False
+    sess.preference_log = [
+        *(sess.preference_log or []),
+        {
+            "at": datetime.now(UTC).isoformat(),
+            "by": by,
+            "from": current,
+            "to": prefs.to_dict(),
+        },
+    ]
+    sess.preferences = prefs.to_dict()
+    session.flush()
+    return True
+
+
 def create_session(
-    session: Session, company: Company, owner: str, query: str, *, resume_open: bool = True
+    session: Session,
+    company: Company,
+    owner: str,
+    query: str,
+    *,
+    resume_open: bool = True,
+    prefs: pf.Preferences | None = None,
 ) -> ResearchSession:
     """A new research session; an unfinished one by the same owner for the same company is reused
-    so the user's progress is not duplicated."""
+    so the user's progress is not duplicated. Explicit preferences are recorded either way."""
     if resume_open:
         existing = session.scalar(
             select(ResearchSession)
@@ -99,10 +133,13 @@ def create_session(
             .limit(1)
         )
         if existing is not None:
+            if prefs is not None:
+                set_preferences(session, existing, prefs, owner)
             return existing
     sess = ResearchSession(company_id=company.id, owner=owner, query=query[:200], status="CREATED")
     session.add(sess)
     session.flush()
+    set_preferences(session, sess, prefs or pf.DEFAULT, owner)
     return sess
 
 
@@ -238,7 +275,7 @@ def _scoring(ctx: Context) -> dict:
 
 
 def _readiness(ctx: Context) -> dict:
-    ready = rd.evaluate(ctx.session, ctx.company, today=ctx.today)
+    ready = rd.evaluate(ctx.session, ctx.company, today=ctx.today, prefs=session_prefs(ctx.sess))
     ctx.sess.readiness = ready.as_dict()
     ctx.sess.readiness_score = ready.score
     ctx.sess.eligibility = ready.eligibility
@@ -401,6 +438,11 @@ def status(session: Session, sess: ResearchSession) -> dict:
         "eligibility": sess.eligibility,
         "readiness_score": None if sess.readiness_score is None else float(sess.readiness_score),
         "choice": sess.choice,
+        "preferences": {
+            **session_prefs(sess).to_dict(),
+            "period_label": session_prefs(sess).period_label(),
+        },
+        "preference_log": sess.preference_log or [],
         "last_error": sess.last_error,
         "created_at": sess.created_at.isoformat() if sess.created_at else None,
         "updated_at": sess.updated_at.isoformat() if sess.updated_at else None,

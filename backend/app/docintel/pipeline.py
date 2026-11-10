@@ -25,7 +25,7 @@ from sqlalchemy.orm import Session
 
 from app.core.storage import StoragePathError, resolve_inside
 from app.core.text import normalize_text
-from app.docintel import taxonomy, validate
+from app.docintel import kpi, operating, taxonomy, validate
 from app.docintel.association import build_issuer_index
 from app.docintel.disclosures import extract_shareholding, find_group_entities, find_sections
 from app.docintel.entity import (
@@ -127,7 +127,9 @@ def promotion_problem(
         return Decision(None, "cell is blank, nil or not a number")
     if not column.usable:
         return Decision(None, column.problem or "column is not a period column")
-    own_basis = block.statement != taxonomy.SHAREHOLDING  # holdings have no basis or unit
+    # holdings have no basis or unit; key figures from a press release state no basis (a
+    # regulatory ratio of the bank is not published per basis) and are labelled as such
+    own_basis = block.statement != taxonomy.SHAREHOLDING and not block.detection.startswith("kpi")
     if block.basis is None and own_basis:
         return Decision(None, "consolidated/standalone basis not stated")
     if own_basis and taxonomy.item_kind(fact.key) == "amount" and block.unit is None:
@@ -631,6 +633,39 @@ def _extract(
                     "detail": f"shareholding scan skipped after {type(exc).__name__}",
                 }
             )
+    # Key figures (NIM, NPA, capital adequacy, CASA, deposits, gross advances) printed in press
+    # releases and presentations. Only born-digital text is read, and never on a page that
+    # already yielded a statement or ratio table (those are held to arithmetic checks).
+    statement_pages = {b.page_number for b in blocks}
+    kpi_blocks: list[StatementBlock] = []
+    for page in content.pages:
+        if page.method != "text_layer" or not page.words or page.number in statement_pages:
+            continue
+        try:
+            kpi_blocks.extend(kpi.extract_page_kpis(page.number, page.words, page.text))
+        except Exception as exc:  # noqa: BLE001 - one odd page must not lose the document
+            issues.append(
+                {
+                    "page": page.number,
+                    "code": "PAGE_ERROR",
+                    "detail": f"key-figure scan skipped after {type(exc).__name__}",
+                }
+            )
+    blocks.extend(kpi.finalise(kpi_blocks))
+    # Vehicle volumes, attrition and utilisation stated in sentences with their period.
+    for page in content.pages:
+        if page.method != "text_layer" or not page.text or page.number in statement_pages:
+            continue
+        try:
+            blocks.extend(operating.extract_page_operating(page.number, page.text))
+        except Exception as exc:  # noqa: BLE001 - one odd page must not lose the document
+            issues.append(
+                {
+                    "page": page.number,
+                    "code": "PAGE_ERROR",
+                    "detail": f"operating-disclosure scan skipped after {type(exc).__name__}",
+                }
+            )
     if llm_router is not None:
         from app.llm.tables import read_missing_tables
 
@@ -706,6 +741,19 @@ def _extract(
             first_page_text=content.pages[0].text if content.pages else None,
             dominance=dominance,
         )
+        if (
+            not entity.confirmed
+            and block.detection.startswith("kpi")
+            and document.association_status == "FORCED"
+        ):
+            # a press release often never names the bank; the uploader's confirmation (an
+            # audited event on the document) stands in, and the figures are labelled so
+            entity = EntityCheck(
+                True, "issuer confirmed by the uploader (document does not name it)"
+            )
+            block.issues.append(
+                {"page": block.page_number, "code": "ISSUER_BY_UPLOADER", "detail": entity.how}
+            )
         if not entity.confirmed and document.company_id is not None:
             block.issues.append(
                 {"page": block.page_number, "code": "ENTITY_UNCONFIRMED", "detail": entity.how}
@@ -756,13 +804,20 @@ def _extract(
                 fact,
                 status,
                 validate.column_verified(results, fact.column_index)
-                or _layout_ok(block, fact.column_index, verified_layouts),
+                or _layout_ok(block, fact.column_index, verified_layouts)
+                or block.detection.startswith("kpi"),
                 document.company_id is not None,
                 entity,
                 scanned_page=page_method.get(fact_page) in ("embedded_ocr", "ocr"),
                 ocr_review=doubt,
             )
             notes = list(notes)
+            if block.detection.startswith("kpi"):
+                notes.append(
+                    "key figure read from born-digital text of a release/presentation; its "
+                    "period was tied to a column header or sentence date; no arithmetic "
+                    "identity applies"
+                )
             if ocr_note:
                 notes.append(ocr_note)
             if column.repairs:

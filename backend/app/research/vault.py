@@ -230,6 +230,8 @@ def fiscal_labels(period_end: date | None, months: int | None) -> tuple[str | No
     if period_end is None:
         return None, None
     fy = rd.fiscal_year(period_end)
+    if months is None:
+        months = 3  # "as at" a quarter end
     if months == 12:
         return fy, None
     quarter = {6: "Q1", 9: "Q2", 12: "Q3", 3: "Q4"}.get(period_end.month)
@@ -425,6 +427,29 @@ def _next_version(session: Session, entry: VaultEntry) -> int:
     return (n or 0) + 1
 
 
+def document_period(columns: list[dict], today: date) -> tuple[date, int | None] | None:
+    """(period end, months) a document covers, from the columns the extractor could read.
+
+    Only columns without a problem count (a misread header must not set the period), nothing
+    later than a week from today (a misread date cannot make a document "from the future"), and
+    among the newest period end the SHORTEST stated duration wins: a results filing carries a
+    quarter, a half year and a year ending on the same date, and the quarter is what it reports.
+    """
+    usable = []
+    for col in columns:
+        if col.get("is_note") or col.get("problem") or not col.get("period_end"):
+            continue
+        end = date.fromisoformat(col["period_end"])
+        if (end - today).days > 7:
+            continue
+        usable.append((end, col.get("duration_months")))
+    if not usable:
+        return None
+    latest = max(end for end, _ in usable)
+    durations = [m for end, m in usable if end == latest and m]
+    return latest, (min(durations) if durations else None)
+
+
 def _extraction_conflicts(session: Session, extraction_id: int) -> list[dict]:
     """Disagreements the extractor met with documents already stored (it keeps the newer one and
     records the other in the fact's notes; here they are surfaced to the uploader)."""
@@ -605,16 +630,14 @@ def _process_pdf(
             select(ExtractedStatement).where(ExtractedStatement.extraction_id == run.id)
         )
     )
-    ends: list[tuple[date, int | None]] = []
+    columns: list[dict] = []
     bases = set()
     for st in statements:
         if st.basis:
             bases.add(st.basis)
-        for col in st.columns or []:
-            if col.get("period_end") and col.get("duration_months") and not col.get("is_note"):
-                ends.append((date.fromisoformat(col["period_end"]), col["duration_months"]))
-    if ends:
-        newest = max(ends)
+        columns.extend(st.columns or [])
+    newest = document_period(columns, clock.today())
+    if newest is not None:
         entry.period_end = newest[0].isoformat()
         entry.fiscal_year, entry.quarter = fiscal_labels(*newest)
         if document.financial_period is None:
@@ -941,6 +964,26 @@ def _finish_table(
     return entry
 
 
+def reprocess(
+    session: Session, entry_id: uuid.UUID, *, data_dir: Path | None = None, llm_router=None
+) -> VaultEntry:
+    """Run the checks and the extraction on an existing upload again (the readers improved, or an
+    earlier attempt failed). Nothing is re-uploaded; earlier extraction runs stay in the audit
+    trail and the new run supersedes them. Duplicates and uploads never stored cannot be re-run."""
+    entry = session.get(VaultEntry, entry_id)
+    if entry is None:
+        raise ValueError("no such vault entry")
+    if entry.status == DUPLICATE or (
+        entry.document_id is None and not (entry.detected or {}).get("stored_as")
+    ):
+        raise ValueError("this upload has nothing stored to process again")
+    entry.status = RECEIVED
+    entry.reject_reason = None
+    entry.ambiguities = None
+    session.flush()
+    return process_entry(session, entry.id, data_dir=data_dir, llm_router=llm_router)
+
+
 def clarify(
     session: Session, entry_id: uuid.UUID, answers: dict, *, data_dir: Path | None = None
 ) -> VaultEntry:
@@ -1027,4 +1070,5 @@ __all__ = [
     "list_vault",
     "process_entry",
     "receive_upload",
+    "reprocess",
 ]

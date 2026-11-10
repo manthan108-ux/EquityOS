@@ -60,6 +60,7 @@ SEGMENT_TABLES = "SEGMENT_TABLES"
 NARRATIVE_SECTION = "NARRATIVE_SECTION"
 MARKET_DATA = "MARKET_DATA"  # prices come from the exchange files / market provider, not uploads
 DERIVED = "DERIVED"  # calculated from other evidence by the calculation engine
+OPERATING_TEXT = "OPERATING_TEXT"  # stated in a sentence with its period (docintel/operating.py)
 NONE = "NONE"  # no extractor exists: the figure cannot be machine-read from a document yet
 
 ANNUAL_AGE = 548  # days; same staleness bound as the absolute-scoring gate
@@ -456,7 +457,9 @@ def _segment_reqs(level: str, ebitda_level: str) -> list[Requirement]:
     ]
 
 
-def _volume(label: str, importance: str, rid: str, why: str) -> Requirement:
+def _volume(
+    label: str, importance: str, rid: str, why: str, *, extractor: str = OPERATING_TEXT
+) -> Requirement:
     return R(
         id=rid,
         label=label,
@@ -465,13 +468,18 @@ def _volume(label: str, importance: str, rid: str, why: str) -> Requirement:
         sections=("sector_analysis",),
         why=why,
         affects="sector-specific analysis (not part of the financial score)",
-        document="investor presentation / press release / earnings call",
-        doc_types=("investor_presentation", "earnings_transcript"),
+        document="results press release, monthly sales release, fact sheet or annual report",
+        doc_types=(
+            "investor_presentation",
+            "earnings_transcript",
+            "quarterly_result",
+            "annual_report",
+        ),
         pillar=SECTOR,
         period="LATEST",
         max_age_days=ANNUAL_AGE,
         basis="NA",
-        extractor=NONE,
+        extractor=extractor,
     )
 
 
@@ -533,7 +541,13 @@ def _bank() -> list[Requirement]:
             id="advances",
             label="Advances (loans)",
             importance=CRITICAL,
-            metrics=("BALANCE_SHEET.advances",),
+            metrics=("BALANCE_SHEET.advances", "RATIOS.gross_advances"),
+            period="LATEST",
+            max_age_days=QUARTER_AGE,
+            alternative=(
+                "the gross advances a results release or presentation states (labelled gross, "
+                "not the net balance-sheet figure)"
+            ),
             sections=("balance_sheet", "sector_analysis", "scorecard"),
             why="The loan book is the bank's main asset; its growth and quality drive earnings.",
             affects="credit growth, credit-deposit ratio, asset quality ratios",
@@ -544,7 +558,10 @@ def _bank() -> list[Requirement]:
             id="deposits",
             label="Deposits",
             importance=CRITICAL,
-            metrics=("BALANCE_SHEET.deposits",),
+            metrics=("BALANCE_SHEET.deposits", "RATIOS.total_deposits"),
+            period="LATEST",
+            max_age_days=QUARTER_AGE,
+            alternative="the total deposits a results release or presentation states",
             sections=("balance_sheet", "sector_analysis", "scorecard"),
             why="Deposits fund the bank; their growth and mix decide its cost of funds.",
             affects="deposit growth, credit-deposit ratio, CASA",
@@ -565,7 +582,7 @@ def _bank() -> list[Requirement]:
             period="LATEST",
             max_age_days=QUARTER_AGE,
             extractor=RATIO_TABLES,
-            basis="STANDALONE_OK",
+            basis="NA",
             alternative=(
                 "reported NIM from the results presentation; NII divided by average total "
                 "assets is NOT NIM and is not accepted as a substitute"
@@ -585,7 +602,7 @@ def _bank() -> list[Requirement]:
             period="LATEST",
             max_age_days=QUARTER_AGE,
             extractor=RATIO_TABLES,
-            basis="STANDALONE_OK",
+            basis="NA",
         ),
         R(
             id="net_npa",
@@ -601,7 +618,7 @@ def _bank() -> list[Requirement]:
             period="LATEST",
             max_age_days=QUARTER_AGE,
             extractor=RATIO_TABLES,
-            basis="STANDALONE_OK",
+            basis="NA",
         ),
         R(
             id="capital_adequacy",
@@ -617,7 +634,7 @@ def _bank() -> list[Requirement]:
             period="LATEST",
             max_age_days=QUARTER_AGE,
             extractor=RATIO_TABLES,
-            basis="STANDALONE_OK",
+            basis="NA",
         ),
         R(
             id="casa",
@@ -633,7 +650,7 @@ def _bank() -> list[Requirement]:
             period="LATEST",
             max_age_days=QUARTER_AGE,
             extractor=RATIO_TABLES,
-            basis="STANDALONE_OK",
+            basis="NA",
         ),
         R(
             id="cost_to_income",
@@ -716,6 +733,7 @@ def _fmcg() -> list[Requirement]:
             OPTIONAL,
             "volume_growth",
             "Separates real demand growth from price increases.",
+            extractor=NONE,
         ),
         *_price_block(bank=False),
         *_narrative_block(),

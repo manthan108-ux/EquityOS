@@ -126,8 +126,7 @@ def satisfy(session, company, req, document=None, **kw):
             session, company, metric, None, end=None, ptype=None, basis=None,
             kind="DOCUMENT_SECTION", text="heading", document=document, **kw,
         )  # fmt: skip
-    standalone = req.basis == "STANDALONE_OK"
-    basis = "STANDALONE" if standalone else "CONSOLIDATED"
+    basis = None if req.basis == "NA" else kw.pop("basis", "CONSOLIDATED")
     if req.period in ("QUARTERLY", "LATEST"):
         return evidence(
             session, company, metric, 5, end=QUARTER, ptype="QUARTERLY", basis=basis,

@@ -126,11 +126,61 @@ missing-data assessment (importance, why, affects, document, period, basis, offi
 EquityOS already holds) with the two choices "generate with what is available" or upload -> upload
 panel with per-file validation status, clarifications and conflicts -> report versions and report.
 
-## 9. Not done / limits
+## 9. Research preferences (`research/preferences.py`)
 
-* No PDF rendering of the report (later phase); the report is structured data shown in the page.
-* Figures with `extractor = NONE` cannot be obtained by upload.
-* NIM and CASA are read only from ratio tables in a document; nothing computes NIM.
+Stored per session (`research_sessions.preferences`) with an append-only log
+(`preference_log`), changed by `PUT /sessions/{id}/preferences`. Defaults: **consolidated** basis,
+**latest available quarter**, **optional items off**.
+
+* **Basis is the user's and is never switched silently.** Statement figures are used only on the
+  chosen basis. If a figure exists only on the other one it is reported MISSING, with the reason and
+  the other basis named (`CHANGE_BASIS_OR_UPLOAD`); nothing is borrowed. Bank-level regulatory
+  ratios (NIM, NPA, capital adequacy, CASA) are not published per basis and are not filtered by it.
+* **Period.** `LATEST_QUARTER` prefers a quarter within 240 days and falls back to the latest annual
+  figure only when none exists for that figure; the fallback is labelled on the figure and in the
+  readiness reasons. `LATEST_ANNUAL`, `QUARTER` (e.g. Q2 FY2027) and `FISCAL_YEAR` are exact: a
+  chosen period is never replaced by a newer or older one and is not judged "stale".
+* **History.** A saved session keeps its own preferences and the log of every earlier choice; each
+  report records the preferences it was made under, and a changed choice produces a new report
+  version while old versions stay untouched.
+* **Optional items** are not evaluated at all when off, so they never appear as gaps or affect the
+  readiness score; when on they still never block research.
+
+## 10. Bank key figures, operating disclosures and the PDF
+
+* `docintel/kpi.py` reads NIM, gross/net NPA ratio, capital adequacy, CASA ratio, total deposits,
+  gross advances (and NPA amounts) from born-digital press releases, key-parameter sheets and
+  presentations: tables whose header carries two or more period labels, sentences with an explicit
+  "as of <date>", and slide bullets under a heading that names exactly one quarter. A label must
+  match exactly (sub-portfolios and different measures are ignored); two measures of one name are
+  kept apart by a dimension (domestic / whole-bank NIM, NIM on assets / on interest-earning assets);
+  a row with fewer than two period values is skipped; a percentage under an amount label is a
+  growth figure and is refused; implausible values, net NPA above gross NPA, and a gross NPA ratio
+  that disagrees with printed amounts are dropped with a reason. These pages never go through the
+  statement route's arithmetic checks, so they are labelled as key figures in the validation notes;
+  scanned pages are not read this way. A release that never names the bank is accepted only after
+  the uploader confirms the issuer, and the figures are then marked as such.
+* `docintel/operating.py` reads total vehicle sales volume, employee attrition and utilisation from
+  sentences that name their own period (quarter, financial year or month). Actuarial "attrition
+  rate (for gratuity)", capacity utilisation and utilisation of funds/reserves are refused; variants
+  (voluntary / LTM attrition, with / without trainees) are kept as dimensions. Checked on the held
+  documents: Maruti's Q2 FY27 press release (696,654 units) and TCS's FY2026 annual report (voluntary
+  IT-services attrition 13.7%) are read; TVS's gratuity attrition is not; Infosys and the TCS/Infosys
+  quarterly statements held contain no such disclosure, so nothing is read from them.
+* `research/pdf.py` (ReportLab) renders a stored report: same twelve sections, gaps in amber boxes,
+  citations (page, evidence id), limitations, readiness components, the basis and period used,
+  page numbers and the report id/hash in the footer. `GET /api/research/reports/{id}/pdf`.
+
+## 11. Not done / limits
+
+
+* Only FMCG volume growth still has no reader (`extractor = NONE`; optional).
+* Scanned filings: SBI's and HDFC's Q2 FY27 results are scans with a poor text layer; the
+  statement route accepts only checked values from them (SBI: none; HDFC: 10 of 417), so their
+  interest earned/expended for the quarter are not read. Axis's presentation tables are
+  multi-panel slides and are not read (its headline ratios come from the slide bullets).
+* Axis's balance-sheet header assignment still refuses its deposits/advances columns.
+* NIM and CASA are read only where a document prints them; nothing computes NIM.
 * Peer or benchmark changes do not auto-trigger a re-run of PEERS/SCORING.
 * In-process job pool and rate limiter (single server).
 * Scanned PDFs need OCR (not installed on the host; installed in Docker).
