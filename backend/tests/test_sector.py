@@ -483,7 +483,7 @@ def test_only_momentum_data_gives_pillar_scores_but_no_overall(seeded):
 def test_banks_use_bank_metrics_and_are_never_compared_with_non_financials(seeded):
     bank = mk_company(seeded, "Bank1", "banking", "private_sector_bank")
     bank2 = mk_company(seeded, "Bank2", "banking", "private_sector_bank")
-    other = mk_company(seeded, "Maker", "banking", "private_sector_bank")  # same sector, not a bank
+    other = mk_company(seeded, "Maker")  # an IT company: never a bank peer
     size(seeded, bank, 1000, bank=True)
     size(seeded, bank2, 1200, bank=True)
     size(seeded, other, 1000)
@@ -492,9 +492,17 @@ def test_banks_use_bank_metrics_and_are_never_compared_with_non_financials(seede
     report = run(seeded, bank)
     assert report.candidate.profile == "BANK" and report.profile.sector_code == "banking"
     assert [p.candidate.name for p in report.picks] == ["Bank2"]
-    assert any("different statement profile" in why for _, why in report.rejected)
+    assert any(c.name == "Maker" for c, _ in report.rejected)
     roe = next(o for o in report.outcomes if o.code == "RETURN.roe_closing")
     assert roe.stats.rank.value == D(100) and roe.peers == 1
+
+
+def test_a_banking_sector_company_without_bank_statements_is_still_scored_as_a_bank(seeded):
+    """SBI had only a non-bank-format source at first: its sector decides the profile."""
+    bank = mk_company(seeded, "NoStatementsBank", "banking", "private_sector_bank")
+    size(seeded, bank, 1000)
+    metric(seeded, bank, "RETURN.roe_closing", 12)
+    assert run(seeded, bank).candidate.profile == "BANK"
 
 
 def test_peers_are_aligned_on_the_period_most_of_them_share(seeded):
@@ -684,3 +692,26 @@ def test_api_404s_and_read_only(seeded, client):
     lone = mk_company(seeded, "Lone")
     assert client.get(f"/api/companies/{lone.id}/peers").status_code == 404
     assert client.post(f"/api/companies/{lone.id}/peers").status_code == 405
+
+
+def test_a_thin_peer_group_never_produces_an_overall_score(seeded):
+    """Two or fewer peers is a head-to-head: pillar scores are shown, the overall is withheld."""
+    a, b = mk_company(seeded, "A"), mk_company(seeded, "B")
+    for c, v in ((a, 10), (b, 20)):
+        size(seeded, c, 1000)
+        for code in (
+            "MARGIN.net_margin",
+            "RETURN.roe_closing",
+            "GROWTH.revenue_yoy",
+            "GROWTH.net_profit_yoy",
+            "MARGIN.pbt_margin",
+            "RETURN.roa_closing",
+            "LEVERAGE.equity_multiplier",
+            "VALUATION.pe_ttm",
+        ):
+            metric(seeded, c, code, v)
+    report = run(seeded, a)
+    assert report.peer_set.thin is True
+    assert report.pillar_records and report.overall is None
+    assert report.peer_set.summary["overall"] is None
+    assert "minimum 3" in report.peer_set.summary["overall_withheld"]

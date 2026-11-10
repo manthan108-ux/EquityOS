@@ -198,6 +198,14 @@ def analyze_company(
         )
 
     card = score({p: [r.value for r in rs] for p, rs in ranks_by_pillar.items()}, profile.weights)
+    if thin and card.overall is not None:
+        # A percentile against one or two peers is a head-to-head, not a sector view. The pillar
+        # scores stay visible (flagged thin) but no overall score is manufactured from them.
+        card.overall = None
+        card.withheld = (
+            f"only {len(picks)} peer(s) in the sector (minimum {MIN_PEERS}): pillar scores are "
+            "shown as a small-sample comparison, no overall score"
+        )
     report.scorecard = card
     for pillar in PILLARS:
         if ranks_by_pillar[pillar]:

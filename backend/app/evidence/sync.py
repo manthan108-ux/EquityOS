@@ -49,6 +49,7 @@ from app.models import (
     ValidationStatus,
 )
 from app.normalization import PER_SHARE_UNITS, UNIT_TO_INR
+from app.providers.upstox_map import UPSTOX_CODE, canonical_line
 
 T_FINANCIAL = "financial_facts"
 T_DISCLOSURE = "extracted_facts"
@@ -190,6 +191,15 @@ def _financial_drafts(
     )
     by_id = {f.id: f for f in facts}
     cells = _extracted_index(session, company_id)
+    # Upstox lines whose definition can differ from a filing's (ITC's filing shows revenue gross of
+    # excise duty, Upstox net of it) are only filed under the canonical keys for a statement,
+    # period and basis that no filing covers: blending parts of both inside one statement would
+    # break the arithmetic checks. The raw Upstox lines are always kept (providers/upstox_map.py).
+    filing_covered = {
+        (f.statement.value, f.period_end, f.period_type.value, f.basis.value)
+        for f in facts
+        if f.provider_code != UPSTOX_CODE and f.provider_code not in DERIVED_PROVIDERS
+    }
     drafts: dict[str, Draft] = {}
     for f in facts:
         unit_name = (f.original_unit or "").strip().lower()
@@ -208,6 +218,8 @@ def _financial_drafts(
         value, unit, _ = norm
         derived = f.provider_code in DERIVED_PROVIDERS
         statement = f.statement.value
+        covered = (statement, f.period_end, f.period_type.value, f.basis.value) in filing_covered
+        line_name = canonical_line(f.provider_code, statement, f.line_item, covered)
         details: dict = {"period_label": f.period_label}
         if f.history:
             details["restated"] = True
@@ -273,7 +285,7 @@ def _financial_drafts(
             source_id=_financial_key(f),
             evidence_class=EvidenceClass.CALCULATION if derived else EvidenceClass.FACT,
             kind="FINANCIAL_STATEMENT",
-            metric=f"{statement}.{f.line_item}",
+            metric=f"{statement}.{line_name}",
             period_end=f.period_end,
             period_type=f.period_type.value,
             basis=f.basis.value,

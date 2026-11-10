@@ -139,7 +139,10 @@ def candidate_for(session: Session, company: Company) -> Candidate | None:
     )
     if not index_rows:
         return None
-    bank = any(r.metric == "INCOME.interest_earned" for r in index_rows)
+    # A bank is recognised by its statements (interest earned) or, where no bank-format statement
+    # has been read yet, by its sector: scoring a bank on non-financial metrics would be wrong.
+    sector_code = company.sector.code if company.sector else None
+    bank = sector_code == "banking" or any(r.metric == "INCOME.interest_earned" for r in index_rows)
     size = None
     totals = [
         r for r in index_rows if r.metric == "INCOME.total_income" and r.period_type == "ANNUAL"
@@ -152,7 +155,7 @@ def candidate_for(session: Session, company: Company) -> Candidate | None:
     return Candidate(
         company_id=str(company.id),
         name=company.common_name,
-        sector_code=company.sector.code if company.sector else None,
+        sector_code=sector_code,
         industry_code=company.industry.code if company.industry else None,
         profile="BANK" if bank else "NONFIN",
         size=size,
