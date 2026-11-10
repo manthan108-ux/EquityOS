@@ -52,6 +52,12 @@ from app.models.facts import (
 )
 from app.models.imports import MasterDataImport
 from app.models.reference import Exchange, Industry, Sector
+from app.models.research import (
+    ResearchReport,
+    ResearchSession,
+    ResearchStep,
+    VaultEntry,
+)
 from app.models.scoring import (
     BenchmarkObservation,
     BenchmarkStat,
@@ -125,4 +131,8 @@ __all__ = [
     "Sector",
     "Security",
     "SecurityStatus",
+    "ResearchReport",
+    "ResearchSession",
+    "ResearchStep",
+    "VaultEntry",
 ]

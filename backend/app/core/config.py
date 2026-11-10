@@ -37,6 +37,12 @@ class Settings(BaseSettings):
     # Recomputing stored scores/benchmarks over HTTP is off until an authentication layer exists.
     scoring_admin_enabled: bool = False
     upstox_enabled: bool = True
+    # Research workflow (Phase 11). API clients are "name:secret" pairs, comma-separated; the
+    # secret is compared by hash and never logged. Roles: "name:secret:admin" for an admin.
+    research_api_keys: str = ""
+    research_max_upload_mb: int = 50
+    research_rate_limit_per_minute: int = 30  # per client, for upload/report endpoints
+    research_upload_rate_per_hour: int = 20  # uploads per client
     data_gov_in_api_key: str | None = None  # free key from data.gov.in
 
     # LLM providers (free tiers). Keys live only in .env; model names are configuration, not code.

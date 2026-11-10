@@ -183,3 +183,19 @@ Honest list, as of 2026-11-08 (Phase 6 added at the end). Each item says what ha
   production build pass.
 * **Bank metrics** (NIM, CASA, GNPA, NNPA, provision coverage, capital adequacy) are not extracted for any bank.
 * **Recompute endpoints** are disabled by default (no authentication layer).
+
+## Added in Phase 11 (2026-11-10)
+
+* The report is structured data shown in the dashboard; there is no PDF rendering yet.
+* Vehicle volumes, attrition, utilisation and FMCG volume growth cannot be read from any document
+  yet; they are disclosed as unavailable and cannot be supplied by upload.
+* NIM and CASA are read only from ratio tables printed in a document; they are not computed.
+* A user who confirms an unreadable issuer still gets no figures if the statement pages name nobody.
+* Peer and benchmark changes of OTHER companies do not trigger a re-run of the PEERS/SCORING stages;
+  a source refresh or `force` does.
+* Background jobs and the rate limiter live in one process; several workers need a shared queue and
+  limiter.
+* Private or licensed uploads are stored but never feed the shared evidence, so they cannot settle a
+  requirement.
+* The scorer still treats bank NPA / capital adequacy as having no source although ICICI has
+  validated disclosure values.

@@ -350,3 +350,22 @@ BSE list imported from the manually downloaded file (5,139 rows, 4,855 usable). 
 - One stored document (ICICI Prudential AMC's presentation) is linked to ICICI Bank from Phase 4 and still counts toward ICICI Bank's 'investor presentations' coverage; its numbers are refused by the entity check. It should be unlinked (not done automatically: existing records are not changed without your confirmation).
 - PyMuPDF is AGPL-3.0: fine for private use; see ARCHITECTURE decision 23 before offering EquityOS publicly.
 - Docker image builds are not part of CI yet.
+
+
+## Phase 11 - evidence-aware research workflow (2026-11-10)
+
+Built and tested: requirements registry (7 profiles), readiness engine with a separate readiness
+score and multi-rule eligibility, research orchestrator with resumable stages, company evidence
+vault with validated uploads (PDF, XLSX, CSV), structured available-evidence and complete reports
+with version history, `/api/research` endpoints (API key, ownership, rate limits, size limits,
+background jobs), migration `0013`, and the dashboard research workspace. See
+`docs/RESEARCH_WORKFLOW.md`.
+
+Also corrected: `sector/bank_coverage.py` looked for the wrong evidence codes (`ASSET_QUALITY.*`)
+and wrongly reported that no bank had NPA or capital-adequacy figures. ICICI has validated gross
+NPA, net NPA and capital adequacy (`RATIOS.*`); the other banks and the NIM / CASA ratios remain
+gaps.
+
+Known open item: Reliance's 1:1 bonus (28 Oct 2024) is not in `corporate_actions` or
+`price_adjustments`. It does not affect today's 1-year metrics but would corrupt multi-year price
+returns.

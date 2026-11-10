@@ -337,6 +337,12 @@ RATIO_ITEMS: tuple[Item, ...] = (
         r"gross npa",
     ),
     _i("net_npa_amount", RATIOS, r"net non[- ]performing (customer )?assets", r"net npa"),
+    # Printed in bank results / presentations as a percentage (Phase 11: needed for the research
+    # readiness requirements of banks; absent from a table it is simply not extracted).
+    _i(
+        "net_interest_margin", RATIOS, r"net interest margin( \(nim\))?", r"\bnim\b", kind="percent"
+    ),
+    _i("casa_ratio", RATIOS, r"casa ratio", r"casa deposits? ratio", kind="percent"),
     _i(
         "gross_npa_ratio",
         RATIOS,

@@ -10,3 +10,5 @@ feedparser==6.0.14
 beautifulsoup4==4.15.0
 httpx==0.28.1
 pymupdf==1.26.5
+python-multipart==0.0.33
+openpyxl==3.1.5

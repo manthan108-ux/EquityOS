@@ -1,4 +1,5 @@
 import CompanySearch from "@/features/search/CompanySearch";
+import SessionHistory from "@/features/research/SessionHistory";
 import SystemStatus from "@/features/health/SystemStatus";
 
 export default function Home() {
@@ -11,6 +12,7 @@ export default function Home() {
         </p>
       </div>
       <CompanySearch />
+      <SessionHistory />
       <div className="mt-auto flex w-full flex-col items-center gap-4 pt-12">
         <SystemStatus />
         <p className="max-w-md text-center text-xs text-zinc-500">
