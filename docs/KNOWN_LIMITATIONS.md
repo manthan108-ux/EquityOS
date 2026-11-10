@@ -158,3 +158,28 @@ Honest list, as of 2026-11-08 (Phase 6 added at the end). Each item says what ha
   (cash-flow pages, OCR text) has no dates in its column headings and is not promoted.
 * No company has an overall score yet: pillar coverage is 10-55% of sector weight (minimum 60%).
 * LLM runs are not perfectly repeatable and free-tier quotas limit batch size.
+
+## Added in Phase 10 (2026-11-10)
+
+* **Data for the nine new companies is Upstox only.** Upstox has no depreciation, finance costs, borrowings,
+  capex or shares outstanding, so EBITDA, ROCE, interest cover, debt/equity, free cash flow, market cap and
+  P/B are missing for them. This is the main reason twelve companies have no absolute score. Filings (text PDFs)
+  are the fix; the TVS annual report found has no text layer.
+* **HUL, ITC, Reliance, Maruti** have no absolute score. Reliance has no segment data (SOTP is a framework only).
+  HUL's FY26 growth may be affected by its ice-cream demerger; it is not in the identity registry yet.
+* **Valuation benchmarks** need >=12 observations: price-date multiples give one per company, so valuation is
+  usually unscored.
+* **Phase 8 vs the scoring layer**: `sector analyze-all` still emits relative scores wherever there are three
+  same-industry peers (Maruti, M&M, Hyundai). The scoring layer additionally applies peer *eligibility*; its
+  verdict (shown in the API and dashboard) is authoritative.
+* **TMPV relative score is 0.0** (last among three peers on every compared metric, standalone basis, small sample,
+  restructured entity). It is shown with LOW confidence and the restructuring note; treat as unreliable.
+* **Convention curves** are not validated benchmarks. No inflation or accounting-standard adjustment of benchmarks
+  yet; at most four fiscal years per company, so no business-cycle depth.
+* **Hybrid scoring** is disabled (calibration cannot be shown with this sample).
+* **Dashboard**: scorecard, radar, drill-down with benchmark bars, history list and methodology switch are built.
+  The compare view, score-movement chart, benchmark-coverage chart and the Reliance conglomerate page are not
+  (the compare API exists). There are no automated frontend tests (none are configured); lint, type check and
+  production build pass.
+* **Bank metrics** (NIM, CASA, GNPA, NNPA, provision coverage, capital adequacy) are not extracted for any bank.
+* **Recompute endpoints** are disabled by default (no authentication layer).
