@@ -208,6 +208,27 @@ Details: [SECTOR_ENGINE.md](SECTOR_ENGINE.md).
 * **Rules added**: a thin peer group (<3) never yields an overall score; a company in the banking sector is
   scored with the bank profile even when no bank-format statement has been read.
 
+## Phase 10 - 24 companies, benchmarks and absolute scoring (2026-11-10)
+
+Full description: [SCORING.md](SCORING.md).
+
+* **Sample 15 -> 24**: Nestle India, Britannia, Godrej Consumer, Tata Motors Passenger Vehicles, Hyundai Motor
+  India, TVS Motor, ONGC, IOC, BPCL. Identity checked against the NSE master and recorded
+  (`seeds/identity.py`): TMPV is the renamed original Tata Motors (CV demerged to TMCV, which is NOT added);
+  Nestle changed its year end; Hyundai listed in Oct 2024. Data: Upstox fundamentals for all nine (verified
+  live); filings: only a TVS annual report was found, and it has no text layer, so nothing was extracted from it.
+* **Peer groups are industry-level** (banks are one group). Reliance is a diversified conglomerate with no
+  industry peers. Passenger vehicles (Maruti, M&M, TMPV, Hyundai) is the only new group with 3+ peers.
+* **Scoring methodologies**: RELATIVE (Phase 8, unchanged), ABSOLUTE (new, benchmark-based), HYBRID (built, disabled
+  until calibration can be justified), UNAVAILABLE (with reasons). Benchmark database, metric definitions, scoring
+  configuration and score runs are versioned tables (migration 0012). New API, scorecard on the dashboard.
+* **Scores**: ten relative scores unchanged; TMPV relative (0.0, LOW confidence); M&M absolute 77.0 (LOW). Twelve
+  companies are UNAVAILABLE for lack of evidence, each with a stored reason.
+* **SBI bank-specific coverage**: investigated (`sector/bank_coverage.py`). No source held for SBI provides interest
+  earned/expended, deposits, advances, NII, NIM, NPA or capital adequacy; Upstox gives only summary lines. They stay
+  gaps; no non-bank metric substitutes. The same NPA/NIM/CAR/CASA gap applies to every bank.
+* 805+ tests.
+
 ## Phase 8 close-out - ready for Phase 9 (2026-11-08)
 
 Finished before the LLM layer starts:
