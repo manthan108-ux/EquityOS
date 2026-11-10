@@ -81,6 +81,40 @@ class PriceAdjustment(Base):
         ForeignKey("corporate_actions.id", ondelete="SET NULL")
     )
     detail: Mapped[str] = mapped_column(Text)
+    # The ratio as published ("1:1") and where the event comes from: the corporate-action row,
+    # its provider and, for a verified action, the document, page and quoted sentence.
+    ratio_text: Mapped[str | None] = mapped_column(String(40))
+    source: Mapped[dict | None] = mapped_column(JSONB)
+    built_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class AdjustedPrice(Base):
+    """A split/bonus-adjusted daily bar, stored SEPARATELY from the official unadjusted price.
+
+    `eod_prices` is never changed. Each row here carries the cumulative factor that was applied and
+    the events (ex-date, ratio, factor, origin, source) that make it up, so any adjusted figure can
+    be traced to the corporate actions behind it. Rebuilt from prices and events; derived data.
+    """
+
+    __tablename__ = "adjusted_prices"
+    __table_args__ = (
+        UniqueConstraint("security_id", "trade_date", "series"),
+        Index("ix_adjusted_prices_security_date", "security_id", "trade_date"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    security_id: Mapped[int] = mapped_column(ForeignKey("securities.id", ondelete="CASCADE"))
+    trade_date: Mapped[date] = mapped_column(Date)
+    series: Mapped[str] = mapped_column(String(10), default="EQ", server_default="EQ")
+    open: Mapped[Decimal | None] = mapped_column(Numeric(18, 6))
+    high: Mapped[Decimal | None] = mapped_column(Numeric(18, 6))
+    low: Mapped[Decimal | None] = mapped_column(Numeric(18, 6))
+    close: Mapped[Decimal] = mapped_column(Numeric(18, 6))
+    volume: Mapped[Decimal | None] = mapped_column(Numeric(24, 4))
+    raw_close: Mapped[Decimal] = mapped_column(Numeric(18, 4))
+    cumulative_factor: Mapped[Decimal] = mapped_column(Numeric(18, 8))
+    # [{ex_date, factor, ratio_text, kind, origin, source}] of the events applied to this bar
+    events: Mapped[list | None] = mapped_column(JSONB)
     built_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 

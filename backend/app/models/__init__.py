@@ -8,6 +8,7 @@ from app.models.acquisition import (
 )
 from app.models.base import Base
 from app.models.calc import (
+    AdjustedPrice,
     AdjustmentKind,
     AdjustmentOrigin,
     AdjustmentStatus,
@@ -25,6 +26,8 @@ from app.models.docintel import (
     ExtractionStatus,
     GroupEntity,
     ValidationStatus,
+    XbrlFact,
+    XbrlFiling,
 )
 from app.models.evidence import (
     EvidenceClass,
@@ -86,6 +89,7 @@ __all__ = [
     "AdjustmentStatus",
     "CalculationGap",
     "CalculationRun",
+    "AdjustedPrice",
     "PriceAdjustment",
     "EvidenceClass",
     "EvidenceLink",
@@ -101,6 +105,8 @@ __all__ = [
     "GroupEntity",
     "DocumentLinkEvent",
     "DocumentSection",
+    "XbrlFact",
+    "XbrlFiling",
     "DocumentExtraction",
     "DocumentPage",
     "ExtractedFact",

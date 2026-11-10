@@ -474,6 +474,18 @@ def render(report: dict, *, version: int, mode: str, report_id: str, content_has
                 )
             )
             story.append(Spacer(1, 3))
+    if lim.get("applied_price_adjustments"):
+        story.append(Paragraph("<b>Price adjustments applied</b>", st["body"]))
+        for a in lim["applied_price_adjustments"]:
+            src = a.get("source") or {}
+            where = f"{src.get('document_title') or src.get('provider') or ''}"
+            if src.get("page"):
+                where += f", page {src['page']}"
+            line = (
+                f"{a['symbol']} {a['ex_date']}: {a['ratio'] or ''} (factor {a['factor']}); {where}"
+            )
+            story.append(Paragraph("- " + clean(line), st["small"]))
+        story.append(Spacer(1, 3))
     if lim.get("price_history_notes"):
         story.append(Paragraph("<b>Price history</b>", st["body"]))
         for n in lim["price_history_notes"]:

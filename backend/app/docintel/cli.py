@@ -356,6 +356,51 @@ def cmd_ingest_inbox(args) -> int:
     return 1 if any(o.status == "REFUSED" for o in outcomes) else 0
 
 
+def cmd_xbrl(args) -> int:
+    """Read a LOCAL XBRL instance (no network) and store it for a company."""
+    from pathlib import Path
+
+    from app.docintel import xbrl
+    from app.docintel.xbrl_ingest import EntityMismatch, ingest
+
+    path = Path(args.file)
+    if not path.is_file():
+        print(f"{path} is not a file.")
+        return 2
+    with Session(get_engine()) as session:
+        company = find_company(session, args.symbol)
+        try:
+            rep = ingest(
+                session, company, path.read_bytes(), data_root(), filename=path.name,
+                family=args.family, basis=args.basis, amount_scale=args.scale,
+                pure_means_fraction=args.pure_means_fraction, force_entity=args.confirm_issuer,
+                promote=not args.dry_run,
+            )  # fmt: skip
+        except (xbrl.XbrlError, EntityMismatch) as exc:
+            print(f"REFUSED: {exc}")
+            session.rollback()
+            return 1
+        if args.dry_run:
+            session.rollback()
+        else:
+            session.commit()
+    f = rep.filing
+    print(
+        f"family {f.family or '-'} | basis {f.basis or '-'} ({f.basis_source}) | "
+        f"unit {f.amount_unit or '-'} ({f.unit_source})"
+    )
+    print(
+        f"facts {f.facts_total}: mapped {f.facts_mapped}, dimensional {f.facts_dimensional}, "
+        f"unmapped concepts {len(f.unmapped_concepts or [])}; promoted {rep.promoted}"
+        + (" (dry run, nothing kept)" if args.dry_run else "")
+    )
+    for reason, n in sorted(rep.not_promoted.items(), key=lambda x: -x[1])[:8]:
+        print(f"  not promoted x{n}: {reason}")
+    for i in rep.issues[:8]:
+        print(f"  {i['code']}: {i['detail']}")
+    return 0
+
+
 def cmd_ocr_status(_args) -> int:
     if ocr_available():
         from app.docintel.ocr import tesseract_version
@@ -410,6 +455,16 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument(
         "--approved-by", help="who approved --apply-unlink (recorded in the audit table)"
     )
+    p = sub.add_parser("xbrl", help="read a local XBRL instance file (offline)")
+    p.add_argument("--symbol", required=True)
+    p.add_argument("--file", required=True)
+    p.add_argument("--family", choices=["IND_AS", "BANK"])
+    p.add_argument("--basis", choices=["CONSOLIDATED", "STANDALONE"])
+    p.add_argument("--scale", help="amount unit if the filing states none (lakhs, crores, ...)")
+    p.add_argument("--pure-means-fraction", dest="pure_means_fraction",
+                   action=argparse.BooleanOptionalAction, default=None)  # fmt: skip
+    p.add_argument("--confirm-issuer", action="store_true", help="you confirm who filed it")
+    p.add_argument("--dry-run", action="store_true")
     p = sub.add_parser("storage-check")
     p.add_argument("--verify-hashes", action="store_true", help="re-hash every stored file")
     args = parser.parse_args(argv)
@@ -418,6 +473,7 @@ def main(argv: list[str] | None = None) -> int:
         "show": cmd_show,
         "facts": cmd_facts,
         "ocr-status": cmd_ocr_status,
+        "xbrl": cmd_xbrl,
         "storage-check": cmd_storage_check,
         "ingest-inbox": cmd_ingest_inbox,
         "search": cmd_search,

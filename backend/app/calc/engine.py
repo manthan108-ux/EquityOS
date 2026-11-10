@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from app.calc.adjust import AdjustmentReport, rebuild_adjustments
 from app.calc.market import MarketResult, run_market
 from app.calc.metrics import FundamentalsResult, Gap, Inputs, run_fundamentals
+from app.calc.verified_actions import verify_company
 from app.evidence.engine import ValidationReport, validate_company
 from app.models import (
     CalculationGap,
@@ -106,6 +107,9 @@ def calculate_company(
     if validate_first:
         validate_company(session, company_id, today=today, now=now)
     retire_stale_calculations(session, company_id, now)
+    # Bonus issues stated in stored documents AND visible in the official prices become explicit
+    # corporate actions (additive; raw prices untouched) before the adjustments are rebuilt.
+    verifications = verify_company(session, company_id)
     adjustments = rebuild_adjustments(session, company_id, now=now)
     fundamentals = run_fundamentals(session, company_id, now=now)
     # The market run needs the derived equity / TTM EPS made just above.
@@ -139,6 +143,9 @@ def calculate_company(
             "adjustments_applied": len(adjustments.applied()),
             "unexplained_price_gaps": len(adjustments.unexplained()),
             "skipped_corporate_actions": adjustments.skipped_actions,
+            "verified_corporate_actions": [
+                v.reason for v in verifications if v.status in ("VERIFIED", "NO_PRICE_EVIDENCE")
+            ],
         },
     )
     session.add(run)

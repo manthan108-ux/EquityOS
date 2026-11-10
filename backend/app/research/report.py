@@ -23,7 +23,10 @@ from datetime import UTC, date, datetime
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.calc.adjust import EXPLAINED_NOTE
 from app.models import (
+    AdjustmentOrigin,
+    AdjustmentStatus,
     Company,
     DocumentSection,
     EvidenceRecord,
@@ -182,12 +185,37 @@ def _price_notes(session: Session, company_id: uuid.UUID) -> list[dict]:
         .where(Security.company_id == company_id, PriceAdjustment.confidence == "PRICE_GAP_ONLY")
         .order_by(PriceAdjustment.ex_date)
     ).all()
+    rows = [(a, sym) for a, sym in rows if not a.detail.endswith(EXPLAINED_NOTE)]
     return [
         {
             "symbol": symbol,
             "date": a.ex_date.isoformat(),
             "factor": str(a.factor),
             "note": a.detail,
+        }
+        for a, symbol in rows
+    ]
+
+
+def _applied_adjustments(session: Session, company_id: uuid.UUID) -> list[dict]:
+    """Corporate-action adjustments applied to the price series, with their source."""
+    rows = session.execute(
+        select(PriceAdjustment, Security.symbol)
+        .join(Security, Security.id == PriceAdjustment.security_id)
+        .where(
+            Security.company_id == company_id,
+            PriceAdjustment.status == AdjustmentStatus.APPLIED,
+            PriceAdjustment.origin == AdjustmentOrigin.CORPORATE_ACTION,
+        )
+        .order_by(PriceAdjustment.ex_date)
+    ).all()
+    return [
+        {
+            "symbol": symbol,
+            "ex_date": a.ex_date.isoformat(),
+            "ratio": a.ratio_text,
+            "factor": str(a.factor),
+            "source": a.source,
         }
         for a, symbol in rows
     ]
@@ -356,6 +384,7 @@ def build_content(
             "unavailable_scores": None if score.get("available") else score.get("reason"),
             "limits_on_conclusions": conclusions,
             "basis_notes": notes,
+            "applied_price_adjustments": _applied_adjustments(session, company.id),
             "price_history_notes": next(
                 (s["price_notes"] for s in sections if s["key"] == "historical"), []
             ),

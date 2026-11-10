@@ -26,7 +26,7 @@ from sqlalchemy.orm import Session
 
 from app.models import MetricDefinition, ScoringConfig
 
-VERSION = "1.1"
+VERSION = "1.2"
 EFFECTIVE = date(2026, 11, 10)
 PILLARS = ("GROWTH", "PROFITABILITY", "FINANCIAL_HEALTH", "VALUATION", "EFFICIENCY")
 PRETTY = {
@@ -68,6 +68,16 @@ C_COST_INCOME = curve(
 C_EQ_MULT_BANK = curve(
     [[8, 100], [12, 75], [16, 35], [20, 0]], "Regulatory leverage context; conventional levels."
 )
+BANKQ = "Conventional bank-supervision levels (RBI norms, usual analyst ranges); not a benchmark."
+C_GNPA = curve([[0.5, 100], [1.5, 90], [3, 65], [5, 40], [8, 10], [12, 0]], BANKQ)
+C_NNPA = curve([[0.1, 100], [0.5, 85], [1, 65], [2, 35], [4, 0]], BANKQ)
+C_CAR = curve(
+    [[11.5, 0], [13, 40], [15, 75], [18, 100]],
+    "RBI's minimum total capital ratio including the conservation buffer is 11.5%; levels above"
+    " it are a convention for headroom.",
+)
+C_NIM = curve([[2, 0], [2.5, 35], [3, 60], [3.5, 85], [4.5, 100]], BANKQ)
+C_CASA = curve([[20, 0], [30, 40], [40, 75], [50, 100]], BANKQ)
 C_PROV_PPOP = curve(
     [[5, 100], [15, 80], [30, 50], [50, 20], [80, 0]],
     "Share of pre-provision profit absorbed by provisions; conventional levels.",
@@ -102,6 +112,11 @@ class Spec:
     curve: dict | None = None  # fallback (PERCENTILE) or primary (THRESHOLD/RANGE)
     unavailable: str | None = None
     alts: tuple[str, ...] = ()  # other calculated metrics with the same meaning, tried in order
+    # A published figure read from disclosure evidence (see scoring/disclosures.py): the evidence
+    # codes accepted, the plausible range of the value, and how old it may be before it is refused.
+    disclosure: tuple[str, ...] = ()
+    bounds: tuple[float, float] | None = None
+    max_age_days: int | None = None
 
 
 def pct(code, pillar, name, formula, unit, direction, calc, weight=1.0, fallback=None):
@@ -114,6 +129,27 @@ def thr(code, pillar, name, formula, unit, direction, calc, curve_, weight=1.0):
 
 def rng(code, pillar, name, formula, unit, calc, range_, weight=1.0):
     return Spec(code, pillar, name, formula, unit, "RANGE", "RANGE", calc, weight, range_)
+
+
+def disc(code, pillar, name, direction, codes, curve_, bounds, weight=1.0, max_age_days=200):
+    """A bank key figure read from disclosure evidence, scored on a documented convention curve."""
+    return Spec(
+        code,
+        pillar,
+        name,
+        "published ratio, as disclosed",
+        "percent",
+        direction,
+        "THRESHOLD",
+        codes[0],
+        weight,
+        curve_,
+        None,
+        (),
+        tuple(codes),
+        bounds,
+        max_age_days,
+    )
 
 
 def missing(code, pillar, name, unit, direction, why, weight=1.0):
@@ -130,7 +166,6 @@ NO_CAPEX = "capital expenditure is not available, so free cash flow cannot be de
 NO_NETDEBT = (
     "cash and investments are not extracted, so net debt and enterprise value cannot be built"
 )
-NO_BANKQ = "asset-quality and capital disclosures are not extracted for this bank"
 
 # ---- shared building blocks -----------------------------------------------------------------------
 G_REV = pct(
@@ -341,6 +376,8 @@ class Profile:
     min_weight_coverage: float = 60.0  # of the weight that has a data source (see engine)
     critical_pillars: tuple[str, ...] = ("PROFITABILITY", "FINANCIAL_HEALTH")
     max_staleness_days: int = 548
+    # Metrics without which no score is given (a score without them would mislead).
+    critical_metrics: tuple[str, ...] = ()
 
 
 _STD = {
@@ -582,13 +619,15 @@ PROFILES: dict[str, Profile] = {
                 C_ROA_BANK,
             ),
             P_ROE,
-            missing(
+            disc(
                 "RATIO.net_interest_margin",
                 "PROFITABILITY",
                 "Net interest margin",
-                "percent",
                 "HIGHER",
-                "needs average earning assets, which are not extracted",
+                ("RATIOS.net_interest_margin",),
+                C_NIM,
+                (0.5, 10),
+                1.0,
             ),
             thr(
                 "LEVERAGE.equity_multiplier",
@@ -620,31 +659,34 @@ PROFILES: dict[str, Profile] = {
                 R_ADV_DEP,
                 0.5,
             ),
-            missing(
+            disc(
                 "ASSET_QUALITY.gross_npa",
                 "FINANCIAL_HEALTH",
                 "Gross NPA ratio",
-                "percent",
                 "LOWER",
-                NO_BANKQ,
+                ("RATIOS.gross_npa_ratio",),
+                C_GNPA,
+                (0, 40),
                 1.5,
             ),
-            missing(
+            disc(
                 "ASSET_QUALITY.net_npa",
                 "FINANCIAL_HEALTH",
                 "Net NPA ratio",
-                "percent",
                 "LOWER",
-                NO_BANKQ,
+                ("RATIOS.net_npa_ratio",),
+                C_NNPA,
+                (0, 25),
                 1.0,
             ),
-            missing(
+            disc(
                 "CAPITAL.capital_adequacy",
                 "FINANCIAL_HEALTH",
                 "Capital adequacy ratio",
-                "percent",
                 "HIGHER",
-                NO_BANKQ,
+                ("RATIOS.capital_adequacy_ratio",),
+                C_CAR,
+                (5, 40),
                 1.5,
             ),
             V_PE,
@@ -678,17 +720,19 @@ PROFILES: dict[str, Profile] = {
                 "MARGIN.ppop_margin",
                 1.0,
             ),
-            missing(
+            disc(
                 "RATIO.casa_ratio",
                 "EFFICIENCY",
                 "CASA ratio",
-                "percent",
                 "HIGHER",
-                "the deposit breakdown is in investor presentations, which are not extracted",
+                ("RATIOS.casa_ratio",),
+                C_CASA,
+                (5, 80),
                 0.5,
             ),
         ),
         critical_pillars=("PROFITABILITY",),
+        critical_metrics=("ASSET_QUALITY.gross_npa", "CAPITAL.capital_adequacy"),
     ),
     "IT_SERVICES": Profile(
         "IT_SERVICES",

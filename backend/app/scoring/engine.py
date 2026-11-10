@@ -33,7 +33,7 @@ from app.models import (
     ScoringConfig,
     Security,
 )
-from app.scoring import benchmarks, registry
+from app.scoring import benchmarks, disclosures, registry
 from app.scoring import transform as tf
 from app.scoring.registry import Spec
 from app.sector.core import select_peers
@@ -111,8 +111,8 @@ def eligible_peers(session: Session, company: Company, profile: registry.Profile
         return [], []
     picks, _ = select_peers(me, [c for _, c in pool])
     by_id = {str(co.id): co for co, _ in pool}
-    codes = [s.calc for s in profile.metrics if s.calc]
-    pillar_of = {s.calc: s.pillar for s in profile.metrics if s.calc}
+    codes = [s.calc for s in profile.metrics if s.calc and not s.disclosure]
+    pillar_of = {s.calc: s.pillar for s in profile.metrics if s.calc and not s.disclosure}
     subject = MetricIndex(session, company.id, comparable_from_for(session, company.id))
     period = _latest_annual_period(subject, codes)
     eligible = []
@@ -275,6 +275,7 @@ def score_absolute(
     index = MetricIndex(session, company.id, comparable_from_for(session, company.id))
     specs = list(profile.metrics)
     basis = _choose_basis(index, specs)
+    picks: dict[str, disclosures.Pick] = {}
     pillar_total = {p: sum(s.weight for s in specs if s.pillar == p) for p in registry.PILLARS}
     for spec in specs:
         pillar_weight = float(config.pillar_weights.get(spec.pillar, 0))
@@ -284,6 +285,27 @@ def score_absolute(
             out.metrics.append(
                 MetricResult(spec, "GAP", spec.unavailable, effective_weight=effective)
             )
+            continue
+        if spec.disclosure:
+            picked = disclosures.pick(
+                session,
+                company.id,
+                spec.disclosure,
+                as_of=as_of,
+                bounds=spec.bounds,
+                max_age_days=spec.max_age_days,
+            )
+            picks[spec.code] = picked
+            if picked.record is None:
+                out.metrics.append(
+                    MetricResult(spec, "GAP", picked.reason, effective_weight=effective)
+                )
+                continue
+            result = _score_metric(session, spec, picked.record, company, out.benchmark_version)
+            result.effective_weight = effective
+            if result.benchmark is not None:
+                result.benchmark["disclosure"] = picked.note
+            out.metrics.append(result)
             continue
         records = _candidates(index, spec, basis)
         if not records:
@@ -297,8 +319,22 @@ def score_absolute(
         result = next((x for x in results if x.status == "SCORED"), results[0])
         result.effective_weight = effective
         out.metrics.append(result)
+    _check_disclosure_pair(out, picks)
     _finish_absolute(out, config, as_of, basis)
     return out
+
+
+def _check_disclosure_pair(out: Outcome, picks: dict) -> None:
+    """Net NPA above gross NPA is impossible: drop both rather than score either."""
+    problem = disclosures.check_pair(
+        picks.get("ASSET_QUALITY.gross_npa", disclosures.Pick(None)),
+        picks.get("ASSET_QUALITY.net_npa", disclosures.Pick(None)),
+    )
+    if problem is None:
+        return
+    for m in out.metrics:
+        if m.spec.code in ("ASSET_QUALITY.gross_npa", "ASSET_QUALITY.net_npa"):
+            m.status, m.reason, m.score, m.benchmark = "GAP", problem, None, None
 
 
 def _finish_absolute(out: Outcome, config: ScoringConfig, as_of: date, basis: str) -> None:
@@ -329,6 +365,10 @@ def _finish_absolute(out: Outcome, config: ScoringConfig, as_of: date, basis: st
         reasons.append("no metric could be scored")
     elif len(scored) < MIN_SCORED_METRICS:
         reasons.append(f"only {len(scored)} metric(s) scored (minimum {MIN_SCORED_METRICS})")
+    for code in out.profile.critical_metrics if out.profile else ():
+        m = next((x for x in out.metrics if x.spec.code == code), None)
+        if m is not None and m.status != "SCORED":
+            reasons.append(f"critical metric not available: {m.spec.name} ({m.reason})")
     missing_critical = [p for p in config.critical_pillars if p not in out.pillar_scores]
     if missing_critical:
         reasons.append(

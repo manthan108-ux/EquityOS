@@ -215,7 +215,7 @@ Honest list, as of 2026-11-08 (Phase 6 added at the end). Each item says what ha
 * The operating readers need the period in the sentence; monthly sales releases and quarterly fact
   sheets of Maruti, M&M, TVS, TCS and Infosys were not among the stored documents, so only two
   real figures could be checked (Maruti quarterly volume, TCS annual attrition).
-* The frontend tests mock the API; there is no browser end-to-end test.
+* The frontend unit tests mock the API; browser tests exist since Phase 12 (also with a mocked API).
 
 ## Added in Phase 11c (2026-11-10)
 
@@ -228,6 +228,23 @@ Honest list, as of 2026-11-08 (Phase 6 added at the end). Each item says what ha
   is given below"), so its values are not accepted; only the consolidated one is.
 * Price-gap detection reports a suspected split/bonus; it is not applied until a corporate action
   confirms it, so multi-year price returns for HDFC Bank and Reliance remain unadjusted.
-* The bank scoring profile still treats NPA, NIM and capital adequacy as having no source for the
-  absolute methodology (the relative scores of the sample's banks are unaffected).
+* (Resolved in Phase 12: the absolute bank score now reads NPA, NIM, capital adequacy and CASA.)
+
+## Added in Phase 12 (2026-11-10)
+
+* **XBRL reader has never seen a real exchange filing.** Concept names in `docintel/xbrl_map.py` come
+  from published taxonomy naming and are exercised only on synthetic fixtures. Unlisted concepts stay
+  raw and are counted as unmapped. Real files may state units, basis or percentages differently; the
+  reader then refuses to promote (basis/unit/ratio scale are never guessed) rather than risk a value.
+  Inline XBRL (iXBRL .htm) is refused. No automated download exists (terms unresolved).
+* XBRL facts have no page: `page 1` stands for "the instance"; evidence cites the document.
+* XBRL values are promoted when stated basis and unit exist and no identity fails, even if no identity
+  covers the column (the source is machine-readable). A power-of-ten difference from an existing stored
+  value blocks promotion.
+* Corporate-action verification handles bonus issues stated in stored documents. Splits, rights and
+  demergers are not auto-verified. Reliance's 2024-10-28 gap remains unexplained.
+* Bank scores need disclosure ratios no older than 200 days; NIM definitions differ between banks
+  (domestic / interest-earning assets / total assets) and the one used is named, not harmonised.
+  Curves are conventions, not benchmarks. Scores are labelled with the effective config version 1.2.
+* Browser tests mock the backend; they do not exercise the real API.
 

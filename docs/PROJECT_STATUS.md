@@ -406,3 +406,23 @@ for vehicle volumes, attrition and utilisation. See `docs/RESEARCH_WORKFLOW.md` 
 * `GET /api/research/overview`: readiness of every company with stored evidence, what is critically
   missing, which documents would settle it; shown on the dashboard.
 
+### Phase 12 - basis-safe P/B, verified corporate actions, bank scoring, offline XBRL, browser tests (2026-11-10)
+
+No new documents were available, so everything uses the stored evidence.
+
+* **P/B and accounting basis** (`calc/market.py`): the share count keeps its basis and date; P/B uses
+  equity on the same basis or is unavailable with a stated reason. 6 tests (`test_pb_basis.py`).
+* **Corporate actions** (`calc/verified_actions.py`, migration 0015): a bonus is recorded only when a
+  stored document and the official prices agree. Result on stored evidence: **HDFC Bank 1:1 bonus,
+  record date 27 Aug 2025, ex-date 26 Aug 2025** (annual report FY2026 p.295 + price factor 2.0) is
+  verified and applied; **Reliance 28 Oct 2024 is NOT verified** (no stored document states a bonus),
+  so it stays a flagged suspicion. Raw prices unchanged; `adjusted_prices` holds adjusted bars with the
+  events behind them. Reports list applied adjustments with their source. 9 tests.
+* **Bank scoring** (`scoring/disclosures.py`, registry 1.2): NIM, gross/net NPA, capital adequacy,
+  CASA scored from disclosures with checks; gross NPA and capital adequacy are critical. 18 tests.
+  Effect: banks lacking them have no absolute score (stated reason) instead of a misleading one.
+* **Offline XBRL** (`docintel/xbrl*.py`, migration 0016, CLI `python -m app.docintel.cli xbrl`):
+  see KNOWN_LIMITATIONS: tested on synthetic fixtures only. 54 tests.
+* **Browser tests** (`frontend/e2e`, Playwright, in CI): 10 scenarios. Frontend unit tests: 53.
+* Also: the CI formatting check was failing on migrations 0013/0014 (unformatted); fixed.
+

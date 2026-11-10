@@ -142,6 +142,19 @@ def _latest(inputs: Inputs, metric: str, ptypes: tuple[str, ...], not_after: dat
     return inputs.record(best), best
 
 
+def _latest_on_basis(inputs: Inputs, metric: str, ptypes: tuple[str, ...], basis: str):
+    """Newest usable record of `metric` on exactly this accounting basis."""
+    keys = [
+        k
+        for k in (*inputs.usable, *inputs.local)
+        if k[0] == metric and k[2] in ptypes and k[3] == basis
+    ]
+    if not keys:
+        return None
+    best = max(keys, key=lambda k: k[1])
+    return inputs.record(best), best
+
+
 def run_market(
     session: Session,
     company: Company,
@@ -218,6 +231,12 @@ def run_market(
         inputs, "BALANCE.shares_outstanding", ("ANNUAL", "QUARTERLY"), price_date
     )
     market_cap = None
+    # The accounting basis of the share count. A count read from a statement carries that
+    # statement's basis and is paired only with equity on the SAME basis. A count from the
+    # shareholding pattern states none ("UNSTATED"): it is the listed entity's count and is paired
+    # with the best available equity, whose basis is then the basis of the P/B.
+    share_basis = None
+    share_date = None
     if found is None:
         result.gaps.append(
             Gap(
@@ -232,9 +251,15 @@ def run_market(
         )
     else:
         shares, _key = found
+        share_basis = shares.basis or None
+        share_date = shares.period_end
         ins = {"price": price.id, "shares": shares.id}
         expression = "price * shares"
-        notes = [f"shares outstanding as at {shares.period_end}; price of {price_date}"]
+        notes = [
+            f"shares outstanding as at {shares.period_end} "
+            f"(share-count basis: {share_basis or 'UNSTATED (shareholding pattern)'}); "
+            f"price of {price_date}"
+        ]
         adj = bring_forward(shares, "share count")
         if adj:
             ins["factor"] = adj[0].id
@@ -243,8 +268,33 @@ def run_market(
         market_cap = calc("VALUATION.market_cap", expression, ins, "inr", notes)
 
     # price to book
-    equity = _latest(inputs, "BALANCE.owners_equity", ("ANNUAL", "QUARTERLY"))
-    if market_cap is None:
+    if share_basis:
+        equity = _latest_on_basis(
+            inputs, "BALANCE.owners_equity", ("ANNUAL", "QUARTERLY"), share_basis
+        )
+        if equity is None and market_cap is not None:
+            other = _latest(inputs, "BALANCE.owners_equity", ("ANNUAL", "QUARTERLY"))
+            result.gaps.append(
+                Gap(
+                    "VALUATION.price_to_book",
+                    price_date,
+                    None,
+                    share_basis,
+                    f"basis mismatch: the share count (as at {share_date}) is on the "
+                    f"{share_basis} basis, and no {share_basis} owners' equity is stored"
+                    + (f" (only {other[1][3]} equity as at {other[1][1]})" if other else "")
+                    + "; price-to-book is unavailable rather than estimated",
+                )
+            )
+            market_cap_for_pb = None
+        else:
+            market_cap_for_pb = market_cap
+    else:
+        equity = _latest(inputs, "BALANCE.owners_equity", ("ANNUAL", "QUARTERLY"))
+        market_cap_for_pb = market_cap
+    if market_cap_for_pb is None and market_cap is not None and equity is None:
+        pass  # the mismatch gap above already explains it
+    elif market_cap is None:
         result.gaps.append(
             Gap(
                 "VALUATION.price_to_book",
