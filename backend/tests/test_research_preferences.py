@@ -23,7 +23,7 @@ from tests.research_helpers import (
     complete_company,
     evidence,
 )
-from tests.test_sector import seeded  # noqa: F401
+from tests.test_sector import mk_company, seeded  # noqa: F401
 
 IT = ("it_services", "it_services_and_consulting")
 BANK = ("banking", "private_sector_bank")
@@ -379,3 +379,16 @@ def test_other_users_cannot_read_or_change_a_sessions_preferences(client, seeded
         ).status_code
         == 404
     )
+
+
+def test_a_company_with_data_only_on_the_other_basis_is_not_called_blocked(seeded):  # noqa: F811
+    c = mk_company(seeded, "Standalone only", *BANK)
+    evidence(seeded, c, "INCOME.total_income", 10, basis="STANDALONE")
+    evidence(seeded, c, "INCOME.net_profit", 3, basis="STANDALONE")
+    default = rd.evaluate(seeded, c, today=TODAY)
+    assert default.eligibility == rd.ASSISTED  # not BLOCKED: the data exists
+    assert any("only on the standalone basis" in r for r in default.reasons)
+    own = rd.evaluate(seeded, c, today=TODAY, prefs=pf.Preferences(basis="STANDALONE"))
+    assert own.by_id("net_profit").ok
+    empty = mk_company(seeded, "Truly empty", *BANK)
+    assert rd.evaluate(seeded, empty, today=TODAY).eligibility == rd.BLOCKED

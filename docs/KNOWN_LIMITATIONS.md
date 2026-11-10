@@ -216,3 +216,18 @@ Honest list, as of 2026-11-08 (Phase 6 added at the end). Each item says what ha
   sheets of Maruti, M&M, TVS, TCS and Infosys were not among the stored documents, so only two
   real figures could be checked (Maruti quarterly volume, TCS annual attrition).
 * The frontend tests mock the API; there is no browser end-to-end test.
+
+## Added in Phase 11c (2026-11-10)
+
+* P/B for a bank can be refused by the evidence ledger when the share count is consolidated and the
+  only equity found is standalone ("inputs mix CONSOLIDATED and STANDALONE"). That rule is correct as
+  written; whether a share count should carry an accounting basis at all is an open design question.
+* SBI and HDFC have no shares-outstanding evidence (no paid-up capital in a validated statement), so
+  market cap and P/B are missing for them.
+* The Axis standalone balance sheet states no basis on its page ("Statement of Assets and Liabilities
+  is given below"), so its values are not accepted; only the consolidated one is.
+* Price-gap detection reports a suspected split/bonus; it is not applied until a corporate action
+  confirms it, so multi-year price returns for HDFC Bank and Reliance remain unadjusted.
+* The bank scoring profile still treats NPA, NIM and capital adequacy as having no source for the
+  absolute methodology (the relative scores of the sample's banks are unaffected).
+

@@ -227,7 +227,7 @@ ITEMS: tuple[Item, ...] = (
     _i(
         "employee_stock_options_outstanding",
         BALANCE_SHEET,
-        r"employees? stock options?(/units)? outstanding",
+        r"employees?['’]? stock options?(/units)? outstanding",
     ),
     _i("reserves_and_surplus", BALANCE_SHEET, r"reserves and surplus"),
     _i("other_equity", BALANCE_SHEET, r"other equity"),
@@ -481,6 +481,9 @@ class Context:
     """State carried down a statement while rows are read top to bottom."""
 
     section: str | None = None  # "current" | "non_current" for balance sheets
+    side: str | None = (
+        None  # "liabilities" | "assets": which half of a balance sheet a bare TOTAL closes
+    )
     anchor: str | None = None  # last profit / comprehensive-income line in an income statement
     measure: str | None = None  # segment tables: the measure whose rows are being read
     closed: bool = False  # segment tables: a total was seen, the measure's rows are over
@@ -489,6 +492,12 @@ class Context:
     heading: str | None = None  # note tables: the last heading (label-only line) above
 
 
+# Headings that open one half of a balance sheet; a bare "TOTAL" row below them closes that half
+# (bank format: "CAPITAL AND LIABILITIES ... TOTAL / ASSETS ... TOTAL").
+_LIABILITY_SIDE = re.compile(
+    r"(capital|equity) and liabilities|liabilities|equity and liabilities:?"
+)
+_ASSET_SIDE = re.compile(r"assets")
 _SECTION = re.compile(r"(non[- ]current|current) (assets|liabilities)")
 _RESET_SECTION = re.compile(
     r"assets|equity and liabilities|capital and liabilities|liabilities|equity|"
@@ -619,6 +628,10 @@ def observe_heading(label: str, statement: str, ctx: Context) -> None:
         ctx.section = "non_current" if match.group(1).startswith("non") else "current"
     elif _RESET_SECTION.fullmatch(norm):
         ctx.section = None
+    if _LIABILITY_SIDE.fullmatch(norm):
+        ctx.side = "liabilities"
+    elif _ASSET_SIDE.fullmatch(norm):
+        ctx.side = "assets"
 
 
 def match_label(label: str, statement: str, ctx: Context) -> str | None:
@@ -642,6 +655,10 @@ def match_label(label: str, statement: str, ctx: Context) -> str | None:
             if anchor:
                 return f"{anchor}_owners" if owners else f"{anchor}_non_controlling"
             return None
+    if statement == BALANCE_SHEET and norm == "total" and ctx.side:
+        # a bare TOTAL closes the half whose heading was seen last; the identity
+        # total assets = total capital and liabilities then checks the whole column
+        return "total_assets" if ctx.side == "assets" else "total_capital_and_liabilities"
     for item, patterns in _COMPILED:
         if item.statement != statement:
             continue

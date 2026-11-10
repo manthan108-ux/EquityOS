@@ -274,6 +274,63 @@ def table_template(who: Caller) -> dict:
     return vault.template()
 
 
+@router.get("/overview")
+def readiness_overview(
+    session: SessionDep, who: Caller, limit: int = Query(default=60, le=200)
+) -> dict:
+    """Research readiness of every company that has stored evidence, under the default preferences.
+
+    For each: the readiness score, eligibility, what is critically missing and which documents
+    would settle it, so it is clear what to supply next. Read-only and cheap enough to call on the
+    dashboard; it never starts research or changes anything.
+    """
+    from app.models import EvidenceRecord
+
+    ids = list(session.scalars(select(EvidenceRecord.company_id).distinct().limit(limit * 3)))
+    rows = []
+    for cid in ids:
+        company = session.get(Company, cid)
+        if company is None:
+            continue
+        r = rd.evaluate(session, company).as_dict()
+        crit = r["missing"]["CRITICAL"]
+        docs = sorted({m["document"] for m in crit if m["upload_helps"]})
+        listings = company.securities
+        symbol = next((x.symbol for x in listings if x.security_code is None), None) or (
+            listings[0].symbol if listings else None
+        )
+        rows.append(
+            {
+                "company_id": str(company.id),
+                "name": company.common_name,
+                "symbol": symbol,
+                "profile": r["profile_label"],
+                "score": r["score"],
+                "eligibility": r["eligibility"],
+                "confidence": r["confidence"],
+                "critical_missing": [
+                    {
+                        "id": m["id"],
+                        "label": m["label"],
+                        "action": m["action"],
+                        "reason": m["reason"],
+                    }
+                    for m in crit
+                ],
+                "important_missing": r["counts"]["important_missing"],
+                "documents_needed": docs,
+                "cannot_be_settled_by_upload": [m["label"] for m in crit if not m["upload_helps"]],
+            }
+        )
+    rows.sort(key=lambda x: (x["eligibility"] != "AUTOMATIC", -x["score"]))
+    return {
+        "companies": rows[:limit],
+        "automatic": sum(1 for x in rows if x["eligibility"] == "AUTOMATIC"),
+        "assisted": sum(1 for x in rows if x["eligibility"] == "ASSISTED"),
+        "blocked": sum(1 for x in rows if x["eligibility"] == "BLOCKED"),
+    }
+
+
 @router.get("/requirements/{company_id}")
 def company_requirements(company_id: uuid.UUID, session: SessionDep, who: Caller) -> dict:
     """The data requirements that apply to this company (for transparency)."""

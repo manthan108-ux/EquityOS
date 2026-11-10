@@ -474,6 +474,11 @@ def render(report: dict, *, version: int, mode: str, report_id: str, content_has
                 )
             )
             story.append(Spacer(1, 3))
+    if lim.get("price_history_notes"):
+        story.append(Paragraph("<b>Price history</b>", st["body"]))
+        for n in lim["price_history_notes"]:
+            story.append(Paragraph("- " + clean(f"{n['date']}: {n['note']}"), st["small"]))
+        story.append(Spacer(1, 3))
     if lim.get("unavailable_scores"):
         story.append(Paragraph("<b>Score</b>", st["body"]))
         story.append(Paragraph(clean(lim["unavailable_scores"]), st["small"]))
