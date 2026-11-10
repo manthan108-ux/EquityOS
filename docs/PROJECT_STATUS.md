@@ -382,3 +382,26 @@ earned/expended, net profit (standalone and consolidated, Q2), NIM 3.36%, gross 
 statements (scan), Axis deposits/advances/CASA, P/B and market cap for SBI and HDFC (shares outstanding).
 Also: ReportLab PDF output, research preferences (migration 0014), 49 frontend tests (Vitest), readers
 for vehicle volumes, attrition and utilisation. See `docs/RESEARCH_WORKFLOW.md` sections 9-11.
+
+### Phase 11c - statement-parser fixes, price-gap detection, overview (2026-11-10, unattended)
+
+* Statement parser (`docintel/statements.py`, `taxonomy.py`): a balance sheet or cash-flow block now
+  ends where numbered notes begin (a note table below it had added a spurious value column); a
+  one-phrase "As on 30.09.2026 As on 31.03.2026 As on 30.09.2025" header is split per column when every
+  piece repeats the same lead; a bare TOTAL row closes the liabilities or assets half of a bank
+  balance sheet (so its identities can check the column); "Employees' Stock Options Outstanding" with an
+  apostrophe is recognised. Checked against all 53 stored PDFs before and after: five documents
+  changed in column structure (Axis's two balance sheets and Q1 balance sheet, HUL's cash flow now have
+  usable columns; ITC's mis-assigned cash-flow block and one scanned balance sheet are no longer
+  produced), and bank balance sheets gained recognised rows (totals, ESOP). Nothing already stored
+  was changed; the new readers apply when a document is processed again.
+* Axis Bank is now AUTOMATIC with a complete report (readiness 88.6): its consolidated balance sheet
+  (deposits, advances) validates, so consolidated P/B exists. Because P/B now exists, Axis's Phase 8
+  relative score moved from 22.8 to 40.5 (valuation pillar present, weight coverage 100%); no scoring
+  rule changed. HDFC and SBI scores are unchanged (48.8, 43.3).
+* Price history: a close that falls by a common split/bonus factor while the exchange's reference
+  price shows no gap is flagged `PRICE_GAP_ONLY` and carried into the report, never applied. It found
+  HDFC Bank (2025-08-26, factor 2.02) and Reliance (2024-10-28, factor 1.99) among the 24 companies.
+* `GET /api/research/overview`: readiness of every company with stored evidence, what is critically
+  missing, which documents would settle it; shown on the dashboard.
+

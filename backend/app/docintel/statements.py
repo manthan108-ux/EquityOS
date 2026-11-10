@@ -161,11 +161,36 @@ def _split_by_columns(part: Line, columns: list[Column]) -> list[Line]:
     ended" is never cut into pieces.
     """
     pieces: dict[int, list[Word]] = {}
+    unplaced: list[Word] = []
     for word in part.words:
         hits = [c for c in columns if word.x1 >= c.x0 - PAD and word.x0 <= c.x1 + PAD]
-        if len(hits) != 1:
+        if len(hits) > 1:
             return [part]
+        if not hits:
+            unplaced.append(word)  # a leading word left of its column ("As on 30.09.2026")
+            continue
+        for lead in unplaced:  # attach forward to the next word that has a column
+            pieces.setdefault(hits[0].index, []).append(lead)
+        unplaced = []
         pieces.setdefault(hits[0].index, []).append(word)
+    if unplaced:  # trailing words with no column: not a repeated per-column header
+        return [part]
+    if len(pieces) >= 2:
+        leads = []
+        for words in pieces.values():
+            first = next((i for i, w in enumerate(words) if any(c.isdigit() for c in w.text)), 0)
+            leads.append(" ".join(w.text.lower() for w in words[:first]))
+        # words outside every column are allowed only when each piece repeats the same lead
+        # ("As on" / "As at"); otherwise it is a spanning header ("Quarter ended"), kept whole
+        if (
+            any(
+                w
+                for w in part.words
+                if not [c for c in columns if w.x1 >= c.x0 - PAD and w.x0 <= c.x1 + PAD]
+            )
+            and len(set(leads)) != 1
+        ):
+            return [part]
     if len(pieces) < 2:
         return [part]
     lines = [Line(words) for _, words in sorted(pieces.items())]
@@ -359,6 +384,11 @@ def _basis_for(
     return found.pop() if len(found) == 1 else None
 
 
+# Statements whose block ends where numbered notes begin. A balance sheet or cash-flow statement is
+# often followed on the same page by a note with its own table (Axis: the RBI resolution-framework
+# table), whose numbers would otherwise be taken for an extra value column.
+TRIM_FOOTNOTES = {taxonomy.NOTE, taxonomy.BALANCE_SHEET, taxonomy.CASH_FLOW}
+
 _FOOTNOTE_START = re.compile(r"^\s*\d{1,2}\.\s+[A-Za-z]")
 
 
@@ -388,7 +418,7 @@ def _read_block(
     detection: str,
     ocr: bool = False,
 ) -> StatementBlock | None:
-    if statement == taxonomy.NOTE:
+    if statement in TRIM_FOOTNOTES:
         body = _trim_footnotes(body)
     columns = find_columns(body)
     if not columns:

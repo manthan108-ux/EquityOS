@@ -301,6 +301,7 @@ export type Report = ReportRow & {
       incomplete_valuation: ReportGap[];
       unavailable_scores: string | null;
       limits_on_conclusions: string[];
+      price_history_notes?: { symbol: string; date: string; factor: string; note: string }[];
     };
   };
 };
@@ -350,3 +351,24 @@ export const generateReport = (id: string, mode: Report["mode"]) =>
   research<Report>(`/sessions/${id}/reports`, { method: "POST", body: JSON.stringify({ mode }) });
 export const fetchReports = (id: string) => research<ReportRow[]>(`/sessions/${id}/reports`);
 export const fetchReport = (id: string) => research<Report>(`/reports/${id}`);
+
+export type OverviewRow = {
+  company_id: string;
+  name: string;
+  symbol: string | null;
+  profile: string;
+  score: number;
+  eligibility: "AUTOMATIC" | "ASSISTED" | "BLOCKED";
+  confidence: string;
+  critical_missing: { id: string; label: string; action: string; reason: string | null }[];
+  important_missing: number;
+  documents_needed: string[];
+  cannot_be_settled_by_upload: string[];
+};
+export type Overview = {
+  companies: OverviewRow[];
+  automatic: number;
+  assisted: number;
+  blocked: number;
+};
+export const fetchOverview = () => research<Overview>("/overview");

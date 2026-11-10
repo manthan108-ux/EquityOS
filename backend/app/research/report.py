@@ -29,9 +29,11 @@ from app.models import (
     EvidenceRecord,
     Peer,
     PeerSet,
+    PriceAdjustment,
     ResearchReport,
     ResearchSession,
     ScoreRun,
+    Security,
 )
 from app.research import clock
 from app.research import preferences as pf
@@ -168,6 +170,29 @@ def _narrative(session: Session, store: rd._Store, metric: str) -> dict | None:
     }
 
 
+def _price_notes(session: Session, company_id: uuid.UUID) -> list[dict]:
+    """Price-history events that look like an unadjusted split/bonus but are not confirmed.
+
+    They are listed, never applied: any multi-year price return, drawdown or moving average that
+    spans one of these dates would be wrong until a corporate action confirms or refutes it.
+    """
+    rows = session.execute(
+        select(PriceAdjustment, Security.symbol)
+        .join(Security, Security.id == PriceAdjustment.security_id)
+        .where(Security.company_id == company_id, PriceAdjustment.confidence == "PRICE_GAP_ONLY")
+        .order_by(PriceAdjustment.ex_date)
+    ).all()
+    return [
+        {
+            "symbol": symbol,
+            "date": a.ex_date.isoformat(),
+            "factor": str(a.factor),
+            "note": a.detail,
+        }
+        for a, symbol in rows
+    ]
+
+
 def _score(session: Session, company_id: uuid.UUID) -> dict:
     run = session.scalar(
         select(ScoreRun)
@@ -259,6 +284,7 @@ def build_content(
             body["series"] = {
                 name: _series(store, metrics, prefer) for name, metrics in SERIES_METRICS.items()
             }
+            body["price_notes"] = _price_notes(session, company.id)
         elif key == "segments":
             body["segments"] = _segments(store)
             if not body["segments"]:
@@ -330,6 +356,9 @@ def build_content(
             "unavailable_scores": None if score.get("available") else score.get("reason"),
             "limits_on_conclusions": conclusions,
             "basis_notes": notes,
+            "price_history_notes": next(
+                (s["price_notes"] for s in sections if s["key"] == "historical"), []
+            ),
         },
     }
 

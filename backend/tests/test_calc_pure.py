@@ -429,3 +429,32 @@ def test_shift_month_end():
     assert shift_month_end(date(2026, 6, 30), 3) == date(2026, 3, 31)
     assert shift_month_end(date(2026, 3, 31), 36) == date(2023, 3, 31)
     assert shift_month_end(date(2026, 1, 31), 1) == date(2025, 12, 31)
+
+
+def test_a_halving_the_reference_price_does_not_show_is_reported_but_never_applied():
+    """Reliance, 28 Oct 2024: the file's prev_close equals the prior close, yet the close halves."""
+    rows = [row(2, 2655.7, 2677.05, volume=1_000_000), row(3, 1334.35, 2655.7, volume=2_600_000)]
+    (e,) = detect_implied(rows)
+    assert e.kind is AdjustmentKind.UNEXPLAINED and not e.applied
+    assert e.confidence == "PRICE_GAP_ONLY" and e.ex_date == date(2026, 3, 3)
+    assert D("1.98") < e.factor < D("2.0")
+    assert "SUSPECTED unadjusted split/bonus" in e.detail and "volume 2.60x" in e.detail
+    assert "NOT adjusted" in e.detail
+
+
+def test_ordinary_falls_and_missing_sessions_are_not_reported_as_splits():
+    assert detect_implied([row(2, 100, 99), row(3, 90, 100)]) == []  # a 10% drop
+    assert detect_implied([row(2, 100, 99), row(3, 70.4, 100)]) == []  # 1.42x: no standard factor
+    far = [
+        PriceRow(date(2026, 3, 1), D(1000), D(1000)),
+        PriceRow(date(2026, 3, 20), D(500), D(1000)),
+    ]
+    assert detect_implied(far) == []  # nineteen days apart: sessions may be missing
+
+
+def test_a_price_gap_does_not_change_any_adjusted_price():
+    rows = [row(2, 1000, 998), row(3, 500, 1000), row(4, 505, 500)]
+    events = detect_implied(rows)
+    assert [e.applied for e in events] == [False]
+    bars = adjust(sorted(rows, key=lambda r: r.trade_date), [e for e in events if e.applied])
+    assert [b.close for b in bars] == [D(1000), D(500), D(505)]

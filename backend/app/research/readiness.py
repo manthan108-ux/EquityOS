@@ -766,7 +766,22 @@ def evaluate(
     reasons: list[str] = []
     revenue = by_id(statuses, "revenue") or by_id(statuses, "total_income")
     profit = by_id(statuses, "net_profit")
-    if not (revenue and revenue.ok) and not (profit and profit.ok):
+    only_other_basis = [x for x in (revenue, profit) if x and x.other_basis]
+    if not (revenue and revenue.ok) and not (profit and profit.ok) and only_other_basis:
+        # Figures exist, but only on the basis the user did not choose: that is the user's decision
+        # to make, not a company without data.
+        other = "standalone" if prefs.basis == "CONSOLIDATED" else "consolidated"
+        eligibility = ASSISTED
+        reasons.append(
+            f"revenue and profit exist only on the {other} basis, not on the "
+            f"{prefs.basis.lower()} basis you chose; change the basis preference to use them"
+        )
+        if crit_missing:
+            reasons.append(
+                f"{len(crit_missing)} critical item(s) missing or stale: "
+                + ", ".join(x.req.label for x in crit_missing)
+            )
+    elif not (revenue and revenue.ok) and not (profit and profit.ok):
         eligibility = BLOCKED
         reasons.append("no validated revenue or profit is stored for this company")
     else:

@@ -426,3 +426,18 @@ def test_an_upload_can_be_reprocessed_by_its_owner_only(client, reliance):  # no
         client.post(f"/api/research/uploads/{up['id']}/reprocess", headers=BOB).status_code == 404
     )
     assert client.post(f"/api/research/uploads/{up['id']}/reprocess").status_code == 401
+
+
+def test_the_overview_lists_every_company_with_what_to_supply_next(client, seeded):  # noqa: F811
+    complete_company(seeded, "Ready IT", *IT)
+    complete_company(seeded, "Gappy Bank", *BANK, skip=("nim", "gross_npa"))
+    r = client.get("/api/research/overview", headers=ALICE)
+    assert r.status_code == 200
+    body = r.json()
+    names = [c["name"] for c in body["companies"]]
+    assert names[0] == "Ready IT" and "Gappy Bank" in names  # ready companies first
+    assert body["automatic"] >= 1 and body["assisted"] >= 1
+    bank = next(c for c in body["companies"] if c["name"] == "Gappy Bank")
+    assert {m["id"] for m in bank["critical_missing"]} == {"nim", "gross_npa"}
+    assert bank["profile"] == "Bank" and bank["documents_needed"]
+    assert client.get("/api/research/overview").status_code == 401

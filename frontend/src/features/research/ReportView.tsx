@@ -184,6 +184,20 @@ export default function ReportView({ report }: { report: Report }) {
                 <dd className="text-zinc-600 dark:text-zinc-400">{rows.map((g) => g.label).join(", ")}</dd>
               </div>
             ))}
+          {(lim.price_history_notes ?? []).length > 0 && (
+            <div>
+              <dt className="font-medium">Price history</dt>
+              <dd>
+                <ul className="list-disc pl-5 text-zinc-600 dark:text-zinc-400">
+                  {(lim.price_history_notes ?? []).map((n) => (
+                    <li key={`${n.symbol}-${n.date}`}>
+                      {n.date}: {n.note}
+                    </li>
+                  ))}
+                </ul>
+              </dd>
+            </div>
+          )}
           {lim.unavailable_scores && (
             <div>
               <dt className="font-medium">Score</dt>

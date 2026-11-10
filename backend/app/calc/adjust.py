@@ -14,6 +14,11 @@ Two sources of events, never mixed up:
   0.5%. Anything else (for example a missing trading session) is recorded as UNEXPLAINED and NOT
   applied.
 
+A third case is REPORTED, never applied: the exchange file's `prev_close` for an ex-date is
+sometimes the unadjusted prior close (it then shows no gap at all), yet the close itself falls by a
+standard split/bonus factor overnight (Reliance, 28 Oct 2024: 2655.70 -> 1334.35). That is flagged
+as PRICE_GAP_ONLY so it is visible; it is applied only once a corporate action confirms it.
+
 Not adjusted, and why: cash dividends (a total-return question, and exchanges do not apply them
 uniformly), and rights issues (the factor depends on the issue price, which we do not hold).
 """
@@ -41,6 +46,10 @@ MATCH_TOLERANCE = Decimal("0.005")  # 0.5% around a standard ratio
 NOISE = Decimal("0.003")  # below this the reference price simply equals the prior close
 REPORT_THRESHOLD = Decimal("0.01")  # smaller unexplained differences are not worth reporting
 MIN_EVENT_RATIO = Decimal("1.2")  # the smallest standard factor is 1.25 (a 1:4 bonus)
+# Only the factors companies really use are matched when nothing but a price gap is known: with
+# every possible ratio (1.4, 1.6, ...) an ordinary 30% fall would be mistaken for a bonus.
+COMMON_FACTORS = tuple(Decimal(str(x)) for x in ("1.5", 2, 3, 4, 5, 10, 20, 50))
+PRICE_GAP_TOLERANCE = Decimal("0.015")  # a day's own move on top of a split/bonus factor
 MAX_ROW_GAP_DAYS = 5  # more calendar days than this between two rows: a session may be missing
 
 
@@ -183,6 +192,45 @@ def match_standard(ratio: Decimal) -> Decimal | None:
     return best if ratio >= 1 else 1 / best
 
 
+def _price_gap_candidate(before: PriceRow, now: PriceRow) -> Event | None:
+    """A close that fell by a standard split/bonus factor although the reference price shows no gap.
+
+    Reported only (`applied=False`): without a corporate action the cause is unknown (a real crash
+    of exactly that size is possible), so no price is adjusted on this evidence.
+    """
+    if (
+        not now.close
+        or now.close <= 0
+        or (now.trade_date - before.trade_date).days > MAX_ROW_GAP_DAYS
+    ):
+        return None
+    ratio = before.close / now.close
+    if ratio < MIN_EVENT_RATIO:
+        return None
+    best = min(COMMON_FACTORS, key=lambda f: abs(ratio / f - 1))
+    if abs(ratio / best - 1) > PRICE_GAP_TOLERANCE:
+        return None
+    volume = ""
+    if before.volume and now.volume:
+        volume = f"; volume {now.volume / before.volume:.2f}x the day before"
+    return Event(
+        ex_date=now.trade_date,
+        factor=ratio.quantize(Decimal("0.00000001")),
+        kind=AdjustmentKind.UNEXPLAINED,
+        origin=AdjustmentOrigin.IMPLIED,
+        applied=False,
+        confidence="PRICE_GAP_ONLY",
+        detail=(
+            f"SUSPECTED unadjusted split/bonus: close fell from {before.close} to {now.close} "
+            f"(factor {ratio:.4f}, near the standard factor {best:.4f}) while the exchange's "
+            f"reference price equals the prior close{volume}. NOT adjusted: it needs a "
+            "corporate action to confirm it"
+        ),
+        prior_close=before.close,
+        reference_close=now.prev_close,
+    )
+
+
 def detect_implied(rows: list[PriceRow]) -> list[Event]:
     """Events implied by the exchange's reference price (see module docstring)."""
     rows = sorted((r for r in rows if r.close is not None), key=lambda r: r.trade_date)
@@ -192,6 +240,9 @@ def detect_implied(rows: list[PriceRow]) -> list[Event]:
             continue
         ratio = before.close / now.prev_close
         if abs(ratio - 1) <= NOISE:
+            candidate = _price_gap_candidate(before, now)
+            if candidate is not None:
+                out.append(candidate)
             continue
         gap = (now.trade_date - before.trade_date).days
         note = (
