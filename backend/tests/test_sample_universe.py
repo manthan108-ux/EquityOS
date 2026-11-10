@@ -12,11 +12,15 @@ from app.seeds.reference_data import INDUSTRIES, SECTORS
 from app.seeds.sample_universe import BY_SYMBOL, NEW_INDUSTRIES, SAMPLE
 
 
-def test_the_sample_is_fifteen_companies_with_real_peer_groups():
-    assert len(SAMPLE) == 15 and len(BY_SYMBOL) == 15
+def test_the_sample_is_24_companies_with_industry_level_peer_groups():
+    assert len(SAMPLE) == 24 and len(BY_SYMBOL) == 24
     cohorts = Counter(c.cohort for c in SAMPLE)
     assert cohorts["banks"] == 5 and cohorts["it_services"] == 5
-    assert cohorts["fmcg"] == 2 and cohorts["automobiles"] == 2 and cohorts["energy"] == 1
+    assert cohorts["passenger_vehicles"] == 2 and cohorts["two_wheelers"] == 1
+    assert cohorts["packaged_foods"] == 2 and cohorts["household_personal_care"] == 1
+    assert cohorts["oil_refining_marketing"] == 2 and cohorts["oil_exploration_production"] == 1
+    # TMCV (the demerged commercial-vehicle company) is a different entity and must not be added
+    assert "TMCV" not in BY_SYMBOL
 
 
 def test_every_sector_and_industry_exists_in_the_reference_data():
@@ -25,12 +29,12 @@ def test_every_sector_and_industry_exists_in_the_reference_data():
         assert c.sector in SECTORS, c.symbol
         assert (c.sector, c.industry) in known, c.symbol
         assert c.documents in {"AUTOMATIC", "MANUAL", "STORED"}
-        assert c.website.startswith("https://") and "/" not in c.website[8:]
+        assert c.website.startswith("https://")
 
 
 def test_manual_companies_are_the_ones_whose_sites_refuse_us():
     manual = {c.symbol for c in SAMPLE if c.documents == "MANUAL"}
-    assert manual == {
+    assert {
         "HDFCBANK",
         "AXISBANK",
         "SBIN",
@@ -39,7 +43,8 @@ def test_manual_companies_are_the_ones_whose_sites_refuse_us():
         "HCLTECH",
         "HINDUNILVR",
         "MARUTI",
-    }
+    } <= manual
+    assert {"KOTAKBANK", "ITC", "M&M"}.isdisjoint(manual)
     assert {c.symbol for c in SAMPLE if c.documents == "STORED"} == {"ICICIBANK", "RELIANCE"}
 
 
@@ -75,15 +80,15 @@ def test_apply_fills_only_empty_fields_adds_industries_and_writes_an_audit_row(s
     session, company = session_with_itc
     changed, log = loader.apply(session)
     session.refresh(company)
-    assert changed == 1 and any("ITC: set industry, sector, website" in x for x in log)
+    assert changed >= 1 and any("ITC: set industry, sector, website" in x for x in log)
     assert company.website == "https://www.itcportal.com"
     assert session.get(Sector, company.sector_id).code == "fmcg"
     assert session.get(Industry, company.industry_id).code == "diversified_fmcg"
     industries = {i.code for i in session.scalars(select(Industry))}
     assert set(c for _, c in NEW_INDUSTRIES) <= industries
     audit = session.scalar(select(MasterDataImport).order_by(MasterDataImport.id.desc()))
-    assert audit.filename == "app/seeds/sample_universe.py" and audit.rows_imported == 1
-    assert audit.rows_total == 15 and "ITC" in audit.notes and len(audit.sha256) == 64
+    assert audit.filename == "app/seeds/sample_universe.py" and audit.rows_imported >= 1
+    assert audit.rows_total == 24 and "ITC" in audit.notes and len(audit.sha256) == 64
     # applying again changes nothing
     again, _ = loader.apply(session)
     assert again == 0

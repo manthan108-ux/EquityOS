@@ -115,6 +115,20 @@ def apply(session: Session) -> tuple[int, list[str]]:
             c.website = spec.website
         changed += 1
         log.append(f"{spec.symbol}: set {', '.join(sorted(row.set_fields))}")
+    for symbol, (sector_code, old, new) in universe.RECLASSIFIED.items():
+        company = find_company(session, symbol)
+        if company is None:
+            continue
+        old_row = industries.get((sector_code, old))
+        new_row = industries.get((sector_code, new))
+        if new_row is None or company.industry_id == new_row.id:
+            continue
+        if old_row is not None and company.industry_id == old_row.id:
+            company.industry_id = new_row.id
+            changed += 1
+            log.append(f"{symbol}: industry {old} -> {new} (documented reclassification)")
+        else:
+            log.append(f"{symbol}: industry left as is (not {old}); needs a manual decision")
     session.flush()
     source = inspect.getsource(universe).encode()
     session.add(

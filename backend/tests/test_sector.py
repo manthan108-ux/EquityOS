@@ -58,7 +58,7 @@ def cand(
     return Candidate(name.lower(), name, sector, industry, profile, D(size) if size else None)
 
 
-def test_peers_are_same_profile_and_same_sector_closest_in_size_first():
+def test_peers_are_same_profile_and_same_industry_closest_in_size_first():
     subject = cand("Subject", size=100)
     pool = [
         subject,
@@ -71,13 +71,14 @@ def test_peers_are_same_profile_and_same_sector_closest_in_size_first():
         cand("Unknown size", size=None),
     ]
     picks, rejected = select_peers(subject, pool)
-    assert [p.candidate.name for p in picks] == ["Close", "Huge", "Unknown size", "Other industry"]
-    assert [p.tier for p in picks] == ["SAME_INDUSTRY"] * 3 + ["SAME_SECTOR"]
+    assert [p.candidate.name for p in picks] == ["Close", "Huge", "Unknown size"]
+    assert [p.tier for p in picks] == ["SAME_INDUSTRY"] * 3
     assert picks[0].size_ratio == D("1.10") and "1.10x" in picks[0].reason
     assert "size unknown" in picks[2].reason
     why = {c.name: r for c, r in rejected}
     assert "different statement profile" in why["Bank"]
     assert "different sector" in why["Other sector"] and "no sector" in why["No sector"]
+    assert "different industry" in why["Other industry"]
     assert "Subject" not in why
 
 
