@@ -1,52 +1,34 @@
-# Next steps and the documents EquityOS needs (2026-11-10)
+# Next steps (updated 2026-11-10, after Phase 12)
 
-How to supply a document: save the PDF (text-based, not a scan) in `data\inbox\<SYMBOL>\` (for
-example `data\inbox\SBIN\`), then press **Resume research** for that company on the dashboard (or
-start research). The DOCUMENTS stage picks the file up, checks who issued it, reads it and re-runs
-only what changed. The home page's **readiness overview** (`GET /api/research/overview`) always shows
-the live list of what is still missing per company.
+Raw documents are no longer available from the project owner, so nothing here waits for uploads.
+Documents are *optional accelerators*: if one ever arrives, save it in `data\inbox\<SYMBOL>\` (PDF) or
+run `python -m app.docintel.cli xbrl --symbol <SYMBOL> --file <file.xml>` (XBRL), then press
+**Resume research**. Companies lacking evidence are shown as *awaiting evidence*, not blocked.
 
-## Where things stand
-* Automatic research works today for **TCS** and **Axis Bank**; every other sample company is waiting
-  for the documents below (Kotak currently holds only standalone figures).
-* The three banks' Q2 FY27 releases are read (NIM, NPA, CAR, CASA, deposits, gross advances).
-* SBI's and HDFC's results *filings* are scans with unreliable digits; they need a text version.
+## Done
+* Basis-safe P/B; verified corporate actions (HDFC Bank bonus applied, raw prices preserved);
+  adjusted prices stored separately; bank NIM/NPA/CAR/CASA in absolute scoring; offline XBRL reader
+  with raw preservation; browser tests in CI.
 
-## Documents needed, in priority order
-1. **SBI, HDFC Bank** - the Q2 FY27 audited/unaudited results as a *text-based* PDF (or XBRL), standalone
-   and consolidated; the latest shareholding pattern (for the share count, which gives market cap and
-   P/B). Settles: interest earned/expended, NII, net profit (HDFC consolidated), P/B, market cap.
-2. **Kotak Mahindra Bank** - Q2 FY27 results filing + press release/presentation (its data is old and
-   standalone-only), and **ICICI Bank** - the Q2 FY27 presentation page with NIM and CASA.
-3. **Axis Bank** - only CASA is missing (important, not critical).
-4. **IT services** (Infosys, Wipro, Tech Mahindra, HCLTech) - the quarterly and annual results with the
-   depreciation-and-amortisation and finance-cost lines (settles operating margin, the one critical
-   gap), and HCLTech's shareholding pattern. For attrition/utilisation: the quarterly fact sheet.
-5. **FMCG** (ITC, HUL, Nestle, Britannia, Godrej Consumer) - quarterly and annual results with
-   depreciation, finance costs, borrowings; HUL on a consolidated basis if it publishes one.
-6. **Automobiles** (Maruti, M&M, TVS, Hyundai, Tata Motors PV) - the same, plus the monthly sales
-   release (vehicle volumes).
-7. **Energy and conglomerate** (ONGC, IOC, BPCL, Reliance) - annual report or results with borrowings,
-   capex (cash-flow statement) and the segment note.
-8. **Operating-reader samples** - one real monthly sales release each for Maruti, M&M and TVS, and one
-   quarterly fact sheet each for TCS and Infosys, so the readers can be checked on real layouts.
+## Decisions already made (do not re-ask)
+XBRL offline only, no automated NSE/BSE download until terms are clarified in writing; PyMuPDF for
+private development behind `docintel/pdf.py`; share counts carry a basis; adjustments need
+verification and raw prices stay untouched.
 
-## Decisions only you can make
-* **Exchange XBRL.** A separate desk study recommends downloading exchange-filed XBRL by hand and
-  reading it offline (it would fix the scanned-filing problem). Before building it, NSE's terms on
-  automated retrieval should be confirmed in writing; say whether to proceed.
-* **PyMuPDF licence (AGPL)** - acceptable while the repository is private; needs a decision before any
-  public release (ReportLab, used for PDFs, is permissively licensed).
-* **Should a share count carry an accounting basis?** Today a consolidated market cap and a standalone
-  equity cannot be combined into P/B (the ledger refuses). Options: treat share counts as
-  basis-neutral, or keep refusing.
-* **Corporate actions for HDFC Bank (2025-08-26) and Reliance (2024-10-28).** The price series shows a
-  halving on those dates; a confirming corporate-action record (from an exchange announcement you
-  provide) would let the prices be adjusted.
-* **GitHub Actions** - please confirm the latest run is green (it cannot be seen from here).
+## Still genuinely open (needs real data or an external answer)
+1. **Real XBRL validation** - the reader has only been tested on synthetic files. When one real
+   exchange filing is available, run it with `--dry-run` and extend `xbrl_map.py`.
+2. **NSE terms** for automated retrieval (written reply) - blocks any downloader.
+3. **PyMuPDF licence** before any public release.
+4. **Reliance 28 Oct 2024** price gap: needs a stored official announcement to verify.
+5. **SBI/HDFC statements** are scans; interest earned/expended, shares outstanding and P/B stay
+   missing until a text/XBRL filing exists.
+6. Upstox-only companies lack D&A, finance costs and borrowings (operating margin, debt/equity).
 
-## Engineering that follows once documents arrive
-1. Re-process each company's session; fix whatever the new layouts miss.
-2. Let the absolute scoring methodology read the bank disclosure ratios (NPA, CAR, NIM).
-3. Offline XBRL reader (after the decision above).
-4. A browser end-to-end test of the research dashboard.
+## Engineering backlog (no new data needed)
+1. Reprocess all 24 companies against the new parsers and publish a coverage/parser-gap report.
+2. Source-health and ingestion-status view on the dashboard (source unavailable / not published /
+   retrieved but extraction failed / not disclosed / unmapped / validated / conflict).
+3. Score-history explanation when scores move; recalculate only when validated data changes.
+4. Operating readers: track actual source coverage separately from parser capability.
+5. RBI/DBIE feasibility note (company-level coverage must be proven before any use).

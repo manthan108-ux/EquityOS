@@ -57,6 +57,9 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - run: npm run lint
       - run: npm test
+      # browser tests of the dashboard (mocked API, real Next.js app, headless Chromium)
+      - run: npx playwright install --with-deps chromium
+      - run: npm run e2e
       # `next build` also type-checks the project.
       - run: npm run build
 

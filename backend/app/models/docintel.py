@@ -246,3 +246,70 @@ __all__ = [
     "ExtractionStatus",
     "ValidationStatus",
 ]
+
+
+class XbrlFiling(Base):
+    """One XBRL instance read offline: all the file said, before EquityOS chose what to use.
+
+    The instance bytes themselves are the stored document (`documents.sha256`); this row keeps the
+    file's contexts, units, namespaces and taxonomy references as filed, plus what the reader
+    decided (family, basis, unit) and why. `xbrl_facts` keeps every fact, mapped or not.
+    """
+
+    __tablename__ = "xbrl_filings"
+    __table_args__ = (Index("ix_xbrl_filings_document", "document_id"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    document_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("documents.id", ondelete="CASCADE"))
+    extraction_id: Mapped[int | None] = mapped_column(
+        ForeignKey("document_extractions.id", ondelete="SET NULL")
+    )
+    reader_version: Mapped[str] = mapped_column(String(20))
+    family: Mapped[str | None] = mapped_column(String(10))  # IND_AS | BANK | NULL (undecided)
+    basis: Mapped[str | None] = mapped_column(String(20))  # CONSOLIDATED | STANDALONE | NULL
+    basis_source: Mapped[str] = mapped_column(Text)
+    amount_unit: Mapped[str | None] = mapped_column(String(20))
+    unit_source: Mapped[str] = mapped_column(Text)
+    entity_ids: Mapped[list | None] = mapped_column(JSONB)
+    entity_confirmed: Mapped[bool] = mapped_column(Boolean, default=False)
+    schema_refs: Mapped[list | None] = mapped_column(JSONB)
+    namespaces: Mapped[dict | None] = mapped_column(JSONB)
+    contexts: Mapped[list | None] = mapped_column(JSONB)
+    units: Mapped[list | None] = mapped_column(JSONB)
+    facts_total: Mapped[int] = mapped_column(Integer, default=0)
+    facts_mapped: Mapped[int] = mapped_column(Integer, default=0)
+    facts_dimensional: Mapped[int] = mapped_column(Integer, default=0)
+    unmapped_concepts: Mapped[list | None] = mapped_column(JSONB)
+    problems: Mapped[list | None] = mapped_column(JSONB)  # defects in the instance itself
+    issues: Mapped[list | None] = mapped_column(JSONB)  # what the mapping refused, and why
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class XbrlFact(Base):
+    """One fact exactly as filed (concept, context, dimensions, unit, decimals, text)."""
+
+    __tablename__ = "xbrl_facts"
+    __table_args__ = (
+        Index("ix_xbrl_facts_filing", "filing_id"),
+        Index("ix_xbrl_facts_concept", "filing_id", "local_name"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    filing_id: Mapped[int] = mapped_column(ForeignKey("xbrl_filings.id", ondelete="CASCADE"))
+    ordinal: Mapped[int] = mapped_column(Integer)  # position among the instance's elements
+    namespace: Mapped[str] = mapped_column(Text)
+    local_name: Mapped[str] = mapped_column(String(300))
+    prefix: Mapped[str | None] = mapped_column(String(60))
+    context_ref: Mapped[str] = mapped_column(String(200))
+    period_start: Mapped[date | None] = mapped_column(Date)
+    period_end: Mapped[date | None] = mapped_column(Date)  # duration end or the instant
+    is_instant: Mapped[bool] = mapped_column(Boolean, default=False)
+    dimensions: Mapped[list | None] = mapped_column(JSONB)
+    unit_ref: Mapped[str | None] = mapped_column(String(100))
+    unit_label: Mapped[str | None] = mapped_column(String(120))
+    decimals: Mapped[str | None] = mapped_column(String(20))
+    precision_attr: Mapped[str | None] = mapped_column(String(20))
+    value_text: Mapped[str] = mapped_column(Text)
+    is_nil: Mapped[bool] = mapped_column(Boolean, default=False)
+    mapped_statement: Mapped[str | None] = mapped_column(String(20))
+    mapped_item: Mapped[str | None] = mapped_column(String(80))

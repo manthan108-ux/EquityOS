@@ -33,6 +33,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.models import (
+    AdjustedPrice,
     AdjustmentKind,
     AdjustmentOrigin,
     AdjustmentStatus,
@@ -49,6 +50,7 @@ MIN_EVENT_RATIO = Decimal("1.2")  # the smallest standard factor is 1.25 (a 1:4 
 # Only the factors companies really use are matched when nothing but a price gap is known: with
 # every possible ratio (1.4, 1.6, ...) an ordinary 30% fall would be mistaken for a bonus.
 COMMON_FACTORS = tuple(Decimal(str(x)) for x in ("1.5", 2, 3, 4, 5, 10, 20, 50))
+EXPLAINED_NOTE = "; agrees with the stored corporate action"
 PRICE_GAP_TOLERANCE = Decimal("0.015")  # a day's own move on top of a split/bonus factor
 MAX_ROW_GAP_DAYS = 5  # more calendar days than this between two rows: a session may be missing
 
@@ -91,6 +93,8 @@ class Event:
     prior_close: Decimal | None = None
     reference_close: Decimal | None = None
     corporate_action_id: int | None = None
+    ratio_text: str | None = None
+    source: dict | None = None
 
 
 @dataclass
@@ -173,6 +177,12 @@ def events_from_actions(
                 confidence="EXPLICIT",
                 detail=f"{a.action_type} {a.ratio_text} from {a.provider_code}",
                 corporate_action_id=a.id,
+                ratio_text=a.ratio_text or None,
+                source={
+                    "provider": a.provider_code,
+                    "source_url": getattr(a, "source_url", None),
+                    **((getattr(a, "details", None) or {}).get("verification") or {}),
+                },
             )
         )
     return events, skipped
@@ -311,7 +321,7 @@ def reconcile(
                         "applied": False,
                         "detail": e.detail
                         + (
-                            "; agrees with the stored corporate action"
+                            EXPLAINED_NOTE
                             if agree
                             else f"; DISAGREES with the stored action (factor {ex.factor})"
                         ),
@@ -372,7 +382,10 @@ class AdjustmentReport:
 
     def unexplained(self) -> list[Event]:
         return [
-            e for evs in self.events.values() for e in evs if e.kind is AdjustmentKind.UNEXPLAINED
+            e
+            for evs in self.events.values()
+            for e in evs
+            if e.kind is AdjustmentKind.UNEXPLAINED and not e.detail.endswith(EXPLAINED_NOTE)
         ]
 
 
@@ -436,11 +449,63 @@ def rebuild_adjustments(
                     reference_close=e.reference_close,
                     corporate_action_id=e.corporate_action_id,
                     detail=e.detail,
+                    ratio_text=e.ratio_text,
+                    source=e.source,
                     built_at=now,
                 )
             )
     session.flush()
+    store_adjusted_prices(session, securities, report, now)
     return report
+
+
+def store_adjusted_prices(
+    session: Session, securities: list[Security], report: "AdjustmentReport", now: datetime
+) -> int:
+    """Materialise the adjusted bars of each listing, separately from the official prices.
+
+    Replaced wholesale per security (derived data). A bar stores the factor applied and the events
+    behind it, so an adjusted figure can always be traced to its corporate actions.
+    """
+    ids = [s.id for s in securities]
+    if not ids:
+        return 0
+    session.execute(delete(AdjustedPrice).where(AdjustedPrice.security_id.in_(ids)))
+    stored = 0
+    for sec in securities:
+        events = [e for e in report.events.get(sec.id, []) if e.applied]
+        for bar in adjust(price_rows(session, sec.id), events):
+            behind = [
+                {
+                    "ex_date": e.ex_date.isoformat(),
+                    "factor": str(e.factor),
+                    "ratio_text": e.ratio_text,
+                    "kind": e.kind.value,
+                    "origin": e.origin.value,
+                    "source": e.source,
+                }
+                for e in events
+                if e.ex_date > bar.trade_date
+            ]
+            session.add(
+                AdjustedPrice(
+                    security_id=sec.id,
+                    trade_date=bar.trade_date,
+                    series="EQ",
+                    open=bar.open,
+                    high=bar.high,
+                    low=bar.low,
+                    close=bar.close,
+                    volume=bar.volume,
+                    raw_close=bar.raw_close,
+                    cumulative_factor=bar.cumulative_factor,
+                    events=behind,
+                    built_at=now,
+                )
+            )
+            stored += 1
+    session.flush()
+    return stored
 
 
 def stored_events(session: Session, security_id: int) -> list[Event]:
