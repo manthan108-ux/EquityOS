@@ -287,6 +287,14 @@ def _read_columns(
     heading: str = "",
 ) -> list[ColumnInfo]:
     texts, notes = _column_headers(header_lines, columns)
+    # A heading that states the length once ("for the year ended ...") can serve columns that do
+    # not state it themselves, but ONLY when no column states its own. A statement mixing
+    # "Three months ended" and "Year ended" columns has no single heading length to borrow.
+    any_column_states_duration = any(
+        parse_column_header(" ".join(texts[c.index])).duration_months is not None
+        for c in columns
+        if c.index not in notes
+    )
     infos = []
     for col in columns:
         header = " ".join(texts[col.index]).strip()
@@ -337,7 +345,7 @@ def _read_columns(
                 info.problem = "point-in-time column in a flow statement"
             elif period.period_end is not None and period.problem == "duration not stated":
                 # "for the year ended March 31, 2026" printed once above the columns, not in them
-                shared = stated_duration(heading)
+                shared = None if any_column_states_duration else stated_duration(heading)
                 if shared is None:
                     info.problem = "duration not stated"
                 else:
