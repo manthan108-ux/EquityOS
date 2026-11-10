@@ -260,3 +260,10 @@ Honest list, as of 2026-11-08 (Phase 6 added at the end). Each item says what ha
   stored as `quarterly_result` type because the link text says "Financial Statement"; extraction
   reads the real period from the document.
 * Two-up detection needs two statement titles on one line; other multi-column spreads are not split.
+* HCL Technologies' results document holds fewer promoted facts (53) than before the Phase 13
+  reprocessing (73): it was reprocessed before the guard existed and its LLM header reading varies
+  between runs. The earlier extraction runs are kept (marked superseded) so the facts can be
+  recovered; they are not restored yet.
+* One HDFC Bank value (Q1 FY27 standalone net profit) differed by a single digit between two reads of
+  a scanned document; the latest read is not confirmed against the source and should be reviewed.
+* Reprocessing skips documents that need our own OCR (not installed locally); run those in Docker.

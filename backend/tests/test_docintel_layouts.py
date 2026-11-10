@@ -11,7 +11,7 @@ from app.docintel import taxonomy
 from app.docintel.layout import Word
 from app.docintel.periods import stated_duration
 from app.docintel.statements import extract_page_statements, two_up_gutter
-from tests.docintel_pages import LABEL_X, Page, balance_sheet_page, income_page, words
+from tests.docintel_pages import LABEL_X, Page, balance_sheet_page, centred, income_page, words
 
 SHIFT = 700.0
 
@@ -92,3 +92,42 @@ def test_a_column_without_any_stated_duration_is_still_withheld():
     cash = [b for b in extract_page_statements(1, page) if b.statement == taxonomy.CASH_FLOW]
     for block in cash:
         assert not any(c.usable for c in block.columns)
+
+
+def mixed_duration_results() -> list[Word]:
+    """Quarter columns plus a previous-year column whose own heading names no duration.
+
+    The title says "quarter ended": that is NOT the length of the year column, so the year column
+    must be withheld rather than be given the quarter's length (which would make it collide with
+    the real quarter column and withhold both: a regression seen on HCL Technologies' results).
+    """
+    page = Page()
+    page.text("Consolidated Statement of Profit and Loss for the quarter ended 30 June 2026")
+    page.text("(Rs in crore)", 540, right=True)
+    page.raw(
+        centred(0, 340, "Quarter ended"),
+        centred(0, 420, "Quarter ended"),
+        centred(0, 500, "Comparative"),
+    )
+    page.raw(
+        words(0, 380, "30.06.2026", right=True),
+        words(0, 460, "31.03.2026", right=True),
+        words(0, 540, "31.03.2026", right=True),
+    )
+    for label, a, b, c in [
+        ("Revenue from operations", "1,000.00", "950.00", "3,800.00"),
+        ("Other income", "50.00", "40.00", "170.00"),
+        ("Total income", "1,050.00", "990.00", "3,970.00"),
+        ("Total expenses", "800.00", "780.00", "3,100.00"),
+    ]:
+        page.row(label, a, b, c)
+    return page.items
+
+
+def test_a_heading_duration_is_not_borrowed_when_other_columns_state_their_own():
+    blocks = extract_page_statements(1, mixed_duration_results())
+    income = next(b for b in blocks if b.statement == taxonomy.INCOME)
+    usable = {c.period.period_end for c in income.columns if c.usable}
+    assert usable == {date(2026, 6, 30), date(2026, 3, 31)}  # both quarter columns kept
+    undated = [c for c in income.columns if "Comparative" in c.header]
+    assert undated and all(not c.usable for c in undated)  # withheld, not given the quarter length
