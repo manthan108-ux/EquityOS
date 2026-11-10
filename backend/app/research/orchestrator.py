@@ -81,6 +81,7 @@ class Context:
     router_factory: Callable | None = None
     data_dir: object | None = None
     llm_router: object | None = None
+    document_fetcher: Callable | None = None
 
 
 def session_prefs(sess: ResearchSession) -> pf.Preferences:
@@ -194,6 +195,20 @@ def _sources(ctx: Context) -> dict:
     return {"datasets": outcomes}
 
 
+def _fetch_public_documents(ctx: Context, root) -> dict | None:
+    """Ask the document fetcher (if one is configured) for the company's public documents.
+
+    A site or network problem never fails the research: it is recorded as the reason evidence is
+    missing, and the run carries on with what is already stored.
+    """
+    if ctx.document_fetcher is None:
+        return None
+    try:
+        return ctx.document_fetcher(ctx.session, ctx.company, data_dir=root).as_dict()
+    except Exception as exc:  # noqa: BLE001 - recorded, never fatal
+        return {"status": "ERROR", "notes": [f"{type(exc).__name__} while fetching documents"]}
+
+
 def _documents(ctx: Context) -> dict:
     from app.core.config import get_settings, resolve_data_dir
     from app.docintel.archives import unpack_company_archives
@@ -206,9 +221,11 @@ def _documents(ctx: Context) -> dict:
     unpacked = 0
     for _archive, outcomes in unpack_company_archives(ctx.session, ctx.company.id, root):
         unpacked += sum(1 for o in outcomes if o.status == "STORED")
+    fetched = _fetch_public_documents(ctx, root)
     inbox = ingest_inbox(ctx.session, ctx.company.id, root, symbol) if symbol else []
     held = rd._held_documents(ctx.session, ctx.company.id)
     return {
+        "evidence_fetch": fetched,
         "documents_held": len(held),
         "by_type": {t: sum(1 for d in held if d["doc_type"] == t) for t in rd.HELD_TYPES},
         "unpacked_from_archives": unpacked,
@@ -337,11 +354,22 @@ def run(
     router_factory: Callable | None = None,
     data_dir=None,
     llm_router=None,
+    document_fetcher: Callable | None = None,
 ) -> ResearchSession:
     """Run (or resume) every stage. Returns the session with its final status."""
     today = today or clock.today()
     company = session.get(Company, sess.company_id)
-    ctx = Context(session, sess, company, refresh, today, router_factory, data_dir, llm_router)
+    ctx = Context(
+        session,
+        sess,
+        company,
+        refresh,
+        today,
+        router_factory,
+        data_dir,
+        llm_router,
+        document_fetcher,
+    )
     sess.status = "RUNNING"
     sess.last_error = None
     session.commit()

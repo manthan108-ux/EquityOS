@@ -43,7 +43,25 @@ def run_research_job(session_id: uuid.UUID, refresh: bool = False, *, engine=Non
     with Session(engine or get_engine()) as session:
         sess = session.get(ResearchSession, session_id)
         if sess is not None:
-            orchestrator.run(session, sess, refresh=refresh, router_factory=default_router_factory)
+            orchestrator.run(
+                session,
+                sess,
+                refresh=refresh,
+                router_factory=default_router_factory,
+                document_fetcher=default_document_fetcher,
+            )
+
+
+def default_document_fetcher(session, company, *, data_dir=None):
+    """Collect the company's public documents from its own website (network)."""
+    from app.acquisition.evidence_fetch import fetch_evidence
+    from app.acquisition.factory import build_client
+
+    client = build_client()
+    try:
+        return fetch_evidence(session, company, client, data_dir=data_dir)
+    finally:
+        client.close()
 
 
 def default_router_factory():

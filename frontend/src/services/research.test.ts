@@ -4,6 +4,7 @@ import {
   ApiError,
   DEFAULT_PREFERENCES,
   continueWithAvailable,
+  describeFetch,
   downloadReportPdf,
   getApiKey,
   setApiKey,
@@ -103,5 +104,24 @@ describe("requests", () => {
     expect(fetchMock.mock.calls[0][1].headers["X-API-Key"]).toBe("k");
     fetchMock.mockReturnValue(Promise.resolve(new Response("{}", { status: 404 })));
     await expect(downloadReportPdf("r1")).rejects.toMatchObject({ status: 404 });
+  });
+});
+
+describe("describeFetch", () => {
+  it("says how many documents were downloaded", () => {
+    expect(describeFetch({ status: "FETCHED", website: "https://x.com", downloaded: 3 })).toBe(
+      "Downloaded 3 new documents from the company's own website.",
+    );
+    expect(describeFetch({ status: "FETCHED", website: null, downloaded: 1 })).toContain("1 new document ");
+  });
+  it("explains why nothing was fetched, in plain words", () => {
+    expect(describeFetch({ status: "NO_WEBSITE", website: null })).toMatch(/no company website/i);
+    expect(describeFetch({ status: "SITE_UNREACHABLE", website: "x" })).toMatch(/not bypassed/i);
+    expect(describeFetch({ status: "NOTHING_FOUND", website: "x" })).toMatch(/no downloadable/i);
+  });
+  it("shows nothing when no fetch was attempted or the status is unknown", () => {
+    expect(describeFetch(null)).toBeNull();
+    expect(describeFetch(undefined)).toBeNull();
+    expect(describeFetch({ status: "SOMETHING_NEW", website: null })).toBeNull();
   });
 });

@@ -31,7 +31,12 @@ from app.docintel.layout import (
     split_row,
 )
 from app.docintel.ocr import repair_header
-from app.docintel.periods import ColumnPeriod, fiscal_alignment_problem, parse_column_header
+from app.docintel.periods import (
+    ColumnPeriod,
+    fiscal_alignment_problem,
+    parse_column_header,
+    stated_duration,
+)
 
 MIN_MATCHED_ITEMS = 3  # fewer recognised line items than this: not treated as a statement
 MIN_UNTITLED_ITEMS = 5
@@ -44,6 +49,8 @@ _DANGLING = re.compile(
 # Serial numbers at the start of a wrapped piece ("6.", "10", "(b)") must not end up mid-label.
 _LEADING_ENUM = re.compile(r"^(\(?(\d{1,2}|[ivx]{1,5}|[a-h])[.)]|\d{1,2})\s+", re.IGNORECASE)
 _YEARISH = re.compile(r"^\(?((19|20)\d{2}|\d{1,2})\)?$")
+
+MIN_GUTTER = 12.0  # narrowest empty strip (in PDF points) accepted as the gap between two tables
 
 
 def _strip_enumeration(label: str) -> str:
@@ -273,7 +280,11 @@ def _overlap(part: Line, col: Column) -> float:
 
 
 def _read_columns(
-    header_lines: list[Line], columns: list[Column], statement: str, ocr: bool = False
+    header_lines: list[Line],
+    columns: list[Column],
+    statement: str,
+    ocr: bool = False,
+    heading: str = "",
 ) -> list[ColumnInfo]:
     texts, notes = _column_headers(header_lines, columns)
     infos = []
@@ -324,6 +335,13 @@ def _read_columns(
         else:
             if period.point_in_time:
                 info.problem = "point-in-time column in a flow statement"
+            elif period.period_end is not None and period.problem == "duration not stated":
+                # "for the year ended March 31, 2026" printed once above the columns, not in them
+                shared = stated_duration(heading)
+                if shared is None:
+                    info.problem = "duration not stated"
+                else:
+                    info.period = ColumnPeriod(period.period_end, shared, False, period.audited)
             elif not period.ok:
                 info.problem = period.problem or "no period"
             elif period.duration_months is None:
@@ -452,12 +470,16 @@ def _read_block(
         detection=detection,
         basis=_basis_for(title or "", header_text, above, page_lines),
         unit=unit,
-        columns=_read_columns(header_lines, columns, statement, ocr),
+        columns=_read_columns(
+            header_lines, columns, statement, ocr, f"{title or ''} {header_text}"
+        ),
         dimension=(title or "")[:160] if statement == taxonomy.NOTE else None,
     )
     if not primary and above and not any(c.usable for c in block.columns):
         # a table that continues from the page before keeps its column headings ABOVE its title
-        block.columns = _read_columns([*above[-8:], *header_lines], columns, statement, ocr)
+        block.columns = _read_columns(
+            [*above[-8:], *header_lines], columns, statement, ocr, f"{title or ''} {header_text}"
+        )
         block.inherited.append("column headings read above the table title")
     if unit_problem:
         block.issues.append({"page": page_number, "code": "UNIT_UNKNOWN", "detail": unit_problem})
@@ -733,10 +755,54 @@ def _mark_duplicates(block: StatementBlock) -> None:
                     block.facts.remove(fact)
 
 
+def _widest_empty_channel(words: list[Word], lo: float, hi: float) -> float | None:
+    """Middle of the widest vertical strip in [lo, hi] that no word touches (None if too narrow)."""
+    spans = sorted((w.x0, w.x1) for w in words if w.x1 > lo and w.x0 < hi)
+    best: tuple[float, float] | None = None
+    reach = lo
+    for x0, x1 in spans:
+        if x0 - reach > (best[1] - best[0] if best else MIN_GUTTER - 0.001):
+            best = (reach, x0)
+        reach = max(reach, x1)
+    if hi - reach > (best[1] - best[0] if best else MIN_GUTTER - 0.001):
+        best = (reach, hi)
+    return (best[0] + best[1]) / 2 if best else None
+
+
+def two_up_gutter(words: list[Word]) -> float | None:
+    """The x position separating two statements printed side by side on one page, or None.
+
+    Some annual reports print a balance sheet and a profit-and-loss account next to each other
+    (a landscape spread). Read as one table their columns collide. A page is treated as two-up
+    only when two statement TITLES share a line and almost no word crosses the gap between them,
+    so an ordinary page is never split.
+    """
+    for line in group_lines(words):
+        titled = [
+            p
+            for p in phrases(line)
+            if len(p.words) >= 2 and (detect.classify_title(p.text) or "") != ""
+        ]
+        if len(titled) < 2:
+            continue
+        gutter = _widest_empty_channel(words, titled[0].x0 + 1, titled[1].x0)
+        if gutter is not None:
+            return gutter
+    return None
+
+
 def extract_page_statements(
-    page_number: int, words: list[Word], *, ocr: bool = False
+    page_number: int, words: list[Word], *, ocr: bool = False, _split: bool = True
 ) -> list[StatementBlock]:
     """All statement tables recognised on one page."""
+    gutter = two_up_gutter(words) if _split else None
+    if gutter is not None:
+        halves = ([w for w in words if w.xc < gutter], [w for w in words if w.xc >= gutter])
+        return [
+            block
+            for half in halves
+            for block in extract_page_statements(page_number, half, ocr=ocr, _split=False)
+        ]
     lines = [merge_split_numbers(line) for line in group_lines(words)]
     titles = [
         (i, detect.classify_title(line.text) or detect.classify_disclosure_title(line.text))

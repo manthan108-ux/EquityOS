@@ -381,6 +381,47 @@ def cmd_fetch_documents(args, providers, router) -> int:
     return 0
 
 
+def cmd_set_website(args, providers, router) -> int:
+    from app.acquisition.evidence_fetch import WebsiteRejected, set_website
+
+    client = build_client()
+    try:
+        with Session(get_engine()) as session:
+            company = find_company(session, args.symbol)
+            try:
+                stored = set_website(
+                    session, company, args.url, client, confirm_issuer=args.confirm_issuer
+                )
+            except WebsiteRejected as exc:
+                print(f"not stored: {exc}")
+                return 1
+            print(f"stored website for {company.common_name}: {stored}")
+    finally:
+        client.close()
+    return 0
+
+
+def cmd_fetch_evidence(args, providers, router) -> int:
+    from app.acquisition.evidence_fetch import fetch_evidence
+
+    client = build_client()
+    try:
+        with Session(get_engine()) as session:
+            company = find_company(session, args.symbol)
+            report = fetch_evidence(session, company, client, force=args.force)
+    finally:
+        client.close()
+    print(
+        f"{company.common_name}: {report.status}  (candidates {report.candidates}, "
+        f"downloaded {report.downloaded})"
+    )
+    for note in report.notes:
+        print(f"  note: {note}")
+    for o in report.outcomes:
+        print(f"  {o.status:10} {o.kind:22} {o.period_hint or '?':10} {o.url}  {o.detail}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     parser = argparse.ArgumentParser(prog="python -m app.providers.cli")
@@ -426,6 +467,15 @@ def main(argv: list[str] | None = None) -> int:
         ],
     )
     p.add_argument("--limit", type=int, default=3)
+    p = sub.add_parser("set-website", help="store a company's website (only if none is stored)")
+    p.add_argument("--symbol", required=True)
+    p.add_argument("--url", required=True)
+    p.add_argument("--confirm-issuer", action="store_true", help="skip the name check")
+    p = sub.add_parser(
+        "fetch-evidence", help="download the newest public documents from the company's website"
+    )
+    p.add_argument("--symbol", required=True)
+    p.add_argument("--force", action="store_true", help="ignore the 7-day cool-down")
     args = parser.parse_args(argv)
 
     client = build_client()
@@ -440,6 +490,8 @@ def main(argv: list[str] | None = None) -> int:
         "ingest-document": cmd_ingest_document,
         "import-financials": cmd_import_financials,
         "fetch-documents": cmd_fetch_documents,
+        "set-website": cmd_set_website,
+        "fetch-evidence": cmd_fetch_evidence,
         "backfill-prices": cmd_backfill_prices,
     }
     try:
