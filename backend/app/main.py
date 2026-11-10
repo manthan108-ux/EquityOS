@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import calc, companies, documents, evidence, health, providers, sector
+from app.api import calc, companies, documents, evidence, health, providers, scoring, sector
 from app.core.config import get_settings
 
 
@@ -12,7 +12,7 @@ def create_app() -> FastAPI:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
-        allow_methods=["GET"],
+        allow_methods=["GET", "POST"],
         allow_headers=["*"],
     )
 
@@ -23,6 +23,7 @@ def create_app() -> FastAPI:
     app.include_router(evidence.router)
     app.include_router(calc.router)
     app.include_router(sector.router)
+    app.include_router(scoring.router)
     return app
 
 

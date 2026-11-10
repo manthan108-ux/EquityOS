@@ -39,6 +39,7 @@ from app.sector.store import (
     MetricIndex,
     PeerStats,
     candidate_for,
+    comparable_from_for,
     register_overall_score,
     register_peer_stats,
     register_pillar_score,
@@ -166,9 +167,13 @@ def analyze_company(
 
     report = SectorReport(company, candidate, profile, None, picks, rejected)
     scored = list(profiles.METRICS[candidate.profile])
-    subject_index = MetricIndex(session, company.id)
+    subject_index = MetricIndex(session, company.id, comparable_from_for(session, company.id))
     peer_indexes = {
-        p.candidate.company_id: MetricIndex(session, by_id[p.candidate.company_id].id)
+        p.candidate.company_id: MetricIndex(
+            session,
+            by_id[p.candidate.company_id].id,
+            comparable_from_for(session, by_id[p.candidate.company_id].id),
+        )
         for p in picks
     }
     report.basis = basis = _choose_basis(subject_index, scored)

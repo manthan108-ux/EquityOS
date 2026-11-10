@@ -34,6 +34,8 @@ class Settings(BaseSettings):
     upstox_analytics_token: str | None = None
     upstox_access_token: str | None = None  # alternative: a normal daily OAuth access token
     # Feature flag: set UPSTOX_ENABLED=false to switch the connector off even when a token is set.
+    # Recomputing stored scores/benchmarks over HTTP is off until an authentication layer exists.
+    scoring_admin_enabled: bool = False
     upstox_enabled: bool = True
     data_gov_in_api_key: str | None = None  # free key from data.gov.in
 

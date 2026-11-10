@@ -11,7 +11,7 @@ import hashlib
 import json
 import uuid
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 
 from sqlalchemy import select
@@ -27,6 +27,7 @@ from app.models import (
     EvidenceResolution,
     EvidenceStatus,
     LinkRole,
+    Security,
 )
 from app.sector.core import (
     HIGHER,
@@ -43,10 +44,34 @@ TOLERANCE = Decimal("0.0001")
 KINDS = ("CALCULATION", "TECHNICAL")
 
 
+_LOOKBACK_MONTHS = {"_yoy": 12, "_qoq": 3, "_cagr_3y": 36, "_cagr_5y": 60}
+_PRICE_LOOKBACK_DAYS = {"TECH.return_1y": 365, "TECH.pct_from_52w_high": 365}
+
+
+def starts_before(code: str, period_end: date, cutoff: date) -> bool:
+    """True if the comparison base of a growth/price-history metric lies before `cutoff`.
+
+    Used for entities whose own history is not comparable before a corporate restructuring (see
+    app/seeds/identity.py): such a metric would measure the restructuring, not the business.
+    """
+    if code in _PRICE_LOOKBACK_DAYS:
+        return period_end - timedelta(days=_PRICE_LOOKBACK_DAYS[code]) < cutoff
+    if not code.startswith("GROWTH."):
+        return False
+    for suffix, months in _LOOKBACK_MONTHS.items():
+        if code.endswith(suffix):
+            index = period_end.year * 12 + (period_end.month - 1) - months
+            base = date(index // 12, index % 12 + 1, 1)
+            return base < cutoff
+    return False
+
+
 class MetricIndex:
     """A company's usable calculated metrics: selected by validation and not blocked."""
 
-    def __init__(self, session: Session, company_id: uuid.UUID) -> None:
+    def __init__(
+        self, session: Session, company_id: uuid.UUID, comparable_from: date | None = None
+    ) -> None:
         usable = {
             r.selected_evidence_id
             for r in session.scalars(
@@ -58,6 +83,7 @@ class MetricIndex:
             )
         }
         self.by_metric: dict[str, list[EvidenceRecord]] = {}
+        self.excluded: list[EvidenceRecord] = []  # dropped: base period before a restructuring
         for r in session.scalars(
             select(EvidenceRecord).where(
                 EvidenceRecord.company_id == company_id,
@@ -66,6 +92,9 @@ class MetricIndex:
             )
         ):
             if r.id in usable and r.value is not None:
+                if comparable_from and starts_before(r.metric, r.period_end, comparable_from):
+                    self.excluded.append(r)
+                    continue
                 self.by_metric.setdefault(r.metric, []).append(r)
 
     def bases_for(self, scored: list[ScoredMetric]) -> dict[str, int]:
@@ -124,6 +153,17 @@ class MetricIndex:
         if align is not None:
             cands = [r for r in cands if r.period_end == align.period_end]
         return max(cands, key=lambda r: (r.period_end, r.basis == basis)) if cands else None
+
+
+def comparable_from_for(session: Session, company_id: uuid.UUID) -> date | None:
+    """The identity registry's cut-off for a company, if it had a restructuring (else None)."""
+    from app.seeds.identity import comparable_from
+
+    for symbol in session.scalars(select(Security.symbol).where(Security.company_id == company_id)):
+        cutoff = comparable_from(symbol)
+        if cutoff:
+            return cutoff
+    return None
 
 
 def candidate_for(session: Session, company: Company) -> Candidate | None:

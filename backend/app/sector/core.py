@@ -44,14 +44,26 @@ class PeerPick:
     reason: str
 
 
+# Industries whose companies do the same business under the same statement format. Everything
+# else is its own group: a peer must share an industry, a shared sector is not enough.
+PEER_GROUPS: dict[str, str] = {
+    "private_sector_bank": "banks",
+    "public_sector_bank": "banks",
+}
+
+
+def peer_group(industry_code: str | None) -> str | None:
+    return PEER_GROUPS.get(industry_code, industry_code) if industry_code else None
+
+
 def select_peers(
     subject: Candidate, pool: list[Candidate], max_peers: int = MAX_PEERS
 ) -> tuple[list[PeerPick], list[tuple[Candidate, str]]]:
     """Peers of `subject` among `pool`, and a reason for every candidate left out.
 
     A peer must have the same statement profile (a bank is never compared with a manufacturer) and
-    the same sector. Same-industry peers come first, then same-sector ones; within a tier the
-    closest in size (log distance of annual total income) first.
+    the same industry (banks are one group); within the group the closest in size (log distance of
+    annual total income) first. A shared sector alone no longer makes a peer (Phase 10).
     """
     rejected: list[tuple[Candidate, str]] = []
     if not subject.sector_code:
@@ -69,11 +81,12 @@ def select_peers(
         if c.sector_code != subject.sector_code:
             rejected.append((c, f"different sector ({c.sector_code})"))
             continue
-        tier = (
-            "SAME_INDUSTRY"
-            if c.industry_code and c.industry_code == subject.industry_code
-            else "SAME_SECTOR"
-        )
+        if peer_group(c.industry_code) != peer_group(subject.industry_code) or not c.industry_code:
+            rejected.append(
+                (c, f"different industry ({c.industry_code or 'none'}): not a genuine peer")
+            )
+            continue
+        tier = "SAME_INDUSTRY"
         ratio = None
         distance = math.inf
         if c.size and subject.size and c.size > 0 and subject.size > 0:

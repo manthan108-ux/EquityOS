@@ -590,6 +590,25 @@ CATALOGUE: tuple[Metric, ...] = (
         YEARLY,
         spans=True,
     ),
+    Metric(
+        "EFFICIENCY.asset_turnover",
+        "Total income / average total assets (opening and closing)",
+        "EFFICIENCY",
+        (
+            one(
+                "income / ((assets + opening) / 2)",
+                {
+                    "income": ref("INCOME.total_income"),
+                    "assets": ref(TA),
+                    "opening": ref(TA, shift=12),
+                },
+            ),
+        ),
+        "x",
+        YEARLY,
+        profile="NONFIN",
+        spans=True,
+    ),
     # ---- balance-sheet structure -----------------------------------------------------------
     Metric(
         "LEVERAGE.equity_multiplier",
