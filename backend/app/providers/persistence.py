@@ -211,21 +211,34 @@ def store_corporate_actions(
 ) -> int:
     if not rows:
         return 0
-    values = [
-        {
-            "company_id": company_id,
-            "provider_code": provider_code,
-            "action_type": r.action_type,
-            "effective_date": r.effective_date,
-            "amount": r.amount,
-            "ratio_text": r.ratio_text,
-            "details": r.details,
-            "source_url": source_url,
-            "retrieved_at": retrieved_at,
-            "payload_id": payload_id,
-        }
-        for r in rows
-    ]
+    # Two genuine events can share type, date and ratio (e.g. a regular and a special dividend on
+    # one date). The unique key has no amount, so the later one gets its amount appended to the
+    # ratio text instead of colliding (and instead of being dropped).
+    seen: dict[tuple, int] = {}
+    values = []
+    for r in rows:
+        key = (r.action_type, r.effective_date, r.ratio_text)
+        seen[key] = seen.get(key, 0) + 1
+        ratio_text = r.ratio_text
+        if seen[key] > 1:
+            ratio_text = f"{r.ratio_text} [amount {r.amount}]".strip()
+            while (r.action_type, r.effective_date, ratio_text) in seen:
+                ratio_text += "'"
+            seen[(r.action_type, r.effective_date, ratio_text)] = 1
+        values.append(
+            {
+                "company_id": company_id,
+                "provider_code": provider_code,
+                "action_type": r.action_type,
+                "effective_date": r.effective_date,
+                "amount": r.amount,
+                "ratio_text": ratio_text,
+                "details": r.details,
+                "source_url": source_url,
+                "retrieved_at": retrieved_at,
+                "payload_id": payload_id,
+            }
+        )
     stmt = insert(CorporateAction).values(values)
     stmt = stmt.on_conflict_do_update(
         index_elements=[

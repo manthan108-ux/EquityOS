@@ -55,7 +55,7 @@ Triggered by the risk that exchange APIs would not supply fundamentals. See [DAT
 - **Live verification results:** prices (all 5 companies, 247 NSE trading days), NSE lists/history, BSE list, news, regulators verified; company IR works for ICICI Bank and Reliance only (TCS and Infosys 403, HDFC Bank no links). A real 19 MB ICICI Bank annual report and Q2 FY2027 results were downloaded, validated and stored.
 - 291 backend tests.
 
-**Upstox is NOT verified.** Its endpoints exist but no token is configured, so no fundamentals have been retrieved. To enable it, put a free read-only Analytics Token in `.env` (`UPSTOX_ANALYTICS_TOKEN`) and run the verify command in the strategy document.
+**Upstox was verified live on 2026-11-10** (see the Phase 9 section). Only datasets with a recorded live retrieval are claimed.
 
 ## Phase 5 - document intelligence (2026-11-07)
 
@@ -191,14 +191,22 @@ Details: [SECTOR_ENGINE.md](SECTOR_ENGINE.md).
 * **Recovered with the new documents** (validated, 0 errors): ITC 638 values (consolidated and standalone, Q2
   and H1 FY27, balance sheet, cash flow; quarters-vs-half-year 39/39), HCL 157 (June 2026 quarter, both bases),
   HUL 170 (quarter, half-year, year; quarters-vs-half-year 13/13).
-* **Not recovered**: SBI and Maruti (the new files are press releases and presentations; SBI results remain
-  scans), see [KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md).
+* **Not recovered from documents**: SBI and Maruti (press releases and scans) - now covered by Upstox, below.
 * **Engine changes found on real files**: fused dates, garbled rupee units, serial-number columns, heading
   readers and a table reader that takes column assignment from geometry, not from the model.
-* **Upstox**: connector exists with mocked tests; feature flag `UPSTOX_ENABLED` added; no token yet, so nothing
-  is called.
-* **Scores**: still no overall score for any company (pillar coverage 10-55% of sector weight; minimum 60%).
-  Peer groups are now: banks 3, IT 4, FMCG 1 (thin).
+* **Upstox (live, 2026-11-10)**: token configured; income (annual, quarterly), balance sheet, cash flow,
+  profile, key ratios, shareholding and corporate actions were retrieved for all 15 companies and recorded in
+  `dataset_verifications`. `COMPETITORS` returns a client error (UDAPI100011) and stays NOT VERIFIED. A bug found on
+  real data (two dividends on one date collided on the unique key) was fixed.
+* **Upstox -> evidence**: `providers/upstox_map.py` files 12 Upstox line names under the canonical keys, after
+  checking each against filing-extracted values (same company, period, basis). "Equity Capital" turned out to be
+  total equity. Revenue, total revenue and PAT differ from filings for some companies (ITC: gross vs net of
+  excise), so they are filed canonically only where no filing covers that statement/period/basis.
+* **Scores (2026-11-10)**: 10 companies now have an overall score (banks: Axis, HDFC, ICICI, Kotak, SBI; IT:
+  TCS, Infosys, HCL, Wipro, Tech Mahindra), all at >=65% weight coverage. HUL, ITC, M&M and Maruti have pillar
+  scores only (one peer: below the 3-peer minimum); Reliance has no peers. Validation: 0 errors, 0 warnings.
+* **Rules added**: a thin peer group (<3) never yields an overall score; a company in the banking sector is
+  scored with the bank profile even when no bank-format statement has been read.
 
 ## Phase 8 close-out - ready for Phase 9 (2026-11-08)
 

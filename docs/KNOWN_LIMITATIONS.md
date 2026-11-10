@@ -143,8 +143,15 @@ Honest list, as of 2026-11-08 (Phase 6 added at the end). Each item says what ha
 
 ## Added in Phase 9 (2026-11-08)
 
-* **SBI, Maruti**: the new files are press releases and analyst presentations; their tables are not statements,
-  and the SBI results PDFs remain scans with corrupted digits. No values exist for either.
+* **SBI, Maruti**: no document-extracted values (press releases, scanned results). Both are served by Upstox
+  only (annual/quarterly summaries, balance sheet, cash flow). Bank-specific lines for SBI (interest earned,
+  deposits, advances) are missing, so its bank pillars are partly gaps and its overall rests on 65% of the weight.
+* **Upstox gaps**: no competitors endpoint (client error), standalone and consolidated statements have identical
+  value counts but are separate series; where a filing and Upstox define a line differently the filing wins.
+* **Small sectors**: FMCG (ITC, HUL), automobiles (M&M, Maruti) and oil & gas (Reliance) have fewer than 3 peers in
+  the sample, so no overall score; add more companies in those sectors to enable one.
+* **Basis**: several companies are scored on standalone figures because that basis had more compared metrics;
+  the choice is shown per report and never mixed within a comparison.
 * **HUL**: values come from the LLM table reader and heading reader and pass the identities and the
   quarters-vs-half-year check; the annual-report statements and the Excel-style one-page PDF are still not read.
 * **HCL**: one document's statements are read (consolidated and standalone, June 2026 quarter); the second PDF
