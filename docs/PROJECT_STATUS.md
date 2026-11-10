@@ -369,3 +369,16 @@ gaps.
 Known open item: Reliance's 1:1 bonus (28 Oct 2024) is not in `corporate_actions` or
 `price_adjustments`. It does not affect today's 1-year metrics but would corrupt multi-year price
 returns.
+
+### Phase 11b - bank documents, preferences, PDF, frontend tests, operating readers (2026-11-10)
+
+Q2 FY27 documents of SBI, HDFC Bank and Axis Bank were processed through the upload pipeline.
+Bank figures now extracted and cited to a page: SBI (press release): domestic NIM 3.11%, gross NPA
+1.39%, net NPA 0.36%, CRAR 16.09%, CASA 38.32%, gross advances and deposits. HDFC: NIM 3.2% (assets) and
+3.3% (interest-earning assets), CASA 31.6%, gross NPA 1.11%, net NPA 0.37%, CAR 18.9%, gross advances,
+deposits, and (consolidated, Q1 comparative column) interest earned/expended. Axis: interest
+earned/expended, net profit (standalone and consolidated, Q2), NIM 3.36%, gross NPA 1.16%, net NPA
+0.35%, CAR 16.27%. Still missing: SBI interest earned/expended and NII (scanned filing), HDFC's Q2
+statements (scan), Axis deposits/advances/CASA, P/B and market cap for SBI and HDFC (shares outstanding).
+Also: ReportLab PDF output, research preferences (migration 0014), 49 frontend tests (Vitest), readers
+for vehicle volumes, attrition and utilisation. See `docs/RESEARCH_WORKFLOW.md` sections 9-11.

@@ -2,6 +2,8 @@
 
 import io
 import zipfile
+from datetime import date
+from decimal import Decimal as D
 
 import pytest
 from sqlalchemy import select
@@ -42,7 +44,7 @@ def results_pdf(
 ):
     lines = [(200, 25, issuer)] if issuer else []
     lines += [
-        (60, 40, "Statement of Standalone Audited Financial Results"),
+        (60, 40, "Statement of Consolidated Audited Financial Results"),
         (470, 55, "(Rs. in crore)"),
         (300, 70, "Quarter ended"),
         (420, 70, "Year ended"),
@@ -192,7 +194,7 @@ def test_a_valid_filing_is_accepted_organised_and_updates_the_company(session, r
     assert entry.issuer_status == "CONFIRMED" and entry.validation_status in ("PASSED", "PARTIAL")
     assert entry.visibility == "SHARED" and entry.category == "quarterly_result"
     assert entry.fiscal_year == "FY2027" and entry.quarter in ("Q2", None)
-    assert entry.basis == "STANDALONE" and entry.sha256 and entry.size_bytes
+    assert entry.basis == "CONSOLIDATED" and entry.sha256 and entry.size_bytes
     assert entry.evidence_refs[0]["count"] > 0
     assert {"revenue", "net_profit"} <= set(entry.resolved_requirements)
     doc = session.get(Document, entry.document_id)
@@ -424,3 +426,102 @@ def test_values_the_extractor_refused_are_reported_not_hidden(session, reliance,
     refused = entry.detected["not_accepted"]
     assert refused["count"] > 0 and "arithmetic check" in refused["reasons"][0]
     assert any("not accepted" in w for w in entry.detected["warnings"])
+
+
+# ---- key figures from releases, period of a document, re-processing -------------------------------
+
+
+def release_pdf(issuer="Reliance Industries Limited"):
+    lines = [(200, 25, issuer)] if issuer else []
+    lines += [(60, 45, "Press Release Q2FY27 Results"), (60, 58, "Rs. in Crores")]
+    x = (200, 260, 320)
+    lines += [
+        (60, 80, "Ratios"),
+        *[(x[i], 80, h) for i, h in enumerate(("Q2FY26", "Q1FY27", "Q2FY27"))],
+    ]
+    for n, (label, vals) in enumerate(
+        [
+            ("GNPA", ("1.73", "1.47", "1.39")),
+            ("NNPA", ("0.42", "0.38", "0.36")),
+            ("CRAR", ("14.62", "15.67", "16.09")),
+        ],
+        start=1,
+    ):
+        lines += [(60, 80 + 14 * n, label), *[(x[i], 80 + 14 * n, v) for i, v in enumerate(vals)]]
+    return make_pdf(lines)
+
+
+def test_key_figures_from_a_release_are_accepted_with_page_evidence(session, reliance, data_dir):
+    entry = upload(session, reliance, "release.pdf", release_pdf(), data_dir)
+    assert entry.status == vault.ACCEPTED, (entry.reject_reason, entry.detected)
+    rows = session.scalars(
+        select(EvidenceRecord).where(
+            EvidenceRecord.metric.like("RATIOS.%"), EvidenceRecord.document_id == entry.document_id
+        )
+    ).all()
+    q2 = {r.metric: r for r in rows if r.period_end == date(2026, 9, 30)}
+    assert q2["RATIOS.gross_npa_ratio"].value == D("1.39")
+    assert q2["RATIOS.net_npa_ratio"].value == D("0.36")
+    assert q2["RATIOS.capital_adequacy_ratio"].value == D("16.09")
+    assert all(r.source_page == 1 and r.unit == "percent" and r.basis is None for r in rows)
+    assert entry.fiscal_year == "FY2027" and entry.quarter == "Q2"
+
+
+def test_a_release_that_never_names_the_company_needs_the_uploaders_confirmation(
+    session, reliance, data_dir
+):
+    entry = upload(session, reliance, "nameless.pdf", release_pdf(issuer=None), data_dir)
+    assert entry.status == vault.NEEDS_CLARIFICATION
+    assert not session.scalars(
+        select(EvidenceRecord).where(
+            EvidenceRecord.metric.like("RATIOS.%"), EvidenceRecord.document_id == entry.document_id
+        )
+    ).all()
+    done = vault.clarify(session, entry.id, {"confirm_issuer": True}, data_dir=data_dir)
+    assert done.status == vault.ACCEPTED and done.issuer_status == "FORCED"
+    rec = session.scalars(
+        select(EvidenceRecord).where(
+            EvidenceRecord.metric == "RATIOS.gross_npa_ratio",
+            EvidenceRecord.document_id == done.document_id,
+        )
+    ).first()
+    assert rec is not None  # the figures count, labelled as confirmed by the uploader
+    from app.models import ExtractedFact
+
+    notes = session.scalars(
+        select(ExtractedFact.validation_notes).where(
+            ExtractedFact.document_id == done.document_id,
+            ExtractedFact.canonical_item == "gross_npa_ratio",
+        )
+    ).first()
+    assert any("key figure" in n for n in notes)
+
+
+def test_the_period_of_a_document_ignores_unreadable_and_future_columns():
+    cols = [
+        {"period_end": "2026-09-30", "duration_months": 3},
+        {"period_end": "2026-09-30", "duration_months": 6},
+        {"period_end": "2026-03-31", "duration_months": 12},
+        {"period_end": "2029-06-30", "duration_months": 3},  # a misread year
+        {"period_end": "2026-12-31", "duration_months": 3, "problem": "no date in header"},
+        {"period_end": "2026-09-30", "duration_months": 3, "is_note": True},
+    ]
+    assert vault.document_period(cols, date(2026, 11, 10)) == (date(2026, 9, 30), 3)  # the quarter
+    assert vault.document_period(
+        [{"period_end": "2026-09-30", "duration_months": None}], date(2026, 11, 10)
+    ) == (date(2026, 9, 30), None)
+    assert vault.document_period([], date(2026, 11, 10)) is None
+
+
+def test_an_upload_can_be_processed_again_without_uploading_it_again(session, reliance, data_dir):
+    first = upload(session, reliance, "scan.pdf", scanned_pdf(), data_dir)
+    assert first.status in (vault.REJECTED, vault.NEEDS_CLARIFICATION)
+    again = vault.reprocess(session, first.id, data_dir=data_dir)
+    assert again.id == first.id and again.status in (vault.REJECTED, vault.NEEDS_CLARIFICATION)
+    body = results_pdf()
+    dup = upload(session, reliance, "copy.pdf", body, data_dir)
+    twin = upload(session, reliance, "copy2.pdf", body, data_dir)
+    assert twin.status == vault.DUPLICATE
+    with pytest.raises(ValueError, match="nothing stored"):
+        vault.reprocess(session, twin.id, data_dir=data_dir)
+    assert dup.status == vault.ACCEPTED

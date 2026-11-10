@@ -23,8 +23,9 @@ from dataclasses import dataclass, field
 INCOME, BALANCE_SHEET, CASH_FLOW = "INCOME", "BALANCE_SHEET", "CASH_FLOW"
 # Disclosure tables read with the same machinery as the primary statements (period columns):
 SEGMENT, RATIOS, NOTE = "SEGMENT", "RATIOS", "NOTE"
+OPERATING = "OPERATING"  # vehicle volumes, attrition, utilisation stated in prose (operating.py)
 SHAREHOLDING = "SHAREHOLDING"  # read by its own reader (disclosures.py), labelled columns
-DISCLOSURES = {SEGMENT, RATIOS, NOTE, SHAREHOLDING}
+DISCLOSURES = {SEGMENT, RATIOS, NOTE, SHAREHOLDING, OPERATING}
 
 
 @dataclass(frozen=True)
@@ -343,6 +344,9 @@ RATIO_ITEMS: tuple[Item, ...] = (
         "net_interest_margin", RATIOS, r"net interest margin( \(nim\))?", r"\bnim\b", kind="percent"
     ),
     _i("casa_ratio", RATIOS, r"casa ratio", r"casa deposits? ratio", kind="percent"),
+    # Read only by the key-figure reader (docintel/kpi.py), which matches its own labels.
+    _i("gross_advances", RATIOS),
+    _i("total_deposits", RATIOS),
     _i(
         "gross_npa_ratio",
         RATIOS,
@@ -407,8 +411,15 @@ RATIO_ITEMS: tuple[Item, ...] = (
 )
 
 _COMPILED = [(item, [re.compile(p) for p in item.patterns]) for item in (*ITEMS, *RATIO_ITEMS)]
+# Read only by the operating-disclosure reader, which matches its own sentences.
+OPERATING_ITEMS: tuple[Item, ...] = (
+    _i("vehicle_volumes", OPERATING),
+    _i("attrition", OPERATING, kind="percent"),
+    _i("utilization", OPERATING, kind="percent"),
+)
+
 BY_KEY: dict[str, Item] = {}
-for _item in (*ITEMS, *RATIO_ITEMS):
+for _item in (*ITEMS, *RATIO_ITEMS, *OPERATING_ITEMS):
     BY_KEY.setdefault(_item.key, _item)  # eps_* exist in two statements: both are per-share
 
 # Income-statement labels whose meaning depends on the anchor line above them.

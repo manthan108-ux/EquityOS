@@ -64,6 +64,14 @@ class ResearchSession(Base):
     # Hash of the evidence the steps ran on; a step is repeated only if this changed.
     evidence_fingerprint: Mapped[str | None] = mapped_column(String(64))
     choice: Mapped[str | None] = mapped_column(String(30))  # CONTINUE_WITH_AVAILABLE
+    # What the user asked for: accounting basis, reporting period, optional items. The current
+    # choice, and an append-only log of every earlier one, so a saved session keeps its history.
+    preferences: Mapped[dict] = mapped_column(
+        JSONB, default=dict, server_default=text("'{}'::jsonb")
+    )
+    preference_log: Mapped[list] = mapped_column(
+        JSONB, default=list, server_default=text("'[]'::jsonb")
+    )
     last_error: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(

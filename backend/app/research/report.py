@@ -34,6 +34,7 @@ from app.models import (
     ScoreRun,
 )
 from app.research import clock
+from app.research import preferences as pf
 from app.research import readiness as rd
 from app.research import requirements as rq
 
@@ -64,6 +65,8 @@ def _item(s: rd.ReqStatus) -> dict:
         "period_end": s.period_end.isoformat() if s.period_end else None,
         "period_type": s.period_type,
         "basis": s.basis,
+        "dimension": s.dimension or None,
+        "period_note": s.period_note,
         "source": {
             "evidence_id": s.evidence_id,
             "document_id": str(s.document_id) if s.document_id else None,
@@ -84,6 +87,7 @@ def _gap(s: rd.ReqStatus) -> dict:
         "missing_inputs": s.missing_inputs,
         "action": s.action,
         "affects": s.req.affects,
+        "other_basis_available": s.other_basis,
     }
 
 
@@ -227,7 +231,7 @@ def build_content(
     needed |= {m for ms in SERIES_METRICS.values() for m in ms}
     needed |= {"SEGMENT.segment_revenue", "SEGMENT.segment_result", "SEGMENT.segment_result_ebitda"}
     store = rd.load_store(session, company.id, needed)
-    prefer = "STANDALONE" if ready.profile == "BANK" else "CONSOLIDATED"
+    prefer = ready.preferences.basis
     sec_status = {s["key"]: s for s in ready.sections}
 
     sections = []
@@ -300,6 +304,10 @@ def build_content(
             "banner": banner,
             "profile": ready.profile,
             "requirement_version": ready.requirement_version,
+            "preferences": {
+                **ready.preferences.to_dict(),
+                "period_label": ready.preferences.period_label(),
+            },
             "complete": mode == COMPLETE and not missing[rq.CRITICAL],
         },
         "readiness": {
@@ -344,7 +352,8 @@ def generate(
         raise ValueError(f"unknown report mode {mode!r}")
     today = today or clock.today()
     company = session.get(Company, sess.company_id)
-    ready = rd.evaluate(session, company, today=today)
+    prefs = pf.Preferences.from_dict(sess.preferences or {})
+    ready = rd.evaluate(session, company, today=today, prefs=prefs)
 
     if ready.eligibility == rd.BLOCKED:
         raise ReportNotAllowed(["no report can be written: " + "; ".join(ready.reasons)])

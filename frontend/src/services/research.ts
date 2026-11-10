@@ -67,6 +67,28 @@ async function research<T>(path: string, init: RequestInit = {}): Promise<T> {
   return body as T;
 }
 
+export type Preferences = {
+  basis: "CONSOLIDATED" | "STANDALONE";
+  period_mode: "LATEST_QUARTER" | "LATEST_ANNUAL" | "QUARTER" | "FISCAL_YEAR";
+  fiscal_year: number | null;
+  quarter: "Q1" | "Q2" | "Q3" | "Q4" | null;
+  include_optional: boolean;
+  period_label?: string;
+};
+export const DEFAULT_PREFERENCES: Preferences = {
+  basis: "CONSOLIDATED",
+  period_mode: "LATEST_QUARTER",
+  fiscal_year: null,
+  quarter: null,
+  include_optional: false,
+};
+export type PreferenceLogEntry = {
+  at: string;
+  by: string;
+  from: Partial<Preferences> | null;
+  to: Partial<Preferences>;
+};
+
 export type StepState = {
   step: string;
   label: string;
@@ -85,6 +107,8 @@ export type SessionStatus = {
   eligibility: string | null;
   readiness_score: number | null;
   choice: string | null;
+  preferences: Preferences;
+  preference_log: PreferenceLogEntry[];
   last_error: string | null;
   updated_at: string | null;
   steps: StepState[];
@@ -109,6 +133,8 @@ export type Found = {
   document_id: string | null;
   page: number | null;
   quality: string | null;
+  dimension?: string | null;
+  period_note?: string | null;
 };
 export type HeldDocument = {
   title: string | null;
@@ -135,6 +161,7 @@ export type Requirement = {
   reason?: string | null;
   missing_inputs?: string[];
   held_documents?: HeldDocument[];
+  other_basis_available?: { basis: string | null; period_end: string | null } | null;
   found?: Found;
 };
 export type Component = {
@@ -218,6 +245,8 @@ export type ReportItem = {
   unit: string | null;
   period_end: string | null;
   basis: string | null;
+  dimension?: string | null;
+  period_note?: string | null;
   source: { evidence_id: number | null; document_id: string | null; page: number | null };
 };
 export type ReportGap = {
@@ -255,7 +284,13 @@ export type ReportSection = {
 };
 export type Report = ReportRow & {
   content: {
-    meta: { banner: string; complete: boolean; company: string; as_of: string };
+    meta: {
+      banner: string;
+      complete: boolean;
+      company: string;
+      as_of: string;
+      preferences?: Preferences;
+    };
     readiness: { score: number; eligibility: string; confidence: string; note: string };
     sections: ReportSection[];
     limitations: {
@@ -270,11 +305,24 @@ export type Report = ReportRow & {
   };
 };
 
-export const startResearch = (companyId: string) =>
+export const startResearch = (companyId: string, preferences?: Preferences) =>
   research<SessionStatus>("/sessions", {
     method: "POST",
-    body: JSON.stringify({ company_id: companyId }),
+    body: JSON.stringify({ company_id: companyId, ...(preferences ? { preferences } : {}) }),
   });
+export const updatePreferences = (id: string, preferences: Preferences) =>
+  research<SessionStatus>(`/sessions/${id}/preferences`, {
+    method: "PUT",
+    body: JSON.stringify(preferences),
+  });
+export const downloadReportPdf = async (id: string): Promise<Blob> => {
+  const res = await fetch(`${API_URL}/api/research/reports/${id}/pdf`, {
+    headers: { "X-API-Key": getApiKey() },
+    cache: "no-store",
+  });
+  if (!res.ok) throw new ApiError(res.status, `HTTP ${res.status}`);
+  return res.blob();
+};
 export const fetchSession = (id: string) => research<SessionStatus>(`/sessions/${id}`);
 export const listSessions = (onlyOpen = false) =>
   research<SessionRow[]>(`/sessions${onlyOpen ? "?only_open=true" : ""}`);

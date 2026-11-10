@@ -39,6 +39,7 @@ from app.models import (
     ShareholdingFact,
 )
 from app.research import clock
+from app.research import preferences as pf
 from app.research import requirements as rq
 
 AVAILABLE, STALE, MISSING = "AVAILABLE", "STALE", "MISSING"
@@ -89,6 +90,9 @@ class ReqStatus:
     blocked_by: list[str] = field(default_factory=list)
     action: str = "NONE"
     held_documents: list[dict] = field(default_factory=list)
+    dimension: str = ""  # which measure of the metric (domestic / whole-bank NIM, ...)
+    period_note: str | None = None  # e.g. the annual figure was used: no recent quarter
+    other_basis: dict | None = None  # the basis the user did NOT ask for, when only that exists
 
     @property
     def ok(self) -> bool:
@@ -111,6 +115,7 @@ class Readiness:
     sections: list[dict]
     held: list[dict]
     thresholds: dict
+    preferences: pf.Preferences = pf.DEFAULT
 
     def by_id(self, rid: str) -> ReqStatus | None:
         return next((s for s in self.statuses if s.req.id == rid), None)
@@ -139,18 +144,22 @@ class Readiness:
                 "important_missing": len(imp),
                 "optional_missing": len(opt),
             },
-            "requirements": [status_dict(s) for s in self.statuses],
+            "requirements": [status_dict(s, self.preferences) for s in self.statuses],
             "missing": {
-                "CRITICAL": [status_dict(s) for s in crit],
-                "IMPORTANT": [status_dict(s) for s in imp],
-                "OPTIONAL": [status_dict(s) for s in opt],
+                "CRITICAL": [status_dict(s, self.preferences) for s in crit],
+                "IMPORTANT": [status_dict(s, self.preferences) for s in imp],
+                "OPTIONAL": [status_dict(s, self.preferences) for s in opt],
             },
             "sections": self.sections,
             "documents_held": self.held,
+            "preferences": {
+                **self.preferences.to_dict(),
+                "period_label": self.preferences.period_label(),
+            },
         }
 
 
-def status_dict(s: ReqStatus) -> dict:
+def status_dict(s: ReqStatus, prefs: pf.Preferences = pf.DEFAULT) -> dict:
     r = s.req
     d = {
         "id": r.id,
@@ -163,8 +172,8 @@ def status_dict(s: ReqStatus) -> dict:
         "affects": r.affects,
         "document": r.document,
         "document_types": list(r.doc_types),
-        "preferred_period": preferred_period(r),
-        "basis_required": basis_text(r),
+        "preferred_period": preferred_period(r, prefs),
+        "basis_required": basis_text(r, prefs),
         "official_source": r.official_source,
         "alternative": r.alternative,
         "extractor": r.extractor,
@@ -184,12 +193,15 @@ def status_dict(s: ReqStatus) -> dict:
             "page": s.page,
             "provider": s.provider,
             "quality": s.quality,
+            "dimension": s.dimension or None,
+            "period_note": s.period_note,
         }
     if not s.ok:
         d["reason"] = s.reason
         d["missing_inputs"] = s.missing_inputs
         d["blocked_by"] = s.blocked_by
         d["held_documents"] = s.held_documents
+        d["other_basis_available"] = s.other_basis
     return d
 
 
@@ -206,24 +218,27 @@ def latest_fiscal_year_end(today: date) -> date:
     return date(year, 3, 31)
 
 
-def preferred_period(r: rq.Requirement) -> str:
-    today = clock.today()
-    if r.period == "ANNUAL":
-        end = latest_fiscal_year_end(today)
-        return f"{fiscal_year(end)} (year ended 31 Mar {end.year}), annual"
-    if r.period in ("QUARTERLY", "LATEST"):
-        return "latest published quarter (or the latest year if no quarter is published yet)"
+def preferred_period(r: rq.Requirement, prefs: pf.Preferences = pf.DEFAULT) -> str:
     if r.period == "PRICE":
         return "the most recent trading day"
-    return "latest annual report"
+    if r.period == "NARRATIVE":
+        return "latest annual report"
+    if r.period == "QUARTERLY":
+        return (
+            prefs.period_label() if prefs.period_mode == "QUARTER" else "latest published quarter"
+        )
+    text = prefs.period_label()
+    if prefs.period_mode == "LATEST_QUARTER":
+        text += (
+            " (the latest annual figure is used, and labelled, only if no recent quarter exists)"
+        )
+    return text
 
 
-def basis_text(r: rq.Requirement) -> str:
+def basis_text(r: rq.Requirement, prefs: pf.Preferences = pf.DEFAULT) -> str:
     if r.basis == "NA":
-        return "not applicable"
-    if r.basis == "STANDALONE_OK":
-        return "standalone (as banks report it); consolidated is used only if the peer set uses it"
-    return "consolidated; standalone only if the company publishes no consolidated statements"
+        return "not applicable: a bank-level ratio that is not published per basis"
+    return f"{prefs.basis.lower()} (your choice; never switched automatically)"
 
 
 def _age_ok(period_end: date | None, today: date, max_age: int) -> bool:
@@ -364,19 +379,76 @@ def load_store(session: Session, company_id: uuid.UUID, metrics: set[str]) -> "_
     return _Store(session, company_id, metrics)
 
 
-def _pick(store: _Store, req: rq.Requirement, today: date) -> tuple[ReqStatus, str | None]:
-    """Evaluate one requirement against the store (no inputs/actions yet)."""
+DIMENSION_ORDER = {
+    "": 0,
+    "whole_bank": 1,
+    "interest_earning_assets": 2,
+    "domestic": 3,
+    "total_assets": 4,
+}
+_TYPE_ORDER = {"QUARTERLY": 0, None: 1, "HALF_YEAR": 2, "NINE_MONTH": 2, "ANNUAL": 3}
+
+
+def _by_type(records: list[EvidenceRecord], *types: str | None) -> list[EvidenceRecord]:
+    return [r for r in records if r.period_type in types]
+
+
+def _scope(
+    cands: list[EvidenceRecord],
+    req: rq.Requirement,
+    prefs: pf.Preferences,
+    today: date,
+) -> tuple[list[EvidenceRecord], int | None, str | None]:
+    """(records in scope, age limit in days or None, note) for the period the user asked for."""
+    if req.period in ("NARRATIVE", "PRICE"):
+        return cands, (req.max_age_days if req.period == "PRICE" else None), None
+    target = prefs.target_end()
+    if target is not None:  # a chosen period is exact: no newer or older one is substituted
+        if prefs.period_mode == "FISCAL_YEAR":
+            pool = (
+                _by_type(cands, "ANNUAL")
+                if req.period != "LATEST"
+                else _by_type(cands, "ANNUAL", None)
+            )
+        elif req.period == "ANNUAL":
+            pool = _by_type(cands, "QUARTERLY")
+        else:
+            pool = (
+                _by_type(cands, "QUARTERLY", None)
+                if req.period == "LATEST"
+                else _by_type(cands, "QUARTERLY")
+            )
+        return [r for r in pool if r.period_end == target], None, None
+    if req.period == "QUARTERLY":
+        return _by_type(cands, "QUARTERLY"), req.max_age_days, None
+    if req.period == "LATEST":
+        return _by_type(cands, "QUARTERLY", None, "ANNUAL", "HALF_YEAR"), req.max_age_days, None
+    # period == ANNUAL: a flow or balance figure that follows the user's period mode
+    annual = _by_type(cands, "ANNUAL")
+    if prefs.period_mode == "LATEST_ANNUAL":
+        return annual, req.max_age_days, None
+    quarterly = _by_type(cands, "QUARTERLY")
+    if any(_age_ok(r.period_end, today, rq.QUARTER_AGE) for r in quarterly):
+        return quarterly, rq.QUARTER_AGE, None
+    return (
+        annual,
+        req.max_age_days,
+        f"annual figure used: no quarter within {rq.QUARTER_AGE} days",
+    )
+
+
+def _pick(
+    store: _Store, req: rq.Requirement, today: date, prefs: pf.Preferences = pf.DEFAULT
+) -> tuple[ReqStatus, str | None]:
+    """Evaluate one requirement against the store under the user's preferences."""
     st = ReqStatus(req)
-    wanted_type = {"ANNUAL": "ANNUAL", "QUARTERLY": "QUARTERLY"}.get(req.period)
-    candidates: list[EvidenceRecord] = []
+    cands: list[EvidenceRecord] = []
     for metric in req.metrics:
         for rec in store.by_metric.get(metric, []):
-            if wanted_type and rec.period_type != wanted_type:
-                continue
             if rec.value is None and not rec.statement_text and rec.kind != "DOCUMENT_SECTION":
                 continue
-            candidates.append(rec)
-    if not candidates:
+            cands.append(rec)
+    if not cands:
         rejected = [r for m in req.metrics for r in store.rejected.get(m, [])]
         if rejected:
             codes = sorted({c for r in rejected for c in (store.blocked[r.id].blocked_by or [])})
@@ -385,36 +457,60 @@ def _pick(store: _Store, req: rq.Requirement, today: date) -> tuple[ReqStatus, s
                 f" ({', '.join(codes)})" if codes else ""
             )
         return st, None
-    # newest period first; then the preferred basis (consolidated unless standalone is accepted)
-    prefer = "STANDALONE" if req.basis == "STANDALONE_OK" else "CONSOLIDATED"
+
+    pool, age_limit, note = _scope(cands, req, prefs, today)
+    if not pool:
+        newest = max((r.period_end for r in cands if r.period_end), default=None)
+        if prefs.strict_period:
+            st.reason = f"nothing is stored for the period you chose ({prefs.period_label()})" + (
+                f"; the newest stored value is for {newest:%d %b %Y}" if newest else ""
+            )
+        else:
+            st.reason = "no stored value of the kind this requirement needs"
+        return st, None
+
+    # The basis is the user's: statement figures on the other basis are never used in its place.
+    if req.basis != "NA":
+        matching = [r for r in pool if r.basis in (prefs.basis, None)]
+        if not matching:
+            other = max(pool, key=lambda r: r.period_end.toordinal() if r.period_end else 0)
+            other_name = "standalone" if prefs.basis == "CONSOLIDATED" else "consolidated"
+            st.other_basis = {
+                "basis": other.basis,
+                "period_end": other.period_end.isoformat() if other.period_end else None,
+            }
+            st.reason = (
+                f"not available on the {prefs.basis.lower()} basis you chose; {other_name} figures "
+                f"exist for {other.period_end:%d %b %Y}. They are not used unless you change the "
+                "basis preference"
+                if other.period_end
+                else f"not available on the {prefs.basis.lower()} basis you chose"
+            )
+            return st, None
+        pool = matching
 
     def rank(rec: EvidenceRecord):
         return (
             rec.period_end.toordinal() if rec.period_end else 0,
-            1 if (rec.basis or prefer) == prefer else 0,
+            -DIMENSION_ORDER.get(rec.dimension or "", 9),
+            -_TYPE_ORDER.get(rec.period_type, 4),
             -(rec.authority_tier or 9),
         )
 
-    best = max(candidates, key=rank)
+    best = max(pool, key=rank)
     st.metric, st.value, st.unit = best.metric, best.value, best.unit
     st.period_end, st.period_type, st.basis = best.period_end, best.period_type, best.basis
     st.evidence_id, st.document_id, st.page = best.id, best.document_id, best.source_page
     st.provider, st.tier, st.quality = best.provider_code, store.tier(best), store.quality(best)
-    if req.period == "NARRATIVE" or _age_ok(best.period_end, today, req.max_age_days):
+    st.dimension, st.period_note = best.dimension or "", note
+    if age_limit is None or _age_ok(best.period_end, today, age_limit):
         st.status = AVAILABLE
     else:
         st.status = STALE
         st.reason = (
             f"newest value is for {best.period_end:%d %b %Y}, older than the "
-            f"{req.max_age_days}-day limit for this requirement"
+            f"{age_limit}-day limit for this requirement"
         )
-    note = None
-    if (
-        req.basis == "CONSOLIDATED_PREFERRED"
-        and best.basis == "STANDALONE"
-        and st.status == AVAILABLE
-    ):
-        note = "standalone figures only"
     return st, note
 
 
@@ -452,10 +548,15 @@ def _held_documents(session: Session, company_id: uuid.UUID) -> list[dict]:
     return out
 
 
-def _decide_action(st: ReqStatus, store: _Store, held: list[dict]) -> None:
+def _decide_action(
+    st: ReqStatus, store: _Store, held: list[dict], prefs: pf.Preferences = pf.DEFAULT
+) -> None:
     req = st.req
     if st.ok:
         st.action = "NONE"
+        return
+    if st.other_basis:  # exists, but on the basis the user did not choose: their decision
+        st.action = "CHANGE_BASIS_OR_UPLOAD"
         return
     if req.extractor == rq.MARKET_DATA:
         st.action = "REFRESH_MARKET_DATA"
@@ -530,12 +631,23 @@ def _sections(statuses: list[ReqStatus]) -> list[dict]:
     return out
 
 
-def evaluate(session: Session, company: Company, *, today: date | None = None) -> Readiness:
+def evaluate(
+    session: Session,
+    company: Company,
+    *,
+    today: date | None = None,
+    prefs: pf.Preferences | None = None,
+) -> Readiness:
     today = today or clock.today()
+    prefs = prefs or pf.DEFAULT
     sector = company.sector.code if company.sector else None
     industry = company.industry.code if company.industry else None
     profile = rq.profile_for(sector, industry)
-    reqs = rq.requirements_for(profile)
+    reqs = [
+        r
+        for r in rq.requirements_for(profile)
+        if prefs.include_optional or r.importance != rq.OPTIONAL
+    ]
     th = rq.thresholds_for(profile)
 
     needed = {m for r in reqs for m in (*r.metrics, *r.inputs)}
@@ -544,12 +656,13 @@ def evaluate(session: Session, company: Company, *, today: date | None = None) -
 
     statuses = []
     notes: list[str] = []
+    fallbacks: list[str] = []
     for req in reqs:
-        st, note = _pick(store, req, today)
-        _decide_action(st, store, held)
+        st, note = _pick(store, req, today, prefs)
+        _decide_action(st, store, held, prefs)
         statuses.append(st)
         if note:
-            notes.append(f"{req.label}: {note}")
+            fallbacks.append(req.label)
 
     fin = [s for s in statuses if s.req.pillar in (rq.FINANCIALS, rq.NARRATIVE)]
     # Only requirements that matter to the conclusion AND that a document could settle count
@@ -583,6 +696,11 @@ def evaluate(session: Session, company: Company, *, today: date | None = None) -
         f"{sum(1 for s in fin if s.ok)} of {len(fin)} financial requirements available",
     )
     put("sector_metrics", _component(sector_reqs), _count_text(sector_reqs, "sector-specific"))
+    # An IMPORTANT sector figure (vehicle volumes, attrition) lowers the score but cannot hold the
+    # research back by itself: only a component that carries a CRITICAL requirement can.
+    components["sector_metrics"]["gating"] = any(
+        s.req.importance == rq.CRITICAL for s in sector_reqs
+    )
     if not sector_reqs:
         components["sector_metrics"]["detail"] = (
             "this kind of company has no critical or important sector-specific requirement"
@@ -663,7 +781,7 @@ def evaluate(session: Session, company: Company, *, today: date | None = None) -
         weak = [
             c["label"]
             for c in live.values()
-            if c["score"] is not None and c["score"] < th.min_component
+            if c["score"] is not None and c["score"] < th.min_component and c.get("gating", True)
         ]
         if weak:
             eligibility = ASSISTED
@@ -674,6 +792,16 @@ def evaluate(session: Session, company: Company, *, today: date | None = None) -
     if eligibility == AUTOMATIC:
         reasons.append("every critical requirement is met and every readiness threshold passes")
     reasons.extend(notes)
+    if fallbacks:
+        reasons.append(
+            f"{len(fallbacks)} figure(s) use the latest ANNUAL period because no quarter within "
+            f"{rq.QUARTER_AGE} days is stored for them: {', '.join(fallbacks)}"
+        )
+    if prefs.basis != "CONSOLIDATED" or prefs.period_mode != "LATEST_QUARTER":
+        reasons.append(
+            f"researched on your chosen {prefs.basis.lower()} basis and period: "
+            f"{prefs.period_label()}"
+        )
 
     vc = components["validation_coverage"]["score"] or 0
     if eligibility == BLOCKED:
@@ -699,6 +827,7 @@ def evaluate(session: Session, company: Company, *, today: date | None = None) -
         open_errors=store.open_errors,
         sections=_sections(statuses),
         held=held,
+        preferences=prefs,
         thresholds={
             "min_score": th.min_score,
             "min_component": th.min_component,

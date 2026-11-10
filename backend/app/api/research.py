@@ -9,7 +9,17 @@ background jobs; the browser polls the session / upload status.
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+    UploadFile,
+)
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -17,9 +27,11 @@ from sqlalchemy.orm import Session
 from app.core.database import get_session
 from app.models import Company, ResearchReport, ResearchSession, VaultEntry
 from app.research import jobs, orchestrator, vault
+from app.research import preferences as pf
 from app.research import readiness as rd
 from app.research import report as rp
 from app.research import requirements as rq
+from app.research.pdf import render as render_pdf
 from app.research.security import Principal, current_principal, rate_limited
 from app.services.company_resolver import MAX_QUERY_LENGTH, ResolutionStatus, resolve_company
 
@@ -35,10 +47,28 @@ MAX_FILES_PER_REQUEST = 10
 CHUNK = 1024 * 1024
 
 
+class PreferencesIn(BaseModel):
+    """What the user asked for. Omitted fields keep their defaults: consolidated basis, the latest
+    available quarter, optional items off."""
+
+    basis: str = "CONSOLIDATED"
+    period_mode: str = "LATEST_QUARTER"
+    fiscal_year: int | None = None
+    quarter: str | None = None
+    include_optional: bool = False
+
+    def to_preferences(self) -> pf.Preferences:
+        try:
+            return pf.Preferences.from_dict(self.model_dump())
+        except pf.PreferenceError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
 class StartRequest(BaseModel):
     query: str | None = Field(default=None, max_length=MAX_QUERY_LENGTH)
     company_id: uuid.UUID | None = None
     refresh_sources: bool = False
+    preferences: PreferencesIn | None = None
 
 
 class ModeRequest(BaseModel):
@@ -103,7 +133,8 @@ def start_session(body: StartRequest, session: SessionDep, who: LimitedCaller) -
         query = body.query.strip()
     else:
         raise HTTPException(status_code=422, detail="give a company name/ticker or a company_id")
-    sess = orchestrator.create_session(session, company, who.name, query)
+    prefs = body.preferences.to_preferences() if body.preferences else None
+    sess = orchestrator.create_session(session, company, who.name, query, prefs=prefs)
     session.commit()
     _launch(session, sess, body.refresh_sources)
     return orchestrator.status(session, sess)
@@ -160,14 +191,18 @@ def get_session_status(session_id: uuid.UUID, session: SessionDep, who: Caller) 
 def get_readiness(session_id: uuid.UUID, session: SessionDep, who: Caller) -> dict:
     """The live research-readiness assessment (distinct from the financial score)."""
     sess = _own(session, session_id, who)
-    return rd.evaluate(session, session.get(Company, sess.company_id)).as_dict()
+    return rd.evaluate(
+        session, session.get(Company, sess.company_id), prefs=orchestrator.session_prefs(sess)
+    ).as_dict()
 
 
 @router.get("/sessions/{session_id}/missing")
 def get_missing(session_id: uuid.UUID, session: SessionDep, who: Caller) -> dict:
     """The Missing Data Assessment: what is missing, why it matters and what to supply."""
     sess = _own(session, session_id, who)
-    ready = rd.evaluate(session, session.get(Company, sess.company_id)).as_dict()
+    ready = rd.evaluate(
+        session, session.get(Company, sess.company_id), prefs=orchestrator.session_prefs(sess)
+    ).as_dict()
     resolved = [r for r in ready["requirements"] if r["status"] == "AVAILABLE"]
     return {
         "eligibility": ready["eligibility"],
@@ -183,6 +218,36 @@ def get_missing(session_id: uuid.UUID, session: SessionDep, who: Caller) -> dict
             "continue_with_available": ready["eligibility"] != rd.BLOCKED,
         },
     }
+
+
+@router.get("/sessions/{session_id}/preferences")
+def get_preferences(session_id: uuid.UUID, session: SessionDep, who: Caller) -> dict:
+    """The session's current preferences and the log of every earlier choice."""
+    sess = _own(session, session_id, who)
+    prefs = orchestrator.session_prefs(sess)
+    return {
+        "current": {**prefs.to_dict(), "period_label": prefs.period_label()},
+        "log": sess.preference_log or [],
+        "options": {
+            "basis": list(pf.BASES),
+            "period_mode": list(pf.PERIOD_MODES),
+            "quarter": list(pf.QUARTERS),
+        },
+    }
+
+
+@router.put("/sessions/{session_id}/preferences")
+def put_preferences(
+    session_id: uuid.UUID, body: PreferencesIn, session: SessionDep, who: LimitedCaller
+) -> dict:
+    """Change the basis, period or optional items. The change is logged, never silent, and the
+    research is re-evaluated under it (stored work is reused, not repeated)."""
+    sess = _own(session, session_id, who)
+    changed = orchestrator.set_preferences(session, sess, body.to_preferences(), who.name)
+    session.commit()
+    if changed:
+        _launch(session, sess)
+    return orchestrator.status(session, sess)
 
 
 @router.post("/sessions/{session_id}/resume")
@@ -357,6 +422,24 @@ def clarify_upload(
     return vault.entry_out(entry, who.name, who.is_admin)
 
 
+@router.post("/uploads/{entry_id}/reprocess")
+def reprocess_upload(entry_id: uuid.UUID, session: SessionDep, who: LimitedCaller) -> dict:
+    """Run an upload through the checks and extraction again (for example after a failure)."""
+    entry = _entry(session, entry_id, who)
+    if entry.uploaded_by != who.name and not who.is_admin:
+        raise HTTPException(status_code=404, detail="no such upload")
+    try:
+        entry = vault.reprocess(session, entry_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    session.commit()
+    if entry.status in (vault.ACCEPTED, vault.HELD_PRIVATE) and entry.session_id:
+        sess = session.get(ResearchSession, entry.session_id)
+        if sess is not None:
+            _launch(session, sess)
+    return vault.entry_out(entry, who.name, who.is_admin)
+
+
 @router.get("/companies/{company_id}/vault")
 def company_vault(company_id: uuid.UUID, session: SessionDep, who: Caller) -> list[dict]:
     """The company's evidence vault: validated public filings, and your own uploads."""
@@ -433,6 +516,35 @@ def all_reports(
     if company_id:
         stmt = stmt.where(ResearchReport.company_id == company_id)
     return [_report_out(r) for r in session.scalars(stmt)]
+
+
+@router.get("/reports/{report_id}/pdf")
+def get_report_pdf(
+    report_id: uuid.UUID,
+    session: SessionDep,
+    who: Annotated[Principal, Depends(rate_limited("pdf"))],
+) -> Response:
+    """The stored report rendered as a PDF (a rendering of the stored content, nothing added)."""
+    report = session.get(ResearchReport, report_id)
+    if report is None:
+        raise HTTPException(status_code=404, detail="no such report")
+    _own(session, report.session_id, who)
+    body = render_pdf(
+        report.content,
+        version=report.version,
+        mode=report.mode,
+        report_id=str(report.id),
+        content_hash=report.content_hash,
+    )
+    name = f"equityos-report-v{report.version}-{str(report.id)[:8]}.pdf"
+    return Response(
+        content=body,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{name}"',
+            "Cache-Control": "no-store",
+        },
+    )
 
 
 @router.get("/reports/{report_id}")
