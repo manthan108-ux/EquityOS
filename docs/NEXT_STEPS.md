@@ -33,3 +33,13 @@ verification and raw prices stay untouched.
 3. Score-history explanation when scores move; recalculate only when validated data changes.
 4. Operating readers: track actual source coverage separately from parser capability.
 5. RBI/DBIE feasibility note (company-level coverage must be proven before any use).
+
+## Report engine follow-ups (after the 2026-11-11 report transformation)
+1. Business-model and bank-franchise analysis (CASA, retail/corporate mix, fee income) needs investor
+   presentation / Pillar 3 figures; extend `docintel/disclosures.py` first.
+2. Carry document titles and filing dates in report content so the source register names documents.
+3. Operating metrics (vehicle volumes, IT attrition/utilisation) into the sector profiles once the
+   readers have collected data.
+4. A DCF for non-banks needs a documented forecast and discount-rate policy (user decision).
+5. Peer coverage: HDFC, Kotak and SBI consolidated ROE/P-B (extraction) so bank comparisons need not
+   fall back to the standalone basis.

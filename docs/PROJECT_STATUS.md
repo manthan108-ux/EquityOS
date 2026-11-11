@@ -438,3 +438,20 @@ No new documents were available, so everything uses the stored evidence.
   HTTP 403 (recorded). ONGC: robots.txt disallows its document path (respected). Britannia, IOC,
   TMPV: script-driven sites, nothing static to read.
 * Tests: 28 new fetch tests, 8 layout tests, 3 + 1 frontend/browser tests.
+
+### Report transformation, phases 1-7 (2026-11-11)
+
+Full description: [REPORT_ENGINE.md](REPORT_ENGINE.md).
+
+* New institutional-style PDF (`research/pdf_pro.py`, `pdf_analysis.py`): cover, executive summary, ten
+  sections, charts, source register, methodology. Stored reports and score history are untouched; the PDF
+  is a rendering of stored content, and `?style=basic` keeps the old register.
+* Analytical layer in `content["analysis"]`: trends and unusual-movement flags, peer benchmarking on a
+  consistent period/basis/unit with ranks only from 3+ comparable peers, extractive management
+  commentary, historical/peer/intrinsic valuation with scenarios and sensitivity, bull/bear thesis,
+  catalysts, risks, monitoring indicators and a nine-question conclusion. No recommendation or target
+  price: no validated methodology exists.
+* Sector profiles for banks, IT services, FMCG, automobiles, energy and generic non-financials.
+  `python -m app.research.compat` builds and renders all 24 pilot companies (24 of 24 without error).
+* Tests: report-analysis suite (hand-checked arithmetic, basis and peer-comparability rules, thesis and
+  conclusion rules, full Axis PDF), PDF renderer suite.

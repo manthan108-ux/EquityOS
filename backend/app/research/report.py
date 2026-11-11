@@ -17,6 +17,7 @@ by a model.
 
 import hashlib
 import json
+import logging
 import uuid
 from datetime import UTC, date, datetime
 
@@ -38,11 +39,12 @@ from app.models import (
     ScoreRun,
     Security,
 )
-from app.research import clock
+from app.research import clock, insight
 from app.research import preferences as pf
 from app.research import readiness as rd
 from app.research import requirements as rq
 
+log = logging.getLogger(__name__)
 AVAILABLE_EVIDENCE, COMPLETE = "AVAILABLE_EVIDENCE", "COMPLETE"
 MODES = (AVAILABLE_EVIDENCE, COMPLETE)
 EXCERPT_CHARS = 1500
@@ -342,6 +344,27 @@ def build_content(
         for g in (*missing[rq.CRITICAL], *missing[rq.IMPORTANT])
     ]
     notes = [r for r in ready.reasons if "standalone figures only" in r]
+    applied = _applied_adjustments(session, company.id)
+    auditor = next((s for s in sections if s["key"] == "risks_management"), {}).get(
+        "auditor_report"
+    )
+    try:
+        with session.begin_nested():
+            analysis = insight.build(
+                session,
+                company,
+                ready,
+                score=score,
+                missing=[g["label"] for g in (*missing[rq.CRITICAL], *missing[rq.IMPORTANT])],
+                applied=applied,
+                auditor_flags=(auditor or {}).get("flags"),
+            )
+    except Exception as exc:  # noqa: BLE001 - the analysis is an add-on; a report never depends on it
+        log.exception("report analysis failed for %s", company.id)
+        analysis = {
+            "available": False,
+            "reason": f"the analytical layer could not be built ({type(exc).__name__})",
+        }
     banner = (
         "Complete research report: every critical requirement is met by validated evidence."
         if mode == COMPLETE
@@ -375,6 +398,7 @@ def build_content(
             "note": "research readiness measures the evidence, not the company",
         },
         "sections": sections,
+        "analysis": analysis,
         "limitations": {
             "missing_critical": missing[rq.CRITICAL],
             "missing_important": missing[rq.IMPORTANT],
@@ -384,7 +408,7 @@ def build_content(
             "unavailable_scores": None if score.get("available") else score.get("reason"),
             "limits_on_conclusions": conclusions,
             "basis_notes": notes,
-            "applied_price_adjustments": _applied_adjustments(session, company.id),
+            "applied_price_adjustments": applied,
             "price_history_notes": next(
                 (s["price_notes"] for s in sections if s["key"] == "historical"), []
             ),
