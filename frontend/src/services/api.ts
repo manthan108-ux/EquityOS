@@ -51,6 +51,9 @@ export const fetchLiveness = () => getJson<LiveHealth>("/health");
 // /health/ready answers 503 with a JSON body when the database is down; that body is useful.
 export const fetchReadiness = () => getJson<ReadyHealth>("/health/ready", [503]);
 
+export const fetchCompany = (id: string, signal?: AbortSignal) =>
+  getJson<CompanySummary>(`/api/companies/${id}`, [], signal);
+
 export const searchCompanies = (q: string, signal?: AbortSignal) =>
   getJson<SearchResponse>(`/api/companies/search?q=${encodeURIComponent(q)}`, [], signal);
 

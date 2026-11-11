@@ -1,26 +1,102 @@
 @import "tailwindcss";
 
+/*
+  EquityOS design tokens: light theme only.
+  Colour is meaningful: green = validated/positive, amber = pending/cautionary, red = blocked/failed,
+  blue = primary action/selection, grey = secondary/inactive.
+*/
+@theme {
+  --color-canvas: #f5f7fa;
+  --color-surface: #ffffff;
+  --color-surface-2: #f8fafc;
+  --color-ink: #172033;
+  --color-muted: #64748b;
+  --color-faint: #94a3b8;
+  --color-line: #e2e8f0;
+  --color-line-strong: #cbd5e1;
+
+  --color-brand: #2457c5;
+  --color-brand-hover: #1d479f;
+  --color-brand-2: #4778d5;
+  --color-brand-soft: #eaf0fc;
+  --color-brand-line: #c7d6f5;
+
+  --color-ok: #16865c;
+  --color-ok-soft: #e7f5ee;
+  --color-ok-line: #b6e0cb;
+  --color-warn: #b87410;
+  --color-warn-soft: #fdf3e0;
+  --color-warn-line: #f1d49b;
+  --color-bad: #d64545;
+  --color-bad-soft: #fdecec;
+  --color-bad-line: #f3bcbc;
+  --color-info: #2878b8;
+  --color-info-soft: #e8f2fa;
+  --color-info-line: #bcd9ee;
+
+  --font-sans: var(--font-geist-sans), "Inter", system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+
+  --radius-card: 12px;
+  --radius-control: 8px;
+  --shadow-card: 0 1px 2px rgb(23 32 51 / 0.04), 0 1px 1px rgb(23 32 51 / 0.03);
+  --shadow-pop: 0 8px 24px rgb(23 32 51 / 0.10);
+}
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  color-scheme: light;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  background: var(--color-canvas);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Financial figures line up in columns. */
+.tnum {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 2px;
+}
+
+@keyframes eq-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+.eq-skeleton {
+  background: linear-gradient(90deg, #eef2f7 0%, #f6f8fb 50%, #eef2f7 100%);
+  background-size: 200% 100%;
+  animation: eq-shimmer 1.4s ease-in-out infinite;
+  border-radius: 6px;
+}
+@keyframes eq-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .eq-skeleton,
+  .animate-pulse {
+    animation: none;
+  }
 }

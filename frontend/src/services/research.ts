@@ -312,8 +312,100 @@ export type ReportSection = {
   management_discussion?: Excerpt;
   auditor_report?: Excerpt;
 };
+export type AnalysisPoint = {
+  period_end: string;
+  fy: string;
+  value: string | null;
+  unit: string | null;
+  basis: string | null;
+  evidence_id: number;
+  document_id: string | null;
+  page: number | null;
+  kind: string;
+};
+export type TrendRow = {
+  key: string;
+  label: string;
+  group: string;
+  kind: string;
+  better: string | null;
+  basis: string | null;
+  basis_note: string | null;
+  points: AnalysisPoint[];
+  changes: { period: string; type: "pct" | "points"; value: string }[];
+};
+export type QuarterRow = {
+  key: string;
+  label: string;
+  kind: string;
+  points: AnalysisPoint[];
+  yoy: { type: "pct" | "points"; value: string } | null;
+  qoq: { type: "pct" | "points"; value: string } | null;
+};
+export type PeerRow = {
+  key: string;
+  label: string;
+  group: string;
+  kind: string;
+  better: string | null;
+  basis: string | null;
+  basis_note?: string;
+  company: { value: string; unit: string | null; period_end: string; evidence_id: number };
+  peers: { name: string; comparable: boolean; value?: string; period_end?: string; reason?: string }[];
+  n_comparable: number;
+  median?: string;
+  rank?: number;
+  of?: number;
+  position?: string;
+  note?: string;
+};
+export type ThesisPoint = {
+  text: string;
+  kind: string;
+  basis?: string;
+  evidence_ids: number[];
+};
+export type VerdictComponent = {
+  key: string;
+  label: string;
+  points: number | null;
+  weight: number;
+  available: boolean;
+  reading: string;
+};
+export type Verdict = {
+  verdict: "BUY" | "SELL" | "WATCH";
+  net_points: number;
+  components: VerdictComponent[];
+  levels: Record<string, string | boolean | string[] | null | undefined>;
+  confidence: { band: string; points: string; factors: Record<string, string>; note: string };
+  reasons: string[];
+  rules: string;
+  disclosure: string;
+};
+export type Analysis = {
+  available: boolean;
+  reason?: string;
+  sector?: { code: string; label: string; lens: string; notes: string[] };
+  basis?: string;
+  trend?: { annual: TrendRow[]; quarterly: QuarterRow[]; observations: { text: string; kind: string; evidence_ids: number[] }[]; unusual: { text: string; evidence_ids: number[] }[]; rules: string };
+  peers?: { peers: { name: string; rank: number; reason: string }[]; rows: PeerRow[]; unavailable_metrics: string[]; not_available?: string | null; summary: { ranked_metrics: number; better: string[]; worse: string[]; in_line: string[] }; rules: string };
+  valuation?: Record<string, unknown>;
+  management?: { available: boolean; reason?: string; topics?: { key: string; title: string; forward_looking: boolean; items: { text: string; page: number }[] }[]; document?: { title: string; period: string | null }; method?: string; comparison?: string };
+  thesis?: {
+    bull: ThesisPoint[];
+    bear: ThesisPoint[];
+    catalysts: ThesisPoint[];
+    risks: { company: ThesisPoint[]; sector: { title: string; text: string }[]; valuation: ThesisPoint[]; data: ThesisPoint[]; governance: ThesisPoint[] };
+    monitoring: { key: string; label: string; available: boolean; value?: string; unit?: string; period_end?: string; peer_median?: string }[];
+    trajectory: { label: string; basis: string };
+    conclusion: { answers: { question: string; answer: string }[] };
+  };
+  verdict?: Verdict;
+};
 export type Report = ReportRow & {
   content: {
+    analysis?: Analysis;
     meta: {
       banner: string;
       complete: boolean;
@@ -355,8 +447,13 @@ export const downloadReportPdf = async (id: string): Promise<Blob> => {
   return res.blob();
 };
 export const fetchSession = (id: string) => research<SessionStatus>(`/sessions/${id}`);
-export const listSessions = (onlyOpen = false) =>
-  research<SessionRow[]>(`/sessions${onlyOpen ? "?only_open=true" : ""}`);
+export const listSessions = (onlyOpen = false, companyId?: string) => {
+  const q = [onlyOpen && "only_open=true", companyId && `company_id=${companyId}`].filter(Boolean);
+  return research<SessionRow[]>(`/sessions${q.length ? `?${q.join("&")}` : ""}`);
+};
+export type ReportListRow = ReportRow & { session_id: string; company_id: string };
+export const fetchAllReports = (companyId?: string) =>
+  research<ReportListRow[]>(`/reports${companyId ? `?company_id=${companyId}` : ""}`);
 export const fetchResearchReadiness = (id: string) =>
   research<Readiness>(`/sessions/${id}/readiness`);
 export const fetchMissing = (id: string) => research<MissingAssessment>(`/sessions/${id}/missing`);
