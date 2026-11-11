@@ -31,7 +31,8 @@ from app.research import preferences as pf
 from app.research import readiness as rd
 from app.research import report as rp
 from app.research import requirements as rq
-from app.research.pdf import render as render_pdf
+from app.research.pdf import render as render_basic_pdf
+from app.research.pdf_pro import render as render_pdf
 from app.research.security import Principal, current_principal, rate_limited
 from app.services.company_resolver import MAX_QUERY_LENGTH, ResolutionStatus, resolve_company
 
@@ -580,13 +581,18 @@ def get_report_pdf(
     report_id: uuid.UUID,
     session: SessionDep,
     who: Annotated[Principal, Depends(rate_limited("pdf"))],
+    style: Annotated[str, Query(pattern="^(research|basic)$")] = "research",
 ) -> Response:
-    """The stored report rendered as a PDF (a rendering of the stored content, nothing added)."""
+    """The stored report rendered as a PDF (a rendering of the stored content, nothing added).
+
+    `style=research` (default) is the institutional layout; `style=basic` is the plain evidence
+    register. Both render the same stored content.
+    """
     report = session.get(ResearchReport, report_id)
     if report is None:
         raise HTTPException(status_code=404, detail="no such report")
     _own(session, report.session_id, who)
-    body = render_pdf(
+    body = (render_basic_pdf if style == "basic" else render_pdf)(
         report.content,
         version=report.version,
         mode=report.mode,
