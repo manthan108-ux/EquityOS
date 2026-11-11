@@ -63,9 +63,23 @@ export async function mockApi(page: Page, state: State) {
         matches: [{ company: COMPANY, match_type: "TICKER", score: 1, matched_on: "SBIN" }],
         notes: [],
       });
+    if (path === "/api/companies/c1") return json(route, COMPANY);
     if (path === "/api/research/overview")
       return json(route, { companies: [], automatic: 0, assisted: 0, blocked: 0 });
-    if (path === "/api/research/sessions" && method === "GET") return json(route, []);
+    if (path === "/api/research/sessions" && method === "GET")
+      return json(
+        route,
+        state.session
+          ? [{ id: state.session.id, company_id: "c1", company: "SBI", status: state.session.status, eligibility: state.session.eligibility, readiness_score: state.session.readiness_score, latest_report_version: state.reports.length || null, updated_at: state.session.updated_at }]
+          : [],
+      );
+    if (path === "/api/research/reports" && method === "GET")
+      return json(route, state.reports.map((r) => ({ ...r, session_id: "s1", company_id: "c1" })));
+    const pdf = path.match(/^\/api\/research\/reports\/[^/]+\/pdf$/);
+    if (pdf) {
+      state.calls.push("PDF");
+      return route.fulfill({ status: 200, contentType: "application/pdf", headers: { "access-control-allow-origin": "*" }, body: Buffer.from("%PDF-1.4 test") });
+    }
     if (path === "/api/research/sessions" && method === "POST") {
       state.session ??= session();
       return json(route, state.session);
@@ -94,7 +108,12 @@ export async function mockApi(page: Page, state: State) {
         state.reports.push(r);
         return json(route, r);
       }
-      if (tail === "/resume" || tail === "/continue") return json(route, state.session);
+      if (tail === "/resume" || tail === "/continue") {
+        if (state.session && state.session.status === "FAILED") {
+          state.session = { ...state.session, status: "AWAITING_DOCUMENTS", last_error: null, steps: state.session.steps.map((x) => ({ ...x, status: "DONE", error: null })) };
+        }
+        return json(route, state.session);
+      }
     }
     const rm = path.match(/^\/api\/research\/reports\/([^/]+)$/);
     if (rm) return json(route, state.reports.find((r) => r.id === rm[1]) ?? {});

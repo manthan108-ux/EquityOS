@@ -17,7 +17,7 @@ describe("AccessKey", () => {
     expect(getApiKey()).toBe("my-secret");
     expect(window.localStorage.length).toBe(0);
     expect(screen.queryByDisplayValue("my-secret")).not.toBeInTheDocument();
-    expect(screen.getByText(/access key is set for this tab/i)).toBeInTheDocument();
+    expect(screen.getByText(/access key set for this browser tab/i)).toBeInTheDocument();
   });
 
   it("can forget the key again", async () => {
