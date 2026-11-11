@@ -5,7 +5,7 @@ valuation) and carries the evidence ids it rests on. Points are INTERPRETATIONS 
 the data (catalysts, valuation re-rating), ANALYTICAL HYPOTHESES, and are labelled so. Sector risk
 templates are labelled as sector-generic. Management statements are quoted as statements.
 
-No recommendation is produced: there is no validated recommendation methodology in EquityOS, and a
+The verdict (BUY / SELL / WATCH) is produced by verdict.py under its own stated rules; a
 conclusion that the evidence cannot support is stated as "cannot be established".
 """
 
@@ -377,7 +377,7 @@ def _valuation_text(val: dict) -> str:
     return (
         lead
         + "These are measurements against peers and scenario-implied values under stated assumptions, "
-        "not a verdict on cheapness; no target price is given."
+        "not a verdict on cheapness; the verdict in section 7 uses them under its stated rules."
     )
 
 
@@ -491,7 +491,7 @@ def build(
         "trajectory": traj,
         "conclusion": {
             "answers": _answers(analysis, bull, bear, traj, score, missing, monitoring),
-            "recommendation": "none: EquityOS has no validated recommendation methodology",
+            "recommendation": "see the verdict block (EquityOS verdict methodology v1)",
         },
         "rules": (
             "points come from stated rules over the analysis: peer rank against the peer median, the "

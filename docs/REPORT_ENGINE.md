@@ -29,6 +29,7 @@ validated evidence ──► report.build_content ──► research_reports.con
 | `analysis.py` | Phases 2-3. Annual and quarterly trends (growth, changes, unusual movements, rule-based observations) and peer comparison tables. |
 | `mgmt.py` | Phase 4. Extractive management commentary from the stored MD&A pages: verbatim short sentences filed by keyword cues, each with its page. Nothing is paraphrased. |
 | `valuation.py` | Phase 5. Historical P/E at year ends, peer P/E and P/B, bank justified-P/B (residual income) with sensitivity and market-implied ROE, relative (peer P/E) scenarios, and the list of models not completed. |
+| `verdict.py` | BUY / SELL / WATCH with target, stop-loss, reward-to-risk and evidence confidence (methodology v1, below). |
 | `thesis.py` | Phase 6. Bull and bear points, catalysts, risks, monitoring indicators, trajectory and the nine-question conclusion. |
 | `insight.py` | Assembles the above for one company. |
 | `pdf_pro.py`, `pdf_analysis.py` | Page layout, charts and tables. `pdf.py` is the older plain renderer, kept. |
@@ -61,7 +62,7 @@ the company).
   uses ROE and P/B on the same basis only.
 * **Historical P/E** is skipped for a year when a corporate-action adjustment or flagged price gap lies
   after it, because per-share figures would not be comparable.
-* **No recommendation.** There is no validated recommendation methodology, so none is produced.
+* **Verdict.** See "Verdict methodology" below. It is a stated rule set, not a forecast or advice.
 
 ## Known limits
 
@@ -77,3 +78,30 @@ the company).
 * Sector profiles for FMCG, automobiles and energy use the same non-financial metric set; operating
   metrics (volumes, utilisation, attrition) are used only where captured and are not yet in the
   report.
+
+## Verdict methodology (v1, `verdict.py`)
+
+Five components, each scored -1 / 0 / +1 (valuation counts double):
+
+| Component | +1 | -1 |
+|---|---|---|
+| Financial score | 60 or more | 40 or less |
+| Financial trajectory | improving | deteriorating |
+| Peer standing (better minus worse, over rankable metrics, needs 3) | net share at least +1/3 | at most -1/3 |
+| Valuation (mean base-case value vs price), weight 2 | upside of 15% or more | 15% or more below |
+| Price trend (close vs 200-day average) | more than 5% above | more than 5% below |
+
+* **Verdict:** net points of +3 or more is BUY, -3 or less SELL, otherwise WATCH. BUY and SELL need at
+  least four computable components and a reward-to-risk of 1.5 or more, else the verdict is WATCH and the
+  reason is printed.
+* **Target:** mean of the available base-case (BUY) or bear-case (SELL) scenario values. With one
+  valuation method only half of the gap to that value counts. No time horizon is implied.
+* **Stop-loss:** 2 x the 14-day average true range from stored prices, kept between 5% and 15% of the
+  price. Not computed when a corporate-action adjustment or flagged price gap falls in the window.
+* **WATCH** gives no trade levels, only the prices at which the valuation component alone would turn
+  positive or negative.
+* **Confidence** is evidence confidence, 0-100: coverage 40, agreement 30, research readiness 30, minus 10
+  each for a LOW-confidence score, valuation methods that disagree in direction, and a single method.
+  HIGH 85+, MEDIUM 55+, else LOW. It is not the probability that a trade works.
+* Thresholds are EquityOS judgement and have **not been back-tested**. Review them before relying on
+  the output; they are constants at the top of `verdict.py`.

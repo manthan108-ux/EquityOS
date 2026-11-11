@@ -757,6 +757,104 @@ def valuation_section(report: dict, st) -> list:
     return out
 
 
+# ---------------------------------------------------------------- verdict
+
+VCOL = {"BUY": "#2f7d5b", "SELL": "#b3442f", "WATCH": "#c77d0a"}
+
+
+def verdict_block(report: dict, st) -> list:
+    a = _analysis(report)
+    v = a.get("verdict") if a else None
+    if not v:
+        return []
+    lv, conf = v["levels"], v["confidence"]
+    col = VCOL[v["verdict"]]
+    head = Table(
+        [
+            [
+                Paragraph(f'<font color="{col}"><b>{v["verdict"]}</b></font>', st["kpi_v"]),
+                Paragraph(
+                    clean(f"Evidence confidence: {conf['band']} ({conf['points']} / 100)"),
+                    st["cellb"],
+                ),
+                Paragraph(
+                    clean(
+                        f"Net points {v['net_points']:+d} (BUY at +3 or more, SELL at -3 or less)"
+                    ),
+                    st["cell"],
+                ),
+            ]
+        ],
+        colWidths=[34 * mm, 62 * mm, W - 96 * mm],
+    )
+    head.setStyle(
+        TableStyle(
+            [
+                ("BOX", (0, 0), (-1, -1), 0.8, colors.HexColor(col)),
+                ("BACKGROUND", (0, 0), (-1, -1), BAND),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("TOPPADDING", (0, 0), (-1, -1), 8),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+                ("LEFTPADDING", (0, 0), (-1, -1), 10),
+            ]
+        )
+    )
+    out = [Paragraph("EquityOS verdict", st["h2"]), head, Spacer(1, 6)]
+    rows = [_hdr(st, "Component", "Reading", "Points", "Weight", right_from=2)]
+    for c in v["components"]:
+        pts = "n/a" if not c["available"] else f"{c['points']:+d}"
+        rows.append(
+            [
+                Paragraph(clean(c["label"]), st["cellb"]),
+                Paragraph(clean(c["reading"]), st["cell"]),
+                Paragraph(pts, st["cellr"]),
+                Paragraph(str(c["weight"]), st["cellr"]),
+            ]
+        )
+    out.append(KeepTogether([_table(rows, [34 * mm, W - 62 * mm, 14 * mm, 14 * mm])]))
+    out.append(Spacer(1, 6))
+    if lv.get("target"):
+        side = "BUY" if v["verdict"] == "BUY" else "SELL"
+        rows = [
+            _hdr(st, "Trade level", "Value", "Basis", right_from=1),
+            [Paragraph("Reference price", st["cell"]), Paragraph(f"Rs. {lv['price']}", st["cellr"]), Paragraph(clean(f"close on {lv['price_date']}"), st["cell"])],
+            [Paragraph("Target" if side == "BUY" else "Downside target", st["cellb"]), Paragraph(f"Rs. {lv['target']} ({'+' if Decimal(lv['target_pct']) > 0 else ''}{lv['target_pct']}%)", st["cellr"]),
+             Paragraph(clean(("mean base-case " if side == "BUY" else "mean bear-case ") + "scenario value (" + ", ".join(lv["value_sources"]) + "); no time horizon"
+                   + ("; one method only, so half of the gap to that value is counted" if lv.get("single_method") else "")), st["cell"])],
+            [Paragraph("Stop-loss" if side == "BUY" else "Invalidation level", st["cellb"]), Paragraph(f"Rs. {lv['stop_loss']} ({lv['stop_pct']}%)", st["cellr"]),
+             Paragraph(clean(f"2 x 14-day average true range (Rs. {lv['atr14']}), kept within 5% to 15% of the price"), st["cell"])],
+            [Paragraph("Reward-to-risk", st["cell"]), Paragraph(lv["reward_to_risk"], st["cellr"]), Paragraph("target distance / stop distance; at least 1.5 required", st["cell"])],
+        ]  # fmt: skip
+        out.append(KeepTogether([_table(rows, [34 * mm, 42 * mm, W - 76 * mm])]))
+    else:
+        out.append(Paragraph("No trade levels are given: the verdict is WATCH.", st["body"]))
+        if lv.get("would_turn_buy_below"):
+            out.append(
+                Paragraph(
+                    clean(
+                        f"With the other components unchanged, the valuation component alone would turn positive at a price of "
+                        f"Rs. {lv['would_turn_buy_below']} or below, and negative at Rs. {lv['would_turn_sell_above']} or above "
+                        f"(base-case value Rs. {lv['base_value']}; bear Rs. {lv['bear_value']}, bull Rs. {lv['bull_value']}). "
+                        "A BUY would still need net points of +3 and a reward-to-risk of 1.5."
+                    ),
+                    st["body"],
+                )
+            )
+    for r in v["reasons"]:
+        out.append(Paragraph(clean(f"Why not a trade: {r}."), st["small"]))
+    f = conf["factors"]
+    out.append(
+        Paragraph(
+            clean(
+                f"Confidence: {f['coverage']}; {f['agreement']}; {f['evidence_quality']}. {conf['note'].capitalize()}."
+            ),
+            st["small"],
+        )
+    )
+    out.append(Paragraph(clean(v["rules"] + ". " + v["disclosure"]), st["small"]))
+    return out
+
+
 # ---------------------------------------------------------------- section 7: thesis
 
 
@@ -783,6 +881,7 @@ def thesis_section(report: dict, st) -> list:
     out = [Paragraph(clean(t["rules"].capitalize() + "."), st["small"])]
     out += _points("Bull case", t["bull"], st)
     out += _points("Bear case", t["bear"], st)
+    out += verdict_block(report, st)
     out += _points("Key catalysts", t["catalysts"], st)
     r = t["risks"]
     out.append(Paragraph("Key risks", st["h2"]))
@@ -873,7 +972,7 @@ def conclusion_section(report: dict, st) -> list:
             [
                 Paragraph(
                     clean(
-                        "No buy, sell or hold recommendation or target price is given: EquityOS has no validated recommendation methodology. This conclusion is an evidence summary, not investment advice."
+                        "The verdict, target and stop-loss in section 7 come from a stated rule set (methodology v1). This conclusion is an evidence summary, not investment advice or a forecast."
                     ),
                     st["body"],
                 )

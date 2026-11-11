@@ -499,15 +499,16 @@ def _cover(report, facts, st, version, mode) -> list:
                         st["small"],
                     ),
                 ],
+                *_verdict_cell(report, st),
             ]
         ],
-        colWidths=[W / 2] * 2,
+        colWidths=[W / (3 if _has_verdict(report) else 2)] * (3 if _has_verdict(report) else 2),
     )
     two.setStyle(
         TableStyle(
             [
                 ("BOX", (0, 0), (-1, -1), 0.4, RULE),
-                ("LINEAFTER", (0, 0), (0, 0), 0.4, RULE),
+                ("LINEAFTER", (0, 0), (-2, 0), 0.4, RULE),
                 ("BACKGROUND", (0, 0), (-1, -1), BAND),
                 ("VALIGN", (0, 0), (-1, -1), "TOP"),
                 ("LEFTPADDING", (0, 0), (-1, -1), 10),
@@ -524,9 +525,13 @@ def _cover(report, facts, st, version, mode) -> list:
         two,
         Spacer(1, 12),
         Paragraph(
-            "The financial score and research readiness are separate measures. The report contains "
-            "no buy, sell or hold recommendation: no recommendation methodology has been defined "
-            "or validated in EquityOS.",
+            "The financial score and research readiness are separate measures. "
+            + (
+                "The verdict is the output of a stated rule set (methodology v1), not a forecast or "
+                "investment advice; see section 7."
+                if _has_verdict(report)
+                else "The report contains no buy, sell or hold recommendation in this edition."
+            ),
             st["small"],
         ),
         Spacer(1, 6),
@@ -535,6 +540,34 @@ def _cover(report, facts, st, version, mode) -> list:
             st["small"],
         ),
         PageBreak(),
+    ]
+
+
+def _has_verdict(report: dict) -> bool:
+    a = report.get("analysis") or {}
+    return bool(a.get("available") and a.get("verdict"))
+
+
+VERDICT_COLOUR = {"BUY": "#2f7d5b", "SELL": "#b3442f", "WATCH": "#c77d0a"}
+
+
+def _verdict_cell(report: dict, st) -> list:
+    if not _has_verdict(report):
+        return []
+    v = report["analysis"]["verdict"]
+    colour = VERDICT_COLOUR[v["verdict"]]
+    return [
+        [
+            Paragraph(f'<font color="{colour}"><b>{v["verdict"]}</b></font>', st["kpi_v"]),
+            Paragraph("EQUITYOS VERDICT", st["kpi_l"]),
+            Paragraph(
+                clean(
+                    f"Evidence confidence {v['confidence']['band']} ({v['confidence']['points']} / 100). "
+                    "Rule-based; see section 7."
+                ),
+                st["small"],
+            ),
+        ]
     ]
 
 
@@ -598,6 +631,13 @@ def _executive_synthesis(report, st) -> list:
         )
     else:
         parts.append("Peer standing cannot be established: too few comparable peers.")
+    v = a.get("verdict")
+    if v:
+        lv = v["levels"]
+        text = f"EquityOS verdict: {v['verdict']} (evidence confidence {v['confidence']['band']})."
+        if lv.get("target"):
+            text += f" Target Rs. {lv['target']}, stop-loss Rs. {lv['stop_loss']}, reward-to-risk {lv['reward_to_risk']}."
+        parts.append(text)
     return [Paragraph(clean(" ".join(parts)) + " " + _tag("INTERPRETATION"), st["body"])]
 
 
@@ -1090,7 +1130,7 @@ def _coverage_full(st) -> list:
             "INTERPRETATION, ANALYTICAL HYPOTHESIS, MANAGEMENT STATEMENT or ASSUMPTION. The thesis "
             "and conclusion are rule-based readings of the evidence, with the rules stated in the "
             "appendix. Valuation scenarios rest on illustrative assumptions and are not target "
-            "prices. No recommendation is given.",
+            "prices. The BUY / SELL / WATCH verdict follows the stated rule set (methodology v1); it is not a forecast or investment advice.",
             st,
             warn=False,
         ),

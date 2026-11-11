@@ -463,7 +463,7 @@ def test_trajectory_rules_and_no_recommendation():
         applied=[],
         auditor_flags=None,
     )
-    assert t["conclusion"]["recommendation"].startswith("none")
+    assert t["conclusion"]["recommendation"].startswith("see the verdict")
     qs = [a["question"] for a in t["conclusion"]["answers"]]
     assert len(qs) == 9 and "Is profitability sustainable?" in qs
 
@@ -560,7 +560,8 @@ def test_the_report_content_carries_a_serialisable_analysis(seeded):  # noqa: F8
     json.dumps(report.content)  # the whole content (with the analysis) is JSON
     for key in ("trend", "peers", "valuation", "management", "thesis"):
         assert key in a
-    assert a["thesis"]["conclusion"]["recommendation"].startswith("none")
+    assert a["verdict"]["verdict"] in ("BUY", "SELL", "WATCH")
+    assert a["thesis"]["conclusion"]["recommendation"].startswith("see the verdict")
 
 
 def test_an_analysis_failure_never_blocks_the_report(seeded, monkeypatch):  # noqa: F811
@@ -614,7 +615,8 @@ def test_the_full_axis_pdf_has_every_section_and_no_recommendation():
         and "Monitoring indicators" in flat
     )
     assert "MANAGEMENT STATEMENT" in flat and "ASSUMPTION" in flat and "SECTOR TEMPLATE" in flat
-    assert "No buy, sell or hold recommendation or target price" in flat
+    assert "EquityOS verdict" in flat and "investment advice" in flat
+    assert "WATCH" in flat and "Evidence confidence" in flat
     assert (
         flat.count("not part of this edition") <= 2
     )  # business-model engine; forward-looking evidence
