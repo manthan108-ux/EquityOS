@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.models import Company
 from app.research import analysis as an
-from app.research import mgmt, thesis, valuation
+from app.research import mgmt, thesis, valuation, verdict
 from app.research import readiness as rd
 from app.research.sectors import sector_for
 
@@ -75,5 +75,8 @@ def build(
         mgmt=commentary,
         applied=applied,
         auditor_flags=auditor_flags,
+    )
+    result["verdict"] = verdict.build(
+        session, company.id, result, score=score, readiness_score=ready.score
     )
     return result

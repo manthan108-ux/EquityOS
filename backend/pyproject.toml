@@ -27,6 +27,7 @@ select = ["E", "F", "I", "B", "UP", "BLE"]
 "app/research/sectors.py" = ["E501"]
 "app/research/pdf_analysis.py" = ["E501"]
 "app/research/compat.py" = ["E501"]
+"app/research/verdict.py" = ["E501"]
 "tests/fixtures/*" = ["E501"]
 "app/providers/cli.py" = ["E501"]
 # Label patterns are regular expressions; splitting them hurts readability.

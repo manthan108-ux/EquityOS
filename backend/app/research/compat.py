@@ -67,6 +67,10 @@ def check(session, symbol: str, out: Path | None = None) -> dict:
             "bull": len(a["thesis"]["bull"]),
             "bear": len(a["thesis"]["bear"]),
             "direction": a["thesis"]["trajectory"]["label"],
+            "verdict": a["verdict"]["verdict"],
+            "confidence": a["verdict"]["confidence"]["band"],
+            "net": a["verdict"]["net_points"],
+            "levels": a["verdict"]["levels"].get("target") is not None,
         }
         pdf = render(
             content,
@@ -94,16 +98,19 @@ def main() -> None:
     finally:
         session.rollback()
         session.close()
-    print(f"{'symbol':<11}{'sector':<14}{'mode':<20}{'ann':>4}{'qtr':>4}{'peer':>5}{'rank':>5}{'hPE':>4} "
-          f"{'intr':<5}{'rel':<5}{'mgmt':<5}{'bull':>5}{'bear':>5} {'direction':<13}{'pg':>3}")  # fmt: skip
+    print(
+        f"{'symbol':<11}{'sector':<13}{'ann':>4}{'qtr':>4}{'peer':>5}{'rank':>5}{'hPE':>4}{'bull':>5}"
+        f"{'bear':>5} {'direction':<14}{'verdict':<7}{'net':>4} {'conf':<7}{'lvls':<6}{'pg':>3}"
+    )
     for r in rows:
         if "error" in r or "analysis" in r:
             print(f"{r['symbol']:<11}{r.get('error') or r['analysis']}")
             continue
         print(
-            f"{r['symbol']:<11}{r['sector']:<14}{r['mode']:<20}{r['annual_rows']:>4}{r['quarterly_rows']:>4}"
-            f"{r['peers']:>5}{r['ranked']:>5}{r['hist_pe']:>4} {str(r['intrinsic']):<5}{str(r['relative']):<5}"
-            f"{str(r['commentary']):<5}{r['bull']:>5}{r['bear']:>5} {r['direction']:<13}{r['pages']:>3}"
+            f"{r['symbol']:<11}{r['sector']:<13}{r['annual_rows']:>4}{r['quarterly_rows']:>4}"
+            f"{r['peers']:>5}{r['ranked']:>5}{r['hist_pe']:>4}{r['bull']:>5}{r['bear']:>5} "
+            f"{r['direction']:<14}{r['verdict']:<7}{r['net']:>+4} {r['confidence']:<7}"
+            f"{str(r['levels']):<6}{r['pages']:>3}"
         )
     print(
         f"\n{sum('error' not in r for r in rows)} of {len(rows)} built without error ({date.today()})"
