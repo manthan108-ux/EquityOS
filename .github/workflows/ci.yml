@@ -43,7 +43,8 @@ jobs:
       - run: alembic check
 
   frontend:
-    runs-on: ubuntu-latest
+    # Playwright 1.52 does not support the newest ubuntu-latest image; pin a supported one.
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: frontend
