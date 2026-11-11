@@ -21,6 +21,7 @@ or repeated run does only the work whose inputs have changed. A stage that faile
 stage found RUNNING after a crash (older than `STALE_RUNNING`) is treated as failed.
 """
 
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
@@ -34,6 +35,8 @@ from app.research import preferences as pf
 from app.research import readiness as rd
 from app.research import report as rp
 from app.research import requirements as rq
+
+log = logging.getLogger(__name__)
 
 STEPS = (
     "IDENTITY",
@@ -328,6 +331,11 @@ def _report(ctx: Context) -> dict:
     }
 
 
+# Stages that commit their own work (the document fetch commits after every stored file so a later
+# failure never loses a download). They cannot run inside a SAVEPOINT: committing or rolling back
+# from inside it ends the savepoint and SQLAlchemy raises InvalidRequestError.
+SELF_COMMITTING = frozenset({"DOCUMENTS"})
+
 RUNNERS: dict[str, Callable[[Context], dict]] = {
     "IDENTITY": _identity,
     "SOURCES": _sources,
@@ -407,9 +415,15 @@ def run(
         step.error = None
         session.commit()
         try:
-            with session.begin_nested():
+            if name in SELF_COMMITTING:
                 detail = RUNNERS[name](ctx)
+            else:
+                with session.begin_nested():
+                    detail = RUNNERS[name](ctx)
         except Exception as exc:  # noqa: BLE001 - recorded; later runs retry this stage
+            log.exception("research stage %s failed (session %s)", name, sess.id)
+            # Work already committed (e.g. stored documents) stays; only the open part is undone.
+            session.rollback()
             step.status = "FAILED"
             step.error = f"{type(exc).__name__} while running this stage"
             step.finished_at = datetime.now(UTC)
