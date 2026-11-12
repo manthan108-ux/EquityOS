@@ -59,9 +59,33 @@ def default_document_fetcher(session, company, *, data_dir=None):
 
     client = build_client()
     try:
-        return fetch_evidence(session, company, client, data_dir=data_dir)
+        # a company with no website on file gets one discovered and verified first (idempotent;
+        # an ambiguous or unreachable site is flagged for a person, not used)
+        from app.acquisition.website_discovery import ensure_website
+
+        try:
+            ensure_website(session, company, client)
+        except Exception:  # noqa: BLE001 - never blocks the research; fetch_evidence reports NO_WEBSITE
+            session.rollback()
+        result = fetch_evidence(session, company, client, data_dir=data_dir)
+        _enrich_best_effort(session, company, client)
+        return result
     finally:
         client.close()
+
+
+def _enrich_best_effort(session, company, client) -> None:
+    """Verified quotations from the company's own pages (history, leadership). Needs a language
+    model key; skipped silently without one; never blocks or fails the research."""
+    try:
+        from app.llm.providers import default_router
+        from app.research import enrich
+
+        router = default_router()
+        if router.providers:
+            enrich.enrich_company(session, company, client, router)
+    except Exception:  # noqa: BLE001
+        session.rollback()
 
 
 def default_router_factory():

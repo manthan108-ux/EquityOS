@@ -553,6 +553,41 @@ def _ambiguity(code: str, message: str, options: list[str] | None = None) -> dic
     return {"code": code, "message": message, "options": options or []}
 
 
+NARRATIVE_TYPES = frozenset(
+    {
+        "shareholding_pattern",
+        "press_release",
+        "earnings_transcript",
+        "investor_presentation",
+        "corporate_announcement",
+        "shareholder_meeting",
+        "regulatory_publication",
+        "other",
+    }
+)
+
+
+def _no_statements_reason(path: Path) -> str:
+    """Why nothing was read from a results/annual-report PDF, in words the uploader can act on."""
+    from app.docintel.pdf import text_layer_quality
+
+    try:
+        q = text_layer_quality(path)
+    except Exception:  # noqa: BLE001 - only used to explain; never fail the upload over it
+        q = None
+    if q and q["pages_with_images"] * 2 >= q["pages_sampled"] and q["malformed_share"] >= 0.04:
+        return (
+            "the PDF is a scan and its embedded text is unreliable (about "
+            f"{q['malformed_share']:.0%} of the words are garbled), so the tables cannot be "
+            "read. Upload the company's results as an Excel/XBRL file from the exchange, or a "
+            "text-based PDF"
+        )
+    return (
+        "no financial statement or ratio table could be recognised in this PDF. If it is a "
+        "results filing, upload the statements pages or the exchange's Excel/XBRL file"
+    )
+
+
 def _process_pdf(
     session: Session, entry: VaultEntry, company: Company, data_dir: Path, llm_router
 ) -> VaultEntry:
@@ -614,7 +649,14 @@ def _process_pdf(
     before = _readiness_ids(session, company)
     shared = entry.licence_class == PUBLIC_FILING
     # Private documents are read too (to organise them) but nothing is promoted to shared evidence.
-    report = extract_document(session, document, data_dir, promote=shared, llm_router=llm_router)
+    report = extract_document(
+        session,
+        document,
+        data_dir,
+        promote=shared,
+        llm_router=llm_router,
+        overrides={k: answers.get(k) for k in ("basis", "unit") if answers.get(k)},
+    )
     run = report.extraction
     entry.extraction_status = run.status.value
     _log(
@@ -678,10 +720,22 @@ def _process_pdf(
         )
         return entry
 
+    if run.status.value == "NO_STATEMENTS" and document.doc_type in NARRATIVE_TYPES:
+        # not a failure: such a document is read for its text, which is stored and searchable
+        entry.status = ACCEPTED
+        entry.visibility = "SHARED"
+        entry.validation_status = "NO_FIGURES"
+        _warn(
+            entry,
+            f"accepted as a {document.doc_type.replace('_', ' ')}: its text is stored and can be "
+            "cited, but no financial tables were read from it, so no figures were added",
+        )
+        _log(entry, "VALIDATE", True, "stored for reading; no structured figures expected")
+        return entry
     if run.status.value in ("NEEDS_OCR", "NO_STATEMENTS", "UNSUPPORTED", "FAILED"):
         reason = {
             "NEEDS_OCR": "the pages are scans without a text layer and OCR is not available here",
-            "NO_STATEMENTS": "no financial statement or ratio table could be recognised",
+            "NO_STATEMENTS": _no_statements_reason(data_dir / document.storage_path),
             "UNSUPPORTED": "the PDF is encrypted or cannot be read",
             "FAILED": "extraction failed; nothing was kept",
         }[run.status.value]
@@ -692,6 +746,36 @@ def _process_pdf(
         return entry
 
     return _finish(session, entry, company, document, run, before)
+
+
+def _unstated_questions(reasons: Counter, answers: dict, issues: list[dict]) -> list[dict]:
+    """Questions that would let refused values through: the basis or the unit the document never
+    states. Both are asked together when both are missing, and a question already answered is not
+    asked again."""
+    text = " ".join(reasons)
+    if "basis not stated" not in text and "unit not stated" not in text:
+        return []
+    codes = {i.get("code") for i in issues}
+    out: list[dict] = []
+    if ("basis not stated" in text or "BASIS_UNKNOWN" in codes) and not answers.get("basis"):
+        out.append(
+            _ambiguity(
+                "BASIS_UNSTATED",
+                "the statements do not say whether they are consolidated or standalone. Which are "
+                "they? (the answer is recorded as stated by you)",
+                ["CONSOLIDATED", "STANDALONE"],
+            )
+        )
+    if ("unit not stated" in text or "UNIT_UNKNOWN" in codes) and not answers.get("unit"):
+        out.append(
+            _ambiguity(
+                "UNIT_UNSTATED",
+                "the amounts have no unit printed that could be read (for example 'Rs. in crore'). "
+                "What unit are the amounts in? (the answer is recorded as stated by you)",
+                ["crore", "lakh", "million", "thousand", "inr"],
+            )
+        )
+    return out
 
 
 def _finish(
@@ -750,6 +834,21 @@ def _finish(
             )
         )
         top = "; ".join(f"{r} (x{n})" for r, n in why.most_common(3))
+        questions = _unstated_questions(why, entry.clarification or {}, run.issues or [])
+        if (
+            questions
+        ):  # the file is fine; two facts it does not print can be supplied by the uploader
+            entry.status = NEEDS_CLARIFICATION
+            entry.ambiguities = questions
+            entry.validation_status = None
+            _log(
+                entry,
+                "CLARIFY",
+                False,
+                f"{sum(why.values())} value(s) were read but {top}. Answer the question(s) and "
+                "the same file is processed again - nothing needs re-uploading",
+            )
+            return entry
         entry.status = REJECTED
         entry.reject_reason = (
             "figures were found but none passed the validation rules, so none were accepted"
@@ -993,7 +1092,11 @@ def clarify(
         raise ValueError("no such vault entry")
     if entry.status != NEEDS_CLARIFICATION:
         raise ValueError(f"this upload does not need clarification (status {entry.status})")
-    allowed = {"doc_type", "confirm_issuer", "source_reference"}
+    if answers.get("basis") not in (None, "CONSOLIDATED", "STANDALONE"):
+        raise ValueError("basis must be CONSOLIDATED or STANDALONE")
+    if answers.get("unit") not in (None, "crore", "lakh", "million", "thousand", "inr"):
+        raise ValueError("unit must be one of crore, lakh, million, thousand, inr")
+    allowed = {"doc_type", "confirm_issuer", "source_reference", "basis", "unit"}
     entry.clarification = {
         **(entry.clarification or {}),
         **{k: v for k, v in answers.items() if k in allowed},

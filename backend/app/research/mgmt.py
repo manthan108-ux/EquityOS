@@ -107,7 +107,7 @@ def _good(sentence: str) -> bool:
 
 
 _FURNITURE = re.compile(
-    r"^(?:(?:Management\u2019?'?s Discussion and Analysis|Standalone Financial Statements|Consolidated Financial Statements|Integrated Annual Report[^.]{0,24}?|Board\u2019?'?s Report|Corporate Overview|Statutory Reports|Financial Statements|Business Performance Review|Governance)\s*\d*\s*)+",
+    r"^(?:(?:Management\u2019?'?s Discussion and Analysis|Standalone Financial Statements|Consolidated Financial Statements|Integrated Annual Report[^.]{0,24}?|Board\u2019?'?s Report|Corporate Overview|Statutory Reports|Financial Statements|Business Performance Review|Governance|Management Discussion (?:&|and) Analysis|Annual Report\s*20\d\d-\d\d)\s*\d*\s*\|?\s*)+",
     re.I,
 )
 
@@ -171,10 +171,14 @@ def _pages(session: Session, section: DocumentSection) -> list[tuple[int, str]]:
 
 def commentary(session: Session, company_id: uuid.UUID) -> dict:
     """Structured commentary from the latest management-discussion section(s), or a stated gap."""
+    from app.research.profile import private_document_ids
+
+    hidden = private_document_ids(session, company_id)
     rows = session.execute(
         select(DocumentSection, Document)
         .join(Document, Document.id == DocumentSection.document_id)
         .where(Document.company_id == company_id, DocumentSection.kind == "MANAGEMENT_DISCUSSION")
+        .where(Document.id.not_in(hidden) if hidden else True)
         .order_by(
             Document.created_at.desc(),
             DocumentSection.extraction_id.desc(),

@@ -469,10 +469,10 @@ def test_the_profile_section_discloses_what_is_not_held():
     assert (
         "Structured founder and management biographies" in flat
     )  # unavailable items are disclosed
-    assert (
-        "Business segments and revenue contribution" in flat
-        and "no segment revenue by segment is stored" in flat
-    )
+    # a block with nothing to show gets no heading of its own; the gap is named once, in one line
+    assert "Business segments and revenue contribution" not in flat
+    assert "Not available for this company:" in flat
+    assert "segment revenue (no segment revenue by segment is stored" in flat
 
 
 # ---- graceful degradation and compatibility ---------------------------------------------------------
@@ -484,26 +484,77 @@ def test_a_report_without_the_new_analysis_still_renders_in_the_evidence_edition
     assert "EQUITY RESEARCH" in flat and "Industry overview" not in flat and "Contents" not in flat
 
 
-def test_missing_data_sections_say_so_instead_of_inventing(seeded):  # noqa: F811
+def test_a_section_with_nothing_to_show_is_omitted_and_the_contents_follow(seeded):  # noqa: F811
     c = _axis()
     a = c["analysis"]
     a["growth"]["revenue"] = {
         "available": False,
-        "reason": "fewer than two annual values are stored for the company",
+        "reason": "fewer than two annual values are stored",
     }
     a["growth"]["profit"] = {"available": False, "reason": "x"}
     a["growth"]["price_return"] = []
-    a["profile"]["narrative"] = {
-        "available": False,
-        "reason": "no annual report with stored page text is held for this company",
-    }
-    a["profile"]["segments"] = {
-        "available": False,
-        "reason": "no segment revenue by segment is stored",
-    }
-    a["cyclicality"]["observed"].update({"revenue": None, "profit": None, "volatility_class": None})
-    flat = _flat(c)
-    assert "fewer than two annual values" in flat and "No stored price-return evidence" in flat
-    assert "no annual report with stored page text" in flat
-    assert "Observed volatility cannot be measured" in flat
+    a["management"] = {"available": False, "reason": "no management-discussion section is stored"}
+    data = render(c, mode="COMPLETE", **KW)
+    doc = pymupdf.open(stream=data, filetype="pdf")
+    flat = " ".join(p.get_text() for p in doc).replace(chr(10), " ")
+    toc = doc[1].get_text().replace(chr(10), " ")
+    assert "Growth versus the industry" not in flat and "Management commentary" not in flat
+    assert "Growth versus the industry" not in toc and "Management commentary" not in toc
+    # the numbering closes up: the section after cyclicality is now 6, not 7 (two sections left out)
+    assert re.search(r"6\. Peer benchmarking", toc) and re.search(r"8. Investment thesis", toc)
+    # nothing is left behind: no page is blank and no heading is stranded at the foot of a page
+    for i, page in enumerate(doc):
+        assert len(page.get_text().split()) > 25, f"page {i + 1} is almost empty"
+    # the number printed in the contents is the page the heading is on
+    heading_page = next(
+        i + 1
+        for i, p in enumerate(doc)
+        if i > 1 and p.get_text().lstrip().startswith("7. Valuation")
+    )
+    assert re.search(rf"{heading_page}\s+7\. Valuation", toc)
     assert not ISO.findall(flat)
+
+
+def test_partial_sections_are_kept(seeded):  # noqa: F811
+    c = _axis()
+    a = c["analysis"]
+    a["growth"]["profit"] = {"available": False, "reason": "undefined"}
+    a["growth"]["price_return"] = []
+    flat = _flat(c)
+    assert "Growth versus the industry" in flat  # revenue growth is still real
+    assert "Net profit" in flat and "undefined" in flat  # the gap is disclosed where it is
+
+
+def test_the_predicates_decide_what_is_meaningful():
+    from app.research import pdf_sections as ps
+
+    assert not ps.growth_has_content(None) and not ps.growth_has_content(
+        {"revenue": {"available": False}}
+    )
+    assert ps.growth_has_content({"revenue": {"available": True, "company": {"cagr": "10"}}})
+    assert ps.growth_has_content({"price_return": [{"period": "1Y"}]})
+    assert not ps.cyclicality_has_content({"observed": {}, "sector": {}})
+    assert ps.cyclicality_has_content({"sector": {"classification": "cyclical"}})
+
+
+def test_a_profile_with_no_evidence_collapses_to_one_gap_line_not_empty_headings():
+    c = _axis()
+    pf = c["analysis"]["profile"]
+    pf["segments"] = {"available": False, "reason": "none stored"}
+    pf["narrative"] = {"available": False, "reason": "no annual report with stored page text"}
+    pf["group"] = {"available": False, "reason": "no group entities were extracted"}
+    pf["external"] = {"available": False, "reason": "none"}
+    flat = _flat(c)
+    for heading in (
+        "Leadership named in the annual report",
+        "Group structure",
+        "From the company's website",
+        "History and milestones",
+    ):
+        assert heading not in flat, heading
+    assert (
+        "Not available for this company:" in flat and "group structure (no group entities" in flat
+    )
+    assert (
+        "3. Company and management profile" in flat
+    )  # the section itself stays: it has the overview

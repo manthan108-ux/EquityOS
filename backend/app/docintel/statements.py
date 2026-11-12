@@ -716,6 +716,30 @@ def inherit_context(blocks: list[StatementBlock]) -> list[StatementBlock]:
     return ordered
 
 
+UNIT_ANSWERS = {"crore", "lakh", "million", "thousand", "inr"}
+
+
+def apply_overrides(blocks: list[StatementBlock], overrides: dict | None) -> None:
+    """Fill a basis or unit the document does not state with the one the UPLOADER gave.
+
+    Only blocks that lack the value are touched (a printed basis or unit always wins), and each
+    use is recorded on the block ("basis stated by the uploader") so the provenance says so.
+    """
+    if not overrides:
+        return
+    basis = overrides.get("basis")
+    unit = overrides.get("unit")
+    for block in blocks:
+        if basis in ("CONSOLIDATED", "STANDALONE") and block.basis is None:
+            block.basis = basis
+            block.inherited.append("basis stated by the uploader")
+            block.issues = [i for i in block.issues if i["code"] != "BASIS_UNKNOWN"]
+        if unit in UNIT_ANSWERS and block.unit is None:
+            block.unit = unit
+            block.inherited.append("unit stated by the uploader")
+            block.issues = [i for i in block.issues if i["code"] != "UNIT_UNKNOWN"]
+
+
 _CONTD = re.compile(r"\s*\(?\s*contd\.?\s*\)?\s*$", re.IGNORECASE)
 
 

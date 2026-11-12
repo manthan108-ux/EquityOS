@@ -48,6 +48,15 @@ function ClarifyBox({ u, onDone }: { u: Upload; onDone: (u: Upload) => void }) {
               ))}
             </div>
           )}
+          {(a.code === "BASIS_UNSTATED" || a.code === "UNIT_UNSTATED") && (
+            <div className="mt-2 flex flex-wrap gap-2">
+              {a.options.map((o) => (
+                <Button key={o} size="sm" onClick={() => send({ [a.code === "BASIS_UNSTATED" ? "basis" : "unit"]: o })}>
+                  {a.code === "BASIS_UNSTATED" ? titleCase(o) : o === "inr" ? "Rupees" : titleCase(o)}
+                </Button>
+              ))}
+            </div>
+          )}
           {a.code === "SOURCE_REFERENCE_REQUIRED" && (
             <div className="mt-2 flex flex-wrap gap-2">
               <input value={text} onChange={(e) => setText(e.target.value)} aria-label="Source reference" placeholder="e.g. Q2 FY27 results, BSE, 30 Oct 2026" className={`${inputClass} max-w-sm`} />

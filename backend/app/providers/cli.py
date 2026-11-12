@@ -13,6 +13,7 @@ python -m app.providers.cli backfill-prices --from 2023-11-01 --to 2025-11-06
 
 import argparse
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 
 from sqlalchemy import select
@@ -381,6 +382,187 @@ def cmd_fetch_documents(args, providers, router) -> int:
     return 0
 
 
+def cmd_discover_websites(args, providers, router) -> int:
+    """Find, verify and register official websites for companies that have none (batched, resumable)."""
+    from sqlalchemy import select
+
+    from app.acquisition import website_discovery as wd
+    from app.llm.providers import default_router
+    from app.models import Company, CompanyWebsiteRegistry, Security
+
+    client = build_client()
+    llm = None if args.no_llm else default_router()
+    counts: dict[str, int] = {}
+    try:
+        with Session(get_engine()) as session:
+            if args.symbols:
+                companies = [find_company(session, sym.strip()) for sym in args.symbols.split(",")]
+            else:
+                # Listed on NSE first (the larger issuers), companies with no website and no pending retry.
+                q = (
+                    select(Company)
+                    .join(Security, Security.company_id == Company.id)
+                    .outerjoin(
+                        CompanyWebsiteRegistry, CompanyWebsiteRegistry.company_id == Company.id
+                    )
+                    .where(Company.website.is_(None))
+                    .where(
+                        (CompanyWebsiteRegistry.company_id.is_(None))
+                        | (CompanyWebsiteRegistry.next_retry_at.is_not(None))
+                        & (CompanyWebsiteRegistry.next_retry_at <= datetime.now(UTC))
+                    )
+                    .group_by(Company.id)
+                    .order_by(Company.common_name)
+                    .limit(args.limit)
+                )
+                companies = list(session.scalars(q))
+            if args.backfill:
+                for c in session.scalars(select(Company).where(Company.website.is_not(None))):
+                    wd.record_existing(session, c)
+            for company in companies:
+                res = wd.discover(
+                    session, company, client, llm, use_llm=not args.no_llm, force=args.force
+                )
+                counts[res.status] = counts.get(res.status, 0) + 1
+                print(
+                    f"{res.status:13} {company.common_name[:34]:34} {res.website or ''} {res.investor_relations_url or ''} {res.note}"
+                )
+            print("this run:", counts or "nothing to do")
+            print("registry:", wd.registry_summary(session))
+    finally:
+        client.close()
+    return 0
+
+
+def cmd_website_status(args, providers, router) -> int:
+    from sqlalchemy import select
+
+    from app.acquisition import website_discovery as wd
+    from app.models import Company, CompanyWebsiteRegistry
+
+    with Session(get_engine()) as session:
+        print(wd.registry_summary(session))
+        for status in ("AMBIGUOUS", "FAILED"):
+            rows = session.execute(
+                select(
+                    Company.common_name,
+                    CompanyWebsiteRegistry.website,
+                    CompanyWebsiteRegistry.attempts,
+                )
+                .join(CompanyWebsiteRegistry, CompanyWebsiteRegistry.company_id == Company.id)
+                .where(CompanyWebsiteRegistry.status == status)
+                .limit(args.limit)
+            ).all()
+            if rows:
+                print(f"{status} (flagged, not registered):")
+                for name, site, attempts in rows:
+                    print(f"  {name[:40]:40} {site or '-':40} attempts={attempts}")
+    return 0
+
+
+def cmd_upstox_refresh(args, providers, router) -> int:
+    """Refresh Upstox fundamentals for the next batch of due companies (resumable, incremental)."""
+    from app.providers import upstox_refresh as ur
+
+    provider = {p.spec.code: p for p in providers}.get("UPSTOX_FUNDAMENTALS")
+    if provider is None or not provider.is_configured():
+        print("UPSTOX_FUNDAMENTALS is not configured (UPSTOX_ANALYTICS_TOKEN missing or disabled).")
+        return 2
+    with Session(get_engine()) as session:
+        if args.summary:
+            for key, value in ur.summary(session).items():
+                print(f"{key:28} {value}")
+            return 0
+        if args.symbols:
+            companies = [find_company(session, x.strip()) for x in args.symbols.split(",")]
+        else:
+            companies = ur.due_companies(session, args.limit)
+        print(f"refreshing {len(companies)} companies")
+        run = ur.run_batch(
+            session,
+            provider,
+            companies,
+            on_outcome=lambda o: print(
+                f"{o.status:15} {o.name[:34]:34} rows={o.new_rows:<4} {o.note[:90]}"
+            ),
+        )
+        if run.stopped:
+            print("STOPPED:", run.stopped)
+        if args.validate:
+            from app.evidence.engine import validate_company
+
+            for company in companies:
+                validate_company(session, company.id)
+            print("evidence synced and validated for the batch")
+        for key, value in ur.summary(session).items():
+            print(f"{key:28} {value}")
+    return 0 if not run.stopped else 3
+
+
+def cmd_enrich(args, providers, router) -> int:
+    """Read a company's own about/leadership pages with a language model; keep verified quotes."""
+    from app.llm.providers import default_router
+    from app.research import enrich
+
+    llm = default_router()
+    client = build_client()
+    try:
+        with Session(get_engine()) as session:
+            for sym in args.symbols.split(","):
+                company = find_company(session, sym.strip())
+                rep = enrich.enrich_company(session, company, client, llm)
+                print(
+                    f"{company.common_name:30} pages={rep.pages_read} stored={rep.stored} "
+                    f"discarded_unverifiable={rep.discarded} {'; '.join(rep.notes)[:160]}"
+                )
+    finally:
+        client.close()
+    return 0
+
+
+def cmd_universe(args, providers, router) -> int:
+    """One batched, resumable pass over the universe (websites, Upstox, documents, enrichment)."""
+    import json
+
+    from app.llm.providers import default_router
+    from app.providers import universe
+
+    with Session(get_engine()) as session:
+        if args.status:
+            print(json.dumps(universe.coverage(session), indent=2, default=str))
+            return 0
+        steps = tuple(x.strip() for x in args.steps.split(",") if x.strip())
+        unknown = set(steps) - set(universe.STEPS)
+        if unknown:
+            raise SystemExit(f"unknown step(s) {sorted(unknown)}; choose from {universe.STEPS}")
+        llm = None if args.no_llm else default_router()
+        if llm is not None and not llm.providers:
+            llm = None
+        upstox = {p.spec.code: p for p in providers}.get("UPSTOX_FUNDAMENTALS")
+        client = build_client()
+        try:
+            if args.symbols:
+                companies = [find_company(session, x.strip()) for x in args.symbols.split(",")]
+            else:
+                companies = universe.pick_batch(session, args.limit)
+            print(f"{len(companies)} companies, steps: {', '.join(steps)}")
+            universe.run_batch(
+                session,
+                companies,
+                steps=steps,
+                client=client,
+                llm=llm,
+                upstox=upstox,
+                on_company=lambda c: print(
+                    f"{c.name[:30]:30} " + " | ".join(f"{k}: {v[:60]}" for k, v in c.steps.items())
+                ),
+            )
+        finally:
+            client.close()
+        print(json.dumps(universe.coverage(session), indent=2, default=str))
+    return 0
+
+
 def cmd_set_website(args, providers, router) -> int:
     from app.acquisition.evidence_fetch import WebsiteRejected, set_website
 
@@ -467,6 +649,44 @@ def main(argv: list[str] | None = None) -> int:
         ],
     )
     p.add_argument("--limit", type=int, default=3)
+    p = sub.add_parser(
+        "discover-websites",
+        help="find, verify and register official websites for companies that have none",
+    )
+    p.add_argument(
+        "--symbols", help="comma-separated symbols; default: the next batch without a website"
+    )
+    p.add_argument("--limit", type=int, default=25, help="batch size (default 25)")
+    p.add_argument("--no-llm", action="store_true", help="documents and name guesses only")
+    p.add_argument("--force", action="store_true", help="ignore the retry back-off")
+    p.add_argument(
+        "--backfill", action="store_true", help="register already-stored websites in the registry"
+    )
+    p = sub.add_parser(
+        "upstox-refresh", help="refresh Upstox fundamentals for the next batch of due companies"
+    )
+    p.add_argument("--symbols", help="comma-separated symbols instead of the next due batch")
+    p.add_argument("--limit", type=int, default=20, help="batch size (default 20)")
+    p.add_argument("--validate", action="store_true", help="sync and validate evidence afterwards")
+    p.add_argument("--summary", action="store_true", help="print the coverage summary and exit")
+    p = sub.add_parser(
+        "enrich", help="extract verified history/leadership quotes from the company's own pages"
+    )
+    p.add_argument("--symbols", required=True, help="comma-separated symbols")
+    p = sub.add_parser(
+        "universe", help="one batched, resumable pass: websites, Upstox, documents, enrichment"
+    )
+    p.add_argument("--symbols", help="comma-separated symbols instead of the next batch")
+    p.add_argument("--limit", type=int, default=10, help="batch size (default 10)")
+    p.add_argument(
+        "--steps", default=",".join(("website", "upstox", "documents", "enrich", "evidence"))
+    )
+    p.add_argument("--no-llm", action="store_true")
+    p.add_argument("--status", action="store_true", help="print coverage and exit")
+    p = sub.add_parser(
+        "website-status", help="registry coverage and the mappings that need a person"
+    )
+    p.add_argument("--limit", type=int, default=30)
     p = sub.add_parser("set-website", help="store a company's website (only if none is stored)")
     p.add_argument("--symbol", required=True)
     p.add_argument("--url", required=True)
@@ -491,6 +711,11 @@ def main(argv: list[str] | None = None) -> int:
         "import-financials": cmd_import_financials,
         "fetch-documents": cmd_fetch_documents,
         "set-website": cmd_set_website,
+        "discover-websites": cmd_discover_websites,
+        "website-status": cmd_website_status,
+        "upstox-refresh": cmd_upstox_refresh,
+        "enrich": cmd_enrich,
+        "universe": cmd_universe,
         "fetch-evidence": cmd_fetch_evidence,
         "backfill-prices": cmd_backfill_prices,
     }

@@ -46,6 +46,9 @@ _NAME_HINTS = [
     ("earnings_transcript", re.compile(r"transcript|earnings[-_ ]?call", re.I)),
     ("quarterly_result", re.compile(r"result|quarter|\bq[1-4]\b|half[-_ ]?year", re.I)),
 ]
+_NAME_HINTS.insert(
+    0, ("shareholding_pattern", re.compile(r"shareholding|\bshp[-_ ]?\d|\bshp\b", re.I))
+)
 _TEXT_HINTS = [
     ("annual_report", re.compile(r"annual report|board'?s report|directors'? report", re.I)),
     ("earnings_transcript", re.compile(r"conference call|earnings call|moderator", re.I)),
@@ -60,6 +63,9 @@ _TEXT_HINTS = [
         ),
     ),
 ]
+_SHAREHOLDING = re.compile(
+    r"shareholding pattern|statement showing shareholding|regulation 31\(1\)\(b\)", re.I
+)
 _PRESS_RELEASE = re.compile(r"press release|media release|media statement", re.I)
 # Words that appear in the primary statements of Indian companies and banks. A document whose first
 # pages are mostly such tables is a financial statement, whatever its file is called.
@@ -93,6 +99,8 @@ def classify_content(pages: list[str], page_count: int | None) -> str | None:
         return None
     head = (pages[0] if pages else "")[:700]
     short = page_count is not None and page_count <= SHORT_DOCUMENT_PAGES
+    if _SHAREHOLDING.search(head) or _SHAREHOLDING.search(text[:1500]):
+        return "shareholding_pattern"
     if short and _PRESS_RELEASE.search(head):
         return "press_release"
     long_report = page_count is not None and page_count >= LONG_REPORT_PAGES
