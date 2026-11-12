@@ -12,6 +12,7 @@ anything else a source document contained is replaced rather than printed as a b
 """
 
 import io
+import re
 from decimal import Decimal, InvalidOperation
 from xml.sax.saxutils import escape
 
@@ -46,9 +47,17 @@ STATUS_COLOUR = {
 }
 
 
+_ISO_DATE = re.compile(r"\b(\d{4})-(\d{2})-(\d{2})\b")
+
+
+def dmy(text: str) -> str:
+    """Show ISO dates (2026-03-31) as DD/MM/YYYY. Display only: stored dates are never changed."""
+    return _ISO_DATE.sub(lambda m: f"{m.group(3)}/{m.group(2)}/{m.group(1)}", text)
+
+
 def clean(text: object) -> str:
     """Text the base-14 fonts can draw, XML-escaped for Paragraph markup."""
-    value = "" if text is None else str(text)
+    value = dmy("" if text is None else str(text))
     value = value.replace("₹", "Rs. ").replace("‑", "-").replace(" ", " ")
     value = value.encode("cp1252", "replace").decode("cp1252")
     return escape(value)

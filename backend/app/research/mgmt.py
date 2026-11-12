@@ -106,10 +106,18 @@ def _good(sentence: str) -> bool:
     return sentence[0].isupper() and sentence.endswith((".", "!", "?"))
 
 
+_FURNITURE = re.compile(
+    r"^(?:(?:Management\u2019?'?s Discussion and Analysis|Standalone Financial Statements|Consolidated Financial Statements|Integrated Annual Report[^.]{0,24}?|Board\u2019?'?s Report|Corporate Overview|Statutory Reports|Financial Statements|Business Performance Review|Governance)\s*\d*\s*)+",
+    re.I,
+)
+
+
 def sentences(text: str) -> list[str]:
     out = []
     for part in _SENT_SPLIT.split(_clean(text)):
-        part = part.strip()
+        part = _FURNITURE.sub("", part.strip()).strip()
+        if part and part[0].islower():
+            continue  # a fragment left after page furniture
         if _good(part):
             out.append(part)
     return out

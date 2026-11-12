@@ -15,7 +15,7 @@ from reportlab.lib import colors
 from reportlab.lib.units import mm
 from reportlab.platypus import KeepTogether, Paragraph, Spacer, Table, TableStyle
 
-from app.research.pdf import CRORE, clean, fmt_value
+from app.research.pdf import CRORE, clean, dmy, fmt_value
 from app.research.pdf_pro import (
     BAND,
     CHART_A,
@@ -43,9 +43,9 @@ KIND_COLOUR = {
 
 
 def tag(kind: str) -> str:
-    key = next((k for k in KIND_COLOUR if kind.upper().startswith(k)), "INTERPRETATION")
-    short = kind.split(" (")[0].upper()
-    return f'<font color="{KIND_COLOUR[key]}" size="6.3"><b>[{clean(short)}]</b></font>'
+    """Inline evidence-status labels were removed. The classification of each figure is in the sources
+    appendix and the methodology; qualifications that matter are written into the sentence itself."""
+    return ""
 
 
 def fv(value, unit, kind=None) -> str:
@@ -239,7 +239,7 @@ def bank_business(report: dict, st) -> list:
             p = row["points"][-1]
             period = p["period_end"]
             rows.append([Paragraph(clean(label), st["cell"]), Paragraph(fv(p["value"], p["unit"]), st["cellr"]),
-                         Paragraph(clean(period), st["cell"]), Paragraph(tag(p.get("kind", kind)), st["cell"]),
+                         Paragraph(clean(period), st["cell"]),
                          Paragraph(_ids([p["evidence_id"]]), st["small"])])  # fmt: skip
 
     for label, key, src in (
@@ -261,8 +261,8 @@ def bank_business(report: dict, st) -> list:
         KeepTogether(
             [
                 _table(
-                    [_hdr(st, "Measure", "Latest", "Period", "Type", "Evidence")] + rows,
-                    [52 * mm, 34 * mm, 26 * mm, 24 * mm, W - 136 * mm],
+                    [_hdr(st, "Measure", "Latest", "Period", "Evidence")] + rows,
+                    [60 * mm, 40 * mm, 30 * mm, W - 130 * mm],
                 )
             ]
         ),
@@ -292,7 +292,9 @@ def _peer_chart(row: dict, company_name: str):
         String(
             0,
             h - 9,
-            f"{row['label']} ({row['company']['period_end']}, {str(row.get('basis') or '').lower()})",
+            dmy(
+                f"{row['label']} ({row['company']['period_end']}, {str(row.get('basis') or '').lower()})"
+            ),
             fontName="Helvetica-Bold",
             fontSize=8,
             fillColor=INK,
@@ -481,11 +483,7 @@ def management_section(report: dict, st) -> list:
         )
     ]
     for t in m["topics"]:
-        block = [
-            Paragraph(
-                clean(t["title"]) + (" " + tag("MANAGEMENT STATEMENT") if True else ""), st["h2"]
-            )
-        ]
+        block = [Paragraph(clean(t["title"]), st["h2"])]
         if t["forward_looking"]:
             block.append(
                 Paragraph(
@@ -858,6 +856,16 @@ def verdict_block(report: dict, st) -> list:
 # ---------------------------------------------------------------- section 7: thesis
 
 
+def _qualified(p: dict) -> str:
+    """The point's sentence with the qualification that matters written in words, not as a label."""
+    text = clean(p["text"])
+    if "HYPOTHESIS" in p.get("kind", ""):
+        return "Hypothesis: " + text[:1].lower() + text[1:]
+    if "MANAGEMENT" in p.get("kind", ""):
+        return f"&quot;{text}&quot; (management&#39;s own statement; {clean(p.get('basis', '').replace('management statement, ', ''))})"
+    return text
+
+
 def _points(title: str, points: list[dict], st) -> list:
     block = [Paragraph(clean(title), st["h2"])]
     if not points:
@@ -865,7 +873,7 @@ def _points(title: str, points: list[dict], st) -> list:
     for p in points:
         block.append(
             Paragraph(
-                f"{clean(p['text'])} {tag(p['kind'])} <font size=6.5 color='#6b7280'>{_ids(p['evidence_ids'])}</font>",
+                f"{_qualified(p)} <font size=6.5 color='#6b7280'>{_ids(p['evidence_ids'])}</font>",
                 st["bullet"],
                 bulletText="-",
             )
@@ -894,14 +902,10 @@ def thesis_section(report: dict, st) -> list:
         if pts:
             out.append(Paragraph(f"<b>{clean(title)}</b>", st["small"]))
             for p in pts:
-                out.append(
-                    Paragraph(f"{clean(p['text'])} {tag(p['kind'])}", st["bullet"], bulletText="-")
-                )
+                out.append(Paragraph(_qualified(p), st["bullet"], bulletText="-"))
     out.append(
         Paragraph(
-            "<b>Sector risks</b> "
-            + tag("SECTOR TEMPLATE")
-            + " <font size=7 color='#6b7280'>(generic to the industry, not evidence about this company)</font>",
+            "<b>Sector risks</b> <font size=7 color='#6b7280'>(industry-level, not evidence about this company)</font>",
             st["small"],
         )
     )
@@ -1003,9 +1007,7 @@ def analysis_register(report: dict, st) -> list:
     if not a:
         return []
     rows = [
-        _hdr(
-            st, "Measure", "Period", "Basis", "Value", "Type", "Evidence", "Document", right_from=3
-        )
+        _hdr(st, "Measure", "Period", "Basis", "Value", "Type", "Ev. id", "Document", right_from=3)
     ]
     seen = set()
     for r in a["trend"]["annual"]:

@@ -141,9 +141,12 @@ def test_cover_and_executive_summary_keep_score_and_readiness_separate():
     assert "None" not in text and pages >= 3
 
 
-def test_every_statement_is_labelled_and_growth_is_derived_with_its_formula():
+def test_no_inline_status_labels_but_calculated_figures_are_still_marked_in_the_source_note():
     flat = _flat(_report())
-    assert "VERIFIED FACT" in flat and "DERIVED" in flat
+    for label in ("VERIFIED FACT", "[DERIVED", "[INTERPRETATION", "(DERIVED)"):
+        assert label not in flat  # evidence-status clutter is gone
+    assert "calculated, p.7, evidence #9" in flat  # the reported/calculated distinction is kept
+    assert "p.7, evidence #2" in flat  # reported figures keep their page and evidence number
     assert "grew 10.0%" in flat  # revenue 1.00 -> 1.10 lakh crore
     assert "fell 10.0%" in flat  # profit 100 -> 90: never "grew -10%"
     assert "(this year / previous year - 1) x 100" in flat

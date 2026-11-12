@@ -29,6 +29,10 @@ validated evidence ──► report.build_content ──► research_reports.con
 | `analysis.py` | Phases 2-3. Annual and quarterly trends (growth, changes, unusual movements, rule-based observations) and peer comparison tables. |
 | `mgmt.py` | Phase 4. Extractive management commentary from the stored MD&A pages: verbatim short sentences filed by keyword cues, each with its page. Nothing is paraphrased. |
 | `valuation.py` | Phase 5. Historical P/E at year ends, peer P/E and P/B, bank justified-P/B (residual income) with sensitivity and market-implied ROE, relative (peer P/E) scenarios, and the list of models not completed. |
+| `industry.py` | Industry overview (sector templates, no statistics) and the growth comparison: company CAGR, peer-set CAGR, growth alpha, relative price return. |
+| `profile.py` | Company profile: segments and shares from evidence; verbatim, cited quotes on history, strategic changes and exposure; leaders named beside a title; group entities. |
+| `cyclicality.py` | Cyclicality: sector characterisation, observed volatility, downturns and recoveries, sensitivities, indicators, limits. |
+| `pdf_sections.py` | PDF sections for the four modules above. |
 | `verdict.py` | BUY / SELL / WATCH with target, stop-loss, reward-to-risk and evidence confidence (methodology v1, below). |
 | `thesis.py` | Phase 6. Bull and bear points, catalysts, risks, monitoring indicators, trajectory and the nine-question conclusion. |
 | `insight.py` | Assembles the above for one company. |
@@ -105,3 +109,24 @@ Five components, each scored -1 / 0 / +1 (valuation counts double):
   HIGH 85+, MEDIUM 55+, else LOW. It is not the probability that a trade works.
 * Thresholds are EquityOS judgement and have **not been back-tested**. Review them before relying on
   the output; they are constants at the top of `verdict.py`.
+
+## Report quality changes (2026-11-12)
+
+* **Dates** are shown as DD/MM/YYYY everywhere the PDF prints text (`pdf.dmy`, applied in `clean`); stored
+  dates and fiscal-year labels are unchanged. Quoted passages stay verbatim, so a date inside a quotation keeps
+  the company's own wording.
+* **No inline evidence labels.** The "Verified / Derived / Interpretation" tags beside each fact are gone. A
+  reported figure cites its page and evidence number; a calculated figure says "calculated" in its source
+  note; hypotheses are written as hypotheses; management statements are in quotation marks with a page;
+  industry text and sector risks say they are sector context. Classification lives in Appendix A (Type
+  column), the methodology and Appendix E (data quality).
+* **Contents page** (two-pass build) and section order: executive summary, industry overview, company and
+  management profile, financial performance, growth versus the industry, cyclicality, peers, management
+  commentary, valuation, thesis and verdict, scorecard, conclusion, appendices.
+* **Industry CAGR** is the *stored peer set's* CAGR (median of peers and combined), because EquityOS holds no
+  industry statistics. "Growth alpha" is company CAGR minus that, in points; it is not investment alpha. The
+  relative price return is defined separately (price only, peer-median benchmark, not risk-adjusted).
+* **Not stored, therefore not shown:** founder and management biographies, board histories, customer
+  concentration statistics, geographic revenue splits (unless a quoted passage states them), industry-wide
+  market data. History reaches back only as far as the stored annual figures (at most four years), so
+  cyclicality is indicated, not established.

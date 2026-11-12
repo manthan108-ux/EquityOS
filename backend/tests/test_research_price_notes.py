@@ -76,4 +76,4 @@ def test_the_pdf_prints_the_price_history_note():
         content, version=1, mode="AVAILABLE_EVIDENCE", report_id="a" * 36, content_hash="b" * 64
     )
     text = "\n".join(p.get_text() for p in pymupdf.open(stream=data, filetype="pdf"))
-    assert "Price history" in text and "2024-10-28" in text and "SUSPECTED" in text
+    assert "Price history" in text and "28/10/2024" in text and "SUSPECTED" in text

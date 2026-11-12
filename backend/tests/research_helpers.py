@@ -59,6 +59,7 @@ def evidence(
     blocked=False,
     text=None,
     page=3,
+    dimension="",
 ):
     cls = EvidenceClass.CALCULATION if kind == "CALCULATION" else EvidenceClass.FACT
     r = EvidenceRecord(
@@ -66,7 +67,7 @@ def evidence(
         evidence_class=cls,
         kind=kind,
         metric=metric,
-        dimension="",
+        dimension=dimension,
         period_end=end,
         period_type=ptype,
         basis=basis,
@@ -91,7 +92,7 @@ def evidence(
         EvidenceResolution(
             company_id=company.id,
             metric=metric,
-            dimension="",
+            dimension=dimension,
             period_end=end or date(1900, 1, 1),
             period_type=ptype or "",
             basis=basis or "",

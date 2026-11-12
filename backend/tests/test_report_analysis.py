@@ -602,10 +602,12 @@ def test_the_full_axis_pdf_has_every_section_and_no_recommendation():
     )
     text, pages = pdf_text(data)
     flat = text.replace("\n", " ")
-    for h in ("1. Executive summary", "2. Company overview", "3. Financial performance", "4. Peer benchmarking",
-              "5. Management commentary", "6. Valuation analysis", "7. Investment thesis",
-              "8. Financial scorecard", "9. Research conclusion", "Appendix A - Source register",
-              "Appendix D - Analytical methodology"):  # fmt: skip
+    for h in ("Contents", "1. Executive summary", "2. Industry overview", "3. Company and management profile",
+              "4. Financial performance", "5. Growth versus the industry", "6. Business cyclicality",
+              "7. Peer benchmarking", "8. Management commentary", "9. Valuation analysis",
+              "10. Investment thesis", "11. Financial scorecard", "12. Research conclusion",
+              "Appendix A - Source register", "Appendix D - Analytical methodology",
+              "Appendix E - Data quality"):  # fmt: skip
         assert h in flat, h
     assert pages >= 15
     assert (
@@ -614,7 +616,8 @@ def test_the_full_axis_pdf_has_every_section_and_no_recommendation():
         and "Key catalysts" in flat
         and "Monitoring indicators" in flat
     )
-    assert "MANAGEMENT STATEMENT" in flat and "ASSUMPTION" in flat and "SECTOR TEMPLATE" in flat
+    assert "illustrative" in flat and "sector template" in flat.lower()  # qualifications in words
+    assert "MANAGEMENT STATEMENT" not in flat and "SECTOR TEMPLATE" not in flat  # no inline labels
     assert "EquityOS verdict" in flat and "investment advice" in flat
     assert "WATCH" in flat and "Evidence confidence" in flat
     assert (

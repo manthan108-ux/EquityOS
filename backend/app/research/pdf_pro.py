@@ -36,8 +36,9 @@ from reportlab.platypus import (
     Table,
     TableStyle,
 )
+from reportlab.platypus.tableofcontents import TableOfContents
 
-from app.research.pdf import CRORE, clean, fmt_value
+from app.research.pdf import CRORE, clean, dmy, fmt_value
 
 NAVY = colors.HexColor("#14213d")
 ACCENT = colors.HexColor("#1d4e89")
@@ -211,7 +212,9 @@ def _cite(item: dict) -> str:
         where.append(f"p.{src['page']}")
     if src.get("evidence_id"):
         where.append(f"evidence #{src['evidence_id']}")
-    return clean(", ".join(where) or src.get("provider") or "")
+    text = ", ".join(where) or src.get("provider") or ""
+    # a calculated figure says so in its source note; reported figures cite their page
+    return clean(("calculated, " + text) if _kind(item) == DERIVED and text else text)
 
 
 def _growth(series: list[dict]) -> list[tuple[str, Decimal]]:
@@ -612,8 +615,8 @@ def _observations(facts, series, rev_label="Total income") -> list[tuple[str, st
 
 
 def _tag(kind: str) -> str:
-    colour = {"INTERPRETATION": "#c77d0a"}.get(kind, "#1d4e89")
-    return f'<font color="{colour}" size="6.3"><b>[{kind}]</b></font>'
+    """Inline evidence-status labels were removed; the classification lives in the sources appendix."""
+    return ""
 
 
 def _executive_synthesis(report, st) -> list:
@@ -652,15 +655,8 @@ def _executive(report, facts, series, st, full=False) -> list:
     out.append(Paragraph("Key observations", st["h2"]))
     obs = _observations(facts, series, _rev_label(report))
     if obs:
-        for kind, text in obs:
-            colour = TYPE_COLOUR[kind].hexval()[2:]
-            out.append(
-                Paragraph(
-                    f'{clean(text)} <font color="#{colour}" size="6.3"><b>[{kind}]</b></font>',
-                    st["bullet"],
-                    bulletText="-",
-                )
-            )
+        for _, text in obs:
+            out.append(Paragraph(clean(text), st["bullet"], bulletText="-"))
     else:
         out.append(Paragraph("No observation can be made from the stored evidence.", st["body"]))
     out.append(Paragraph("Valuation snapshot", st["h2"]))
@@ -710,27 +706,26 @@ def _executive(report, facts, series, st, full=False) -> list:
     return out
 
 
-def _overview(report, st) -> list:
+def _overview(report, st, title="2. Company overview", segments=True, full=False) -> list:
     ov = _section(report, "overview").get("company", {})
     profile = report["meta"].get("profile")
     legal = ov.get("legal_name") or report["meta"]["company"]
     sector = (ov.get("sector") or "").replace("_", " ")
     industry = (ov.get("industry") or "").replace("_", " ")
     out = [
-        Paragraph("2. Company overview", st["h1"]),
+        Paragraph(title, st["h1"]),
         Paragraph(
             clean(
                 f"{legal} is classified in EquityOS as {sector} / {industry} and is analysed with "
                 f"the {str(ov.get('profile', '')).lower()} research profile."
-            )
-            + ' <font color="#2f7d5b" size="6.3"><b>[VERIFIED FACT: classification]</b></font>',
+            ),
             st["body"],
         ),
         Paragraph("How this company is read", st["h2"]),
         Paragraph(clean(PROFILE_LENS.get(profile, "Generic non-financial lens.")), st["body"]),
     ]
     seg = _section(report, "segments")
-    if seg.get("segments"):
+    if segments and seg.get("segments"):
         out.append(Paragraph("Business segments", st["h2"]))
         rows = [[Paragraph(h, st["hdr"]) for h in ("Segment", "Metric", "Period", "Value")]]
         for s in seg["segments"]:
@@ -744,13 +739,14 @@ def _overview(report, st) -> list:
                     ]
                 )
         out.append(_table(rows, [60 * mm, 50 * mm, 30 * mm, W - 140 * mm]))
-    out.append(
-        Paragraph(
-            "Business model, products, competitive advantages and (for banks) the lending and "
-            "deposit mix need the business-analysis engine, which is not part of this edition.",
-            st["small"],
+    if not full:
+        out.append(
+            Paragraph(
+                "Business model, products, competitive advantages and (for banks) the lending and "
+                "deposit mix need the business-analysis engine, which is not part of this edition.",
+                st["small"],
+            )
         )
-    )
     return out
 
 
@@ -758,7 +754,7 @@ def _fact_table(title: str, sec: dict, st) -> list:
     items = sec.get("items", [])
     if not items:
         return []
-    heads = ("Metric", "Value", "Period / basis", "Type", "Source")
+    heads = ("Metric", "Value", "Period / basis", "Source")
     rows = [[Paragraph(h, st["hdrr"] if h == "Value" else st["hdr"]) for h in heads]]
     for it in items:
         rows.append(
@@ -766,13 +762,12 @@ def _fact_table(title: str, sec: dict, st) -> list:
                 Paragraph(clean(it["label"]), st["cell"]),
                 Paragraph(_value(it), st["cellr"]),
                 Paragraph(_period(it), st["cell"]),
-                _chip(_kind(it), st),
                 Paragraph(_cite(it), st["small"]),
             ]
         )
     block = [
         Paragraph(title, st["h2"]),
-        _table(rows, [44 * mm, 40 * mm, 36 * mm, 22 * mm, W - 142 * mm]),
+        _table(rows, [50 * mm, 42 * mm, 40 * mm, W - 132 * mm]),
     ]
     for g in sec.get("gaps", []):
         block.append(
@@ -839,7 +834,7 @@ def _trend_section(report, series, st) -> list:
         g = dict(_growth(s))
         if g:
             rows.append(
-                [Paragraph(f"{name} (DERIVED)", st["cell"])]
+                [Paragraph(clean(name), st["cell"])]
                 + [Paragraph(_pct(g[y]) if y in g else "-", st["cellr"]) for y in years]
             )
     n = len(years)
@@ -854,9 +849,9 @@ def _trend_section(report, series, st) -> list:
     return out
 
 
-def _financials(report, series, st, extra=()) -> list:
+def _financials(report, series, st, extra=(), title="3. Financial performance") -> list:
     bank = report["meta"].get("profile") == "BANK"
-    out: list = [Paragraph("3. Financial performance", st["h1"])]
+    out: list = [Paragraph(title, st["h1"])]
     out += _fact_table("Latest results", _section(report, "financial_performance"), st)
     out += _fact_table("Profitability", _section(report, "profitability"), st)
     out += _fact_table(
@@ -922,7 +917,7 @@ def _peers(report, st) -> list:
 def _valuation(report, facts, st, title="5. Valuation snapshot", note=True) -> list:
     sec = _section(report, "valuation")
     out = [Paragraph(title, st["h1"])]
-    heads = ("Measure", "Value", "As of", "Type", "Quality / source")
+    heads = ("Measure", "Value", "As of", "Quality / source")
     rows = [[Paragraph(h, st["hdrr"] if h == "Value" else st["hdr"]) for h in heads]]
     for k in ("price", "market_cap", "pe", "pb"):
         it = facts.get(k)
@@ -933,12 +928,11 @@ def _valuation(report, facts, st, title="5. Valuation snapshot", note=True) -> l
                     Paragraph(clean(it["label"]), st["cell"]),
                     Paragraph(_value(it), st["cellr"]),
                     Paragraph(clean(it.get("period_end")), st["cell"]),
-                    _chip(_kind(it), st),
                     Paragraph(clean(f"{quality} - {_cite(it)}"), st["small"]),
                 ]
             )
     if len(rows) > 1:
-        out.append(KeepTogether([_table(rows, [42 * mm, 34 * mm, 24 * mm, 22 * mm, W - 122 * mm])]))
+        out.append(KeepTogether([_table(rows, [44 * mm, 38 * mm, 28 * mm, W - 110 * mm])]))
     for g in sec.get("gaps", []):
         out.append(
             Paragraph(
@@ -987,8 +981,7 @@ def _scorecard(report, st, title="6. Financial scorecard") -> list:
                         f"Pillars at or above 60: {', '.join(strong) or 'none'}. Pillars at or "
                         f"below 40: {', '.join(weak) or 'none'}. "
                     )
-                    + '<font color="#c77d0a" size="6.3"><b>[INTERPRETATION: the 60 / 40 cut-offs '
-                    "are presentation labels, not scoring rules]</b></font>",
+                    + " The 60 and 40 cut-offs are presentation labels, not scoring rules.",
                     st["body"],
                 )
             )
@@ -1104,10 +1097,12 @@ def _appendix(report, st) -> list:
     out += [
         Paragraph("Appendix C - Methodology", st["h1"]),
         Paragraph(
-            "VERIFIED FACT: a value read from a company document or the market feed. DERIVED: "
-            "computed by EquityOS from verified inputs (year-on-year growth = this year / previous "
-            "year - 1; ratios and multiples by the calculation engine, each recorded as evidence). "
-            "INTERPRETATION: a rule-based reading of stored figures, always labelled. Amounts are "
+            "Reported figures are read from a company document or the market feed and cite their page "
+            "and evidence number. Calculated figures are computed by EquityOS from stored figures "
+            "(year-on-year growth = this year / previous year - 1; ratios and multiples by the "
+            "calculation engine, each recorded as evidence) and say so in their source note. "
+            "Observations, thesis points and the verdict are rule-based readings of stored figures "
+            "under the rules printed in this report. Dates are shown as DD/MM/YYYY. Amounts are "
             "shown in Rs. crore with Indian digit grouping. Statement figures are used on one "
             "accounting basis only; the other basis is never substituted. Research readiness and "
             "the financial score are independent measures.",
@@ -1126,10 +1121,11 @@ def _coverage_full(st) -> list:
     return [
         Spacer(1, 6),
         _callout(
-            "How to read this report: every statement is labelled VERIFIED FACT, DERIVED, "
-            "INTERPRETATION, ANALYTICAL HYPOTHESIS, MANAGEMENT STATEMENT or ASSUMPTION. The thesis "
-            "and conclusion are rule-based readings of the evidence, with the rules stated in the "
-            "appendix. Valuation scenarios rest on illustrative assumptions and are not target "
+            "How to read this report: figures cite their source page or evidence number; calculated "
+            "figures say so in their source note. The thesis and conclusion are rule-based readings "
+            "of the evidence, with the rules stated in the appendix, and hypotheses are written as "
+            "hypotheses. Industry and sector-risk text is general sector context, not evidence about "
+            "the company. Valuation scenarios rest on illustrative assumptions and are not target "
             "prices. The BUY / SELL / WATCH verdict follows the stated rule set (methodology v1); it is not a forecast or investment advice.",
             st,
             warn=False,
@@ -1157,17 +1153,45 @@ def _coverage(st) -> list:
 
 def _full_story(report, facts, hist, st, version, mode) -> list:
     from app.research import pdf_analysis as pa
+    from app.research import pdf_sections as ps
 
     a = report["analysis"]
     name = report["meta"]["company"]
+    n = iter(range(1, 40))
+
+    def h1(title: str) -> Paragraph:
+        return Paragraph(f"{next(n)}. {title}", st["h1"])
+
+    def head(title: str) -> str:
+        return f"{next(n)}. {title}"
+
     story: list = []
     story += _cover(report, facts, st, version, mode)
+    toc = TableOfContents()
+    toc.levelStyles = [
+        ParagraphStyle("toc1", fontName="Helvetica", fontSize=10, leading=17, textColor=INK)
+    ]
+    story += [Paragraph("Contents", st["h1"]), Spacer(1, 6), toc, PageBreak()]
+    # the executive summary carries its own heading (number 1)
+    next(n)
     story += _executive(report, facts, hist, st, full=True) + _coverage_full(st) + [PageBreak()]
-    story += _overview(report, st) + pa.bank_business(report, st)
-    story += [CondPageBreak(60 * mm)]
-    story += _financials(report, hist, st, extra=pa.financial_analysis(report, st))
+    story += [h1("Industry overview")] + ps.industry_section(report, st) + [PageBreak()]
+    story += _overview(
+        report, st, title=head("Company and management profile"), segments=False, full=True
+    )
+    story += pa.bank_business(report, st) + ps.profile_section(report, st) + [PageBreak()]
+    story += _financials(
+        report,
+        hist,
+        st,
+        extra=pa.financial_analysis(report, st),
+        title=head("Financial performance"),
+    )
+    story += [PageBreak(), h1("Growth versus the industry: CAGR and growth alpha")]
+    story += ps.growth_section(report, st)
+    story += [PageBreak(), h1("Business cyclicality")] + ps.cyclicality_section(report, st)
     story += [PageBreak()]
-    intro = [Paragraph("4. Peer benchmarking and competitive positioning", st["h1"])]
+    intro = [h1("Peer benchmarking and competitive positioning")]
     peers = a["peers"]["peers"]
     if peers:
         rows = [[Paragraph(h, st["hdr"]) for h in ("#", "Peer", "Selection basis")]]
@@ -1190,18 +1214,15 @@ def _full_story(report, facts, hist, st, version, mode) -> list:
     else:
         intro.append(Paragraph("No peer group is available for this company.", st["body"]))
     story += intro + pa.peer_section(report, st, name)
-    story += [PageBreak(), Paragraph("5. Management commentary", st["h1"])]
-    story += pa.management_section(report, st)
+    story += [PageBreak(), h1("Management commentary")] + pa.management_section(report, st)
     story += [PageBreak()]
-    story += _valuation(report, facts, st, title="6. Valuation analysis", note=False)
+    story += _valuation(report, facts, st, title=head("Valuation analysis"), note=False)
     story += pa.valuation_section(report, st)
-    story += [PageBreak(), Paragraph("7. Investment thesis", st["h1"])] + pa.thesis_section(
-        report, st
-    )
-    story += [PageBreak()] + _scorecard(report, st, title="8. Financial scorecard")
-    story += [CondPageBreak(80 * mm), Paragraph("9. Research conclusion", st["h1"])]
-    story += pa.conclusion_section(report, st)
+    story += [PageBreak(), h1("Investment thesis and verdict")] + pa.thesis_section(report, st)
+    story += [PageBreak()] + _scorecard(report, st, title=head("Financial scorecard"))
+    story += [CondPageBreak(80 * mm), h1("Research conclusion")] + pa.conclusion_section(report, st)
     story += _appendix(report, st) + pa.analysis_register(report, st) + _method_full(report, st)
+    story += ps.data_quality_section(report, st)
     return story
 
 
@@ -1233,6 +1254,16 @@ def _method_full(report, st) -> list:
     return out
 
 
+class _ContentsDoc(SimpleDocTemplate):
+    """Feeds every level-1 heading to the contents page (second build pass fills in page numbers)."""
+
+    def afterFlowable(self, flowable):
+        if isinstance(flowable, Paragraph) and flowable.style.name == "h1":
+            text = flowable.getPlainText()
+            if text != "Contents":
+                self.notify("TOCEntry", (0, text, self.page))
+
+
 def render(report: dict, *, version: int, mode: str, report_id: str, content_hash: str) -> bytes:
     """The professional PDF of a stored report's content (same signature as `pdf.render`)."""
     st = _styles()
@@ -1240,7 +1271,7 @@ def render(report: dict, *, version: int, mode: str, report_id: str, content_has
     facts = _facts(report)
     hist = _section(report, "historical").get("series", {})
     buf = io.BytesIO()
-    doc = SimpleDocTemplate(
+    doc = _ContentsDoc(
         buf, pagesize=A4, leftMargin=18 * mm, rightMargin=18 * mm, topMargin=20 * mm, bottomMargin=20 * mm,
         title=f"{meta['company']} - equity research report v{version}", author="EquityOS", invariant=1,
     )  # fmt: skip
@@ -1263,9 +1294,9 @@ def render(report: dict, *, version: int, mode: str, report_id: str, content_has
         pass
 
     _Canvas.company = clean(meta["company"]).replace("&amp;", "&")
-    _Canvas.as_of = str(meta["as_of"])
+    _Canvas.as_of = dmy(str(meta["as_of"]))
     _Canvas.footer = (
         f"EquityOS research report - v{version} - {report_id[:8]} - sha {content_hash[:12]}"
     )
-    doc.build(story, canvasmaker=_Canvas)
+    doc.multiBuild(story, canvasmaker=_Canvas)
     return buf.getvalue()
