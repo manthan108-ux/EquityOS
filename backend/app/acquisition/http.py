@@ -50,6 +50,7 @@ class FetchResult:
     retrieved_at: datetime | None = None
     duration_ms: int = 0
     retry_after_s: float | None = None  # server-requested wait (429/503), if any
+    final_url: str | None = None  # the address actually served, after any redirects
 
     @property
     def ok(self) -> bool:
@@ -272,7 +273,15 @@ class PoliteClient:
                 error=problem,
                 retrieved_at=self._now(),
             )
-        return FetchResult(url, FetchStatus.OK, code, content, ctype, retrieved_at=self._now())
+        return FetchResult(
+            url,
+            FetchStatus.OK,
+            code,
+            content,
+            ctype,
+            retrieved_at=self._now(),
+            final_url=str(response.url),
+        )
 
     @staticmethod
     def _error_body(response: httpx.Response) -> bytes:

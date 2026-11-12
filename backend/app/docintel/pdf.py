@@ -233,3 +233,46 @@ def _read_page(page, number: int, ocr: bool, out: PdfContent) -> PageData:
     if page_ocr_words is not None:  # keep the confidences: OCR words are not re-wrapped
         words = list(page_ocr_words)
     return PageData(number, text, words, char_count, scanned or garbled, method, confidence)
+
+
+_VOCAB = frozenset(
+    "quarter ended audited unaudited total income profit tax expenses revenue interest particulars "
+    "consolidated standalone year capital assets liabilities cash equity net other bank limited "
+    "segment results operations before after share per finance items".split()
+)
+
+
+def text_layer_quality(source: "Path | bytes", sample: int = 4) -> dict:
+    """How trustworthy the embedded text of the first pages looks.
+
+    A scan with a poor OCR layer ("Quaner ended", "llJnauditedl") has images on its pages and a
+    noticeable share of malformed words (measured: 8% on a real scanned bank filing, 0% on clean
+    text). Used only to explain a failure better; it never changes what is extracted.
+    """
+    import re as _re
+
+    import pymupdf  # noqa: PLC0415
+
+    doc = (
+        pymupdf.open(stream=source, filetype="pdf")
+        if isinstance(source, bytes)
+        else pymupdf.open(source)
+    )
+    words = hits = images = odd = 0
+    n = min(sample, len(doc))
+    for i in range(n):
+        page = doc[i]
+        images += 1 if page.get_images() else 0
+        for w in _re.findall(r"[A-Za-z]{4,}", page.get_text()):
+            words += 1
+            hits += w.lower() in _VOCAB
+            # OCR debris: a capital inside a word ("llJnauditedl") or a leading "ll"/"Il"
+            odd += bool(_re.search(r"[a-z][A-Z]", w) or _re.match(r"^[lI]{2}", w))
+    doc.close()
+    return {
+        "pages_with_images": images,
+        "pages_sampled": n,
+        "vocabulary_share": round(hits / words, 3) if words else 0.0,
+        "malformed_share": round(odd / words, 3) if words else 0.0,
+        "words": words,
+    }

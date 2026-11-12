@@ -1179,7 +1179,9 @@ def _full_story(report, facts, hist, st, version, mode) -> list:
     story += _overview(
         report, st, title=head("Company and management profile"), segments=False, full=True
     )
-    story += pa.bank_business(report, st) + ps.profile_section(report, st) + [PageBreak()]
+    # a short profile does not leave a mostly empty page: the next section continues if there is room
+    story += pa.bank_business(report, st) + ps.profile_section(report, st)
+    story += [CondPageBreak(120 * mm)]
     story += _financials(
         report,
         hist,
@@ -1187,12 +1189,33 @@ def _full_story(report, facts, hist, st, version, mode) -> list:
         extra=pa.financial_analysis(report, st),
         title=head("Financial performance"),
     )
-    story += [PageBreak(), h1("Growth versus the industry: CAGR and growth alpha")]
-    story += ps.growth_section(report, st)
-    story += [PageBreak(), h1("Business cyclicality")] + ps.cyclicality_section(report, st)
-    story += [PageBreak()]
-    intro = [h1("Peer benchmarking and competitive positioning")]
+    # A section with nothing meaningful to say is left out entirely: no heading, no contents entry,
+    # no empty page; the numbers that follow close up. Partial sections are kept.
+    if ps.growth_has_content(a.get("growth")):
+        story += [PageBreak(), h1("Growth versus the industry: CAGR and growth alpha")]
+        story += ps.growth_section(report, st)
+    if ps.cyclicality_has_content(a.get("cyclicality")):
+        story += [PageBreak(), h1("Business cyclicality")] + ps.cyclicality_section(report, st)
     peers = a["peers"]["peers"]
+    if peers:
+        story += _peer_pages(report, st, name, peers, h1)
+    if a["management"].get("available"):
+        story += [PageBreak(), h1("Management commentary")] + pa.management_section(report, st)
+    story += [PageBreak()]
+    story += _valuation(report, facts, st, title=head("Valuation analysis"), note=False)
+    story += pa.valuation_section(report, st)
+    story += [PageBreak(), h1("Investment thesis and verdict")] + pa.thesis_section(report, st)
+    story += [PageBreak()] + _scorecard(report, st, title=head("Financial scorecard"))
+    story += [CondPageBreak(80 * mm), h1("Research conclusion")] + pa.conclusion_section(report, st)
+    story += _appendix(report, st) + pa.analysis_register(report, st) + _method_full(report, st)
+    story += ps.data_quality_section(report, st)
+    return story
+
+
+def _peer_pages(report, st, name, peers, h1) -> list:
+    from app.research import pdf_analysis as pa
+
+    intro = [PageBreak(), h1("Peer benchmarking and competitive positioning")]
     if peers:
         rows = [[Paragraph(h, st["hdr"]) for h in ("#", "Peer", "Selection basis")]]
         for p in peers:
@@ -1211,19 +1234,7 @@ def _full_story(report, facts, hist, st, version, mode) -> list:
             Spacer(1, 4),
             KeepTogether([_table(rows, [10 * mm, 50 * mm, W - 60 * mm])]),
         ]
-    else:
-        intro.append(Paragraph("No peer group is available for this company.", st["body"]))
-    story += intro + pa.peer_section(report, st, name)
-    story += [PageBreak(), h1("Management commentary")] + pa.management_section(report, st)
-    story += [PageBreak()]
-    story += _valuation(report, facts, st, title=head("Valuation analysis"), note=False)
-    story += pa.valuation_section(report, st)
-    story += [PageBreak(), h1("Investment thesis and verdict")] + pa.thesis_section(report, st)
-    story += [PageBreak()] + _scorecard(report, st, title=head("Financial scorecard"))
-    story += [CondPageBreak(80 * mm), h1("Research conclusion")] + pa.conclusion_section(report, st)
-    story += _appendix(report, st) + pa.analysis_register(report, st) + _method_full(report, st)
-    story += ps.data_quality_section(report, st)
-    return story
+    return intro + pa.peer_section(report, st, name)
 
 
 def _method_full(report, st) -> list:

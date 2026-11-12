@@ -37,6 +37,7 @@ ALLOWED_DOC_TYPES = {
     "corporate_announcement",
     "press_release",
     "shareholder_meeting",
+    "shareholding_pattern",
     "xbrl",
     "regulatory_publication",
     "other",
@@ -63,6 +64,34 @@ class StoredDocument:
     created: bool
     fetch: FetchResult | None
     error: str | None = None
+
+
+def _long_report_override(session: Session, company_id, body: bytes, check):
+    """A long report whose first text page names another entity (a subsidiary in a contents or
+    committee list, an artwork cover) is still the company's own report if the company is, by far,
+    the document's subject. Uses the same strict dominance rule as statement-page checks."""
+    from types import SimpleNamespace
+
+    from app.docintel.association import IssuerCheck, names_for
+    from app.docintel.entity import MIN_DOMINANT_PAGES, document_dominance
+    from app.docintel.pdf import page_count
+
+    pages = page_count(body) or 0
+    if pages < MIN_DOMINANT_PAGES:
+        return None
+    texts = first_pages_text(body, pages)
+    why = document_dominance(
+        [SimpleNamespace(text=t) for t in texts], names_for(session, company_id)
+    )
+    if not why:
+        return None
+    return IssuerCheck(
+        "CONFIRMED",
+        check.relation,
+        None,
+        f"the document is about this company ({why}); the first page also names "
+        f"'{check.issuer_name or 'another entity'}', which is not treated as the issuer",
+    )
 
 
 def store_document_bytes(
@@ -109,6 +138,8 @@ def store_document_bytes(
     intended_company = company_id
     if company_id is not None and extension == "pdf":
         check = check_document_text(session, company_id, first_pages_text(body))
+        if check.mismatch and (override := _long_report_override(session, company_id, body, check)):
+            check = override
         if check.mismatch and not force_association:
             if on_mismatch == "raise":
                 raise AssociationMismatch(check)

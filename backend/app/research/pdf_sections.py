@@ -129,6 +129,48 @@ def _quote_table(items: list[dict], st) -> Table:
     return _table(rows, [W - 18 * mm, 18 * mm])
 
 
+def _external_block(ext: dict | None, st) -> list:
+    """Verified quotations from the company's own web pages, each with its page and date."""
+    if not ext or not ext.get("available"):
+        return []
+    out: list = [Paragraph("From the company's website", st["h2"])]
+    out.append(Paragraph(clean(ext["method"]), st["small"]))
+
+    def source(i: dict) -> Paragraph:
+        return Paragraph(clean(f"{i['publisher']}, retrieved {i['retrieved']}"), st["cell"])
+
+    if ext["leadership"]:
+        rows = [_hdr(st, "Name", "Title and quotation", "Source")]
+        for i in ext["leadership"]:
+            rows.append(
+                [
+                    Paragraph(clean(i["name"] or ""), st["cellb"]),
+                    Paragraph(f"{clean(i['role'])}: &quot;{clean(i['quote'])}&quot;", st["cell"]),
+                    source(i),
+                ]
+            )
+        out.append(
+            KeepTogether(
+                [
+                    Paragraph("Leadership as stated by the company", st["h2"]),
+                    _table(rows, [38 * mm, W - 38 * mm - 40 * mm, 40 * mm]),
+                ]
+            )
+        )
+    for key, title in (
+        ("history", "History as stated by the company"),
+        ("business", "Business description as stated by the company"),
+    ):
+        if ext[key]:
+            rows = [_hdr(st, "Statement (verbatim)", "Source")]
+            for i in ext[key]:
+                rows.append([Paragraph(f"&quot;{clean(i['quote'])}&quot;", st["cell"]), source(i)])
+            out.append(
+                KeepTogether([Paragraph(title, st["h2"]), _table(rows, [W - 40 * mm, 40 * mm])])
+            )
+    return out
+
+
 def profile_section(report: dict, st) -> list:
     a = _analysis(report)
     pf = a.get("profile") if a else None
@@ -136,8 +178,11 @@ def profile_section(report: dict, st) -> list:
         return []
     out: list = []
     seg = pf["segments"]
-    out.append(Paragraph("Business segments and revenue contribution", st["h2"]))
+    gaps: list[
+        str
+    ] = []  # blocks with nothing to show are not printed; they are listed once, at the end
     if seg.get("available"):
+        out.append(Paragraph("Business segments and revenue contribution", st["h2"]))
         rows = [_hdr(st, "Segment", "Revenue (Rs. crore)", "Share", "Growth", "Result margin")]
         for r in seg["rows"]:
             rows.append(
@@ -162,11 +207,11 @@ def profile_section(report: dict, st) -> list:
                 _hbar("Share of reported segment revenue (percent)", pts[:8], label_w=150),
             ]
     else:
-        out.append(Paragraph(clean("Not available: " + seg["reason"] + "."), st["body"]))
+        gaps.append("segment revenue (" + seg["reason"] + ")")
 
     narr = pf["narrative"]
-    out.append(Paragraph("Leadership named in the annual report", st["h2"]))
     if narr.get("available") and narr.get("leaders"):
+        out.append(Paragraph("Leadership named in the annual report", st["h2"]))
         rows = [_hdr(st, "Name", "Title as printed", "Mentions", "Pages", right_from=2)]
         for p in narr["leaders"]:
             titles = "; ".join(t["title"] for t in p["titles"])
@@ -189,9 +234,16 @@ def profile_section(report: dict, st) -> list:
             )
         )
     else:
-        out.append(
-            Paragraph("No leaders could be identified from the stored annual report.", st["body"])
+        gaps.append(
+            "leadership named in an annual report"
+            if narr.get("available")
+            else "leadership (" + narr["reason"] + ")"
         )
+
+    ext = pf.get("external")
+    out += _external_block(ext, st)
+    if not (ext and ext.get("available")):
+        gaps.append("history and leadership from the company's own pages (none read yet)")
 
     if narr.get("available"):
         d = narr["document"]
@@ -214,16 +266,11 @@ def profile_section(report: dict, st) -> list:
                 )
             out.append(KeepTogether(block))
     else:
-        out.append(
-            Paragraph(
-                clean("History, strategic changes and exposure: " + narr["reason"] + "."),
-                st["body"],
-            )
-        )
+        gaps.append("history, strategic changes and exposure statements (" + narr["reason"] + ")")
 
     g = pf["group"]
-    out.append(Paragraph("Group structure", st["h2"]))
     if g.get("available"):
+        out.append(Paragraph("Group structure", st["h2"]))
         counts = ", ".join(f"{n} {k.lower()}" for k, n in g["by_relationship"].items())
         out.append(
             Paragraph(clean(f"Entities listed in the report: {g['total']} ({counts})."), st["body"])
@@ -238,16 +285,11 @@ def profile_section(report: dict, st) -> list:
         ]
         out.append(_table(rows, [W - 62 * mm, 44 * mm, 18 * mm]))
     else:
-        out.append(Paragraph(clean(g["reason"] + "."), st["body"]))
-    out.append(
-        Paragraph(
-            clean(
-                "Not available: " + pf["not_available"] + " Geographic revenue and customer "
-                "concentration appear only where the company states them in the quoted passages."
-            ),
-            st["small"],
-        )
-    )
+        gaps.append("group structure (" + g["reason"] + ")")
+    note = (("Not available for this company: " + "; ".join(gaps) + ". ") if gaps else "") + pf[
+        "not_available"
+    ]
+    out.append(Paragraph(clean(note), st["small"]))
     return out
 
 
@@ -570,3 +612,27 @@ def data_quality_section(report: dict, st) -> list:
         ]
         out.append(_table(rows, [100 * mm, 30 * mm]))
     return out
+
+
+def growth_has_content(growth: dict | None) -> bool:
+    """True if the growth section can show at least one real company figure or price comparison."""
+    if not growth:
+        return False
+    for key in ("revenue", "profit"):
+        block = growth.get(key) or {}
+        if block.get("available") and (block.get("company") or {}).get("cagr") is not None:
+            return True
+    return bool(growth.get("price_return"))
+
+
+def cyclicality_has_content(cyc: dict | None) -> bool:
+    """True if there is a sector characterisation or any observed history to report."""
+    if not cyc:
+        return False
+    obs = cyc.get("observed") or {}
+    return bool(
+        (cyc.get("sector") or {}).get("classification")
+        or obs.get("revenue")
+        or obs.get("profit")
+        or cyc.get("sensitivities")
+    )

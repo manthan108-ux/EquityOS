@@ -234,14 +234,44 @@ def extract(pages: list[tuple[int, str]]) -> dict[str, list[dict]]:
     return out
 
 
+def private_document_ids(session: Session, company_id: uuid.UUID) -> set[uuid.UUID]:
+    """Documents that exist only because a user uploaded them as private material. A report that
+    other people can read must not quote them."""
+    from app.models import VaultEntry
+
+    return {
+        d
+        for (d,) in session.execute(
+            select(VaultEntry.document_id).where(
+                VaultEntry.company_id == company_id,
+                VaultEntry.document_id.is_not(None),
+                VaultEntry.visibility == "PRIVATE",
+            )
+        )
+    }
+
+
+def _fiscal_year_of(doc) -> int:
+    """The year a report is for, from its stored period or title ("FY2026", "2025-26"); 0 if unknown."""
+    import re
+
+    text = f"{doc.financial_period or ''} {doc.title or ''}"
+    years = [int(y) for y in re.findall(r"(?<!\d)(20\d{2})(?!\d)", text)]
+    return max(years) if years else 0
+
+
 def _latest_annual_report(session: Session, company_id: uuid.UUID):
-    docs = list(
-        session.scalars(
+    """The newest annual report that has stored page text (the longest wins only between equals)."""
+    hidden = private_document_ids(session, company_id)
+    docs = [
+        d
+        for d in session.scalars(
             select(Document).where(
                 Document.company_id == company_id, Document.doc_type == "annual_report"
             )
         )
-    )
+        if d.id not in hidden
+    ]
     best = None
     for d in docs:
         ext = session.scalar(
@@ -257,9 +287,12 @@ def _latest_annual_report(session: Session, company_id: uuid.UUID):
             .select_from(DocumentPage)
             .where(DocumentPage.extraction_id == ext.id)
         )
-        if n and (best is None or n > best[2]):
-            best = (d, ext, n)
-    return best
+        if not n:
+            continue
+        key = (_fiscal_year_of(d), n)
+        if best is None or key > best[3]:
+            best = (d, ext, n, key)
+    return best[:3] if best else None
 
 
 def narrative(session: Session, company_id: uuid.UUID) -> dict:
@@ -414,12 +447,23 @@ def group_structure(session: Session, company_id: uuid.UUID) -> dict:
     return {"available": True, "entities": out[:40], "total": len(out), "by_relationship": counts}
 
 
+def _external(session: Session, company_id: uuid.UUID) -> dict:
+    from app.research import enrich
+
+    try:
+        return enrich.load(session, company_id)
+    except Exception:  # noqa: BLE001 - an enrichment problem must never stop a report
+        session.rollback()
+        return {"available": False, "reason": "the external-source step could not be read"}
+
+
 def build(session: Session, company_id: uuid.UUID, store: rd._Store, prefer: str) -> dict:
     return {
         "version": VERSION,
         "narrative": narrative(session, company_id),
         "segments": segments(store, prefer),
         "group": group_structure(session, company_id),
+        "external": _external(session, company_id),
         "not_available": (
             "Structured founder and management biographies, board histories and customer-concentration "
             "statistics are not held in EquityOS; only what the company's own annual report states is shown."

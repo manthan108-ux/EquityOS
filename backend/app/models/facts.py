@@ -18,6 +18,7 @@ from sqlalchemy import (
     Enum,
     ForeignKey,
     Index,
+    Integer,
     Numeric,
     String,
     Text,
@@ -227,3 +228,23 @@ __all__ = [
     "ShareholdingFact",
     "Statement",
 ]
+
+
+class ProviderRefreshState(Base):
+    """Where a provider's refresh of one company stands, so a universe-wide run can resume,
+    skip what is fresh and back off from what keeps failing. It stores no financial data."""
+
+    __tablename__ = "provider_refresh_state"
+    __table_args__ = (Index("ix_provider_refresh_due", "provider_code", "next_due_at"),)
+
+    provider_code: Mapped[str] = mapped_column(String(40), primary_key=True)
+    company_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("companies.id", ondelete="CASCADE"), primary_key=True
+    )
+    # REFRESHED | PARTIAL | UNAVAILABLE | NO_ISIN | MAPPING_FAILED | ERROR
+    status: Mapped[str] = mapped_column(String(20))
+    datasets: Mapped[dict | None] = mapped_column(JSONB)  # dataset -> outcome, message, periods
+    last_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_success_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    next_due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    consecutive_failures: Mapped[int] = mapped_column(Integer, default=0)

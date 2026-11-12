@@ -41,6 +41,7 @@ from app.docintel.statements import (
     CellFact,
     ColumnInfo,
     StatementBlock,
+    apply_overrides,
     extract_page_statements,
     inherit_context,
     merge_continuations,
@@ -475,6 +476,7 @@ def extract_document(
     promote: bool = True,
     content: PdfContent | None = None,
     llm_router=None,
+    overrides: dict | None = None,
 ) -> ExtractionReport:
     """Run the full pipeline on one stored document. Every outcome is recorded, never raised.
 
@@ -502,6 +504,7 @@ def extract_document(
                 promote=promote,
                 content=content,
                 llm_router=llm_router,
+                overrides=overrides,
             )
     except Exception as exc:  # noqa: BLE001 - recorded on the run instead of aborting a batch
         run.status = ExtractionStatus.FAILED
@@ -539,6 +542,7 @@ def _extract(
     promote: bool,
     content: PdfContent | None,
     llm_router=None,
+    overrides: dict | None = None,
 ) -> ExtractionReport:
     issues: list[dict] = []
 
@@ -693,6 +697,7 @@ def _extract(
                 }
             )
     blocks = inherit_context(merge_continuations(blocks))
+    apply_overrides(blocks, overrides)
     if llm_router is not None:
         from app.llm.headers import resolve_headers
 

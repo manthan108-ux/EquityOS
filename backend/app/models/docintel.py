@@ -336,3 +336,55 @@ class EvidenceFetchRun(Base):
     candidates_found: Mapped[int] = mapped_column(Integer, default=0)
     downloaded: Mapped[int] = mapped_column(Integer, default=0)
     detail: Mapped[dict | None] = mapped_column(JSONB)
+
+
+class CompanyWebsiteRegistry(Base):
+    """How a company's official website was found, checked and (maybe) registered.
+
+    `companies.website` / `investor_relations_url` hold the value the rest of the system uses; this
+    row keeps the provenance: where each candidate came from, why it was accepted or rejected, and
+    when to try again. A VERIFIED row is never replaced by a weaker candidate; AMBIGUOUS and
+    FAILED rows are flagged for a person, not guessed.
+    """
+
+    __tablename__ = "company_website_registry"
+    __table_args__ = (Index("ix_website_registry_status", "status", "next_retry_at"),)
+
+    company_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("companies.id", ondelete="CASCADE"), primary_key=True
+    )
+    status: Mapped[str] = mapped_column(String(20))  # VERIFIED|AMBIGUOUS|NO_CANDIDATE|FAILED|MANUAL
+    website: Mapped[str | None] = mapped_column(String(500))
+    investor_relations_url: Mapped[str | None] = mapped_column(String(500))
+    discovery_source: Mapped[str | None] = mapped_column(String(60))
+    verification: Mapped[dict | None] = mapped_column(JSONB)  # signals, candidates tried, reasons
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    next_retry_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class CompanyEnrichment(Base):
+    """A fact about a company taken from a PUBLIC PAGE and checked against that page's text.
+
+    The language model only extracts: every row holds the verbatim quote it was taken from, which
+    was confirmed to appear in the page text. The page URL, its publisher (domain), its title and
+    the retrieval time are kept, so each statement in a report can be traced and checked by a
+    reader. `kind` is history | leadership | business. Rows are replaced as a set per page when
+    it is read again.
+    """
+
+    __tablename__ = "company_enrichment"
+    __table_args__ = (Index("ix_company_enrichment_company", "company_id", "kind"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    company_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"))
+    kind: Mapped[str] = mapped_column(String(20))
+    name: Mapped[str | None] = mapped_column(String(200))  # leadership: the person
+    role: Mapped[str | None] = mapped_column(String(200))  # leadership: the title as printed
+    quote: Mapped[str] = mapped_column(Text)  # verbatim, verified against the page
+    url: Mapped[str] = mapped_column(String(600))
+    publisher: Mapped[str] = mapped_column(String(200))
+    page_title: Mapped[str | None] = mapped_column(String(300))
+    retrieved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    extractor: Mapped[str] = mapped_column(String(80))  # provider/model that extracted the quote

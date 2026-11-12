@@ -18,6 +18,8 @@ from app.models.calc import (
 )
 from app.models.company import AliasType, Company, CompanyAlias, Security, SecurityStatus
 from app.models.docintel import (
+    CompanyEnrichment,
+    CompanyWebsiteRegistry,
     DocumentExtraction,
     DocumentPage,
     DocumentSection,
@@ -49,6 +51,7 @@ from app.models.facts import (
     DatasetVerification,
     FinancialFact,
     PeriodType,
+    ProviderRefreshState,
     RatioSnapshot,
     RawPayload,
     ShareholdingFact,
@@ -106,6 +109,8 @@ __all__ = [
     "GroupEntity",
     "DocumentLinkEvent",
     "DocumentSection",
+    "CompanyEnrichment",
+    "CompanyWebsiteRegistry",
     "EvidenceFetchRun",
     "XbrlFact",
     "XbrlFiling",
@@ -118,6 +123,7 @@ __all__ = [
     "Basis",
     "CorporateAction",
     "DatasetVerification",
+    "ProviderRefreshState",
     "FinancialFact",
     "PeriodType",
     "RatioSnapshot",
