@@ -12,7 +12,7 @@ from reportlab.graphics.charts.barcharts import HorizontalBarChart
 from reportlab.graphics.shapes import Drawing, String
 from reportlab.lib import colors
 from reportlab.lib.units import mm
-from reportlab.platypus import KeepTogether, Paragraph, Spacer, Table, TableStyle
+from reportlab.platypus import CondPageBreak, KeepTogether, Paragraph, Spacer, Table, TableStyle
 
 from app.research.pdf import clean
 from app.research.pdf_analysis import _analysis, _hdr, _ids, compact, fv
@@ -304,9 +304,11 @@ def growth_section(report: dict, st) -> list:
     out = [
         Paragraph(
             clean(
-                "The benchmark is the company's stored peer group (same-industry listed companies "
-                "closest in size), because EquityOS holds no industry-wide statistics. It is called the "
-                "peer-set CAGR below."
+                "The first benchmark is the company's stored peer group (same-industry listed "
+                "companies closest in size), called the peer-set CAGR. A second, broader comparison "
+                "uses the companies the data provider files under the same sector label, shown "
+                "below when enough of them have stored filings. EquityOS has no official industry "
+                "statistics."
             ),
             st["body"],
         )
@@ -402,6 +404,109 @@ def growth_section(report: dict, st) -> list:
                     ]
                 )
             )
+    ig = g.get("industry_group") or {}
+    out.append(CondPageBreak(95 * mm))  # heading, intro and table stay together
+    out.append(Paragraph("Industry-group comparison (provider sector label)", st["h2"]))
+    if ig.get("available"):
+        out.append(
+            Paragraph(
+                clean(
+                    f"Group: {ig['label']} ({ig['group_companies']} listed companies carry this "
+                    f"label; classification read {ig['classification_source']}). The figures below "
+                    "use only the other companies in the group whose stored annual filings cover "
+                    "the same two fiscal years on the same accounting basis as this company, and "
+                    "the combined value of exactly those companies at both ends. They describe "
+                    "those companies, not the whole industry."
+                    + (
+                        f" The provider reports the group's combined market capitalisation as "
+                        f"{Decimal(ig['group_market_cap_crore']):,.0f} crore (not used in any "
+                        "calculation)."
+                        if ig.get("group_market_cap_crore")
+                        else ""
+                    )
+                ),
+                st["small"],
+            )
+        )
+        rows = [
+            _hdr(
+                st,
+                "Measure",
+                "Years",
+                "Company CAGR",
+                "Group median",
+                "Group combined",
+                "Alpha vs median",
+                "vs combined",
+                "Companies",
+            )
+        ]
+        gaps = []
+        for key, label in (
+            ("revenue", ig["metrics"].get("revenue", {}).get("label") or "Revenue"),
+            ("net_profit", "Net profit"),
+        ):
+            blk = ig["metrics"].get(key) or {}
+            if not blk.get("available"):
+                gaps.append(f"{label}: {blk.get('reason', 'not available')}.")
+                continue
+            c = blk["company"]
+            span = f"{c['start'][:4]} to {c['end'][:4]} ({c['years']} years, {str(c['basis']).lower()})"
+            vs = blk["alpha_vs_aggregate_pp"]
+            rows.append(
+                [
+                    Paragraph(clean(label), st["cellb"]),
+                    Paragraph(clean(span), st["cell"]),
+                    Paragraph(f"{c['cagr']}%", st["cellr"]),
+                    Paragraph(f"{blk['median_cagr']}%", st["cellr"]),
+                    Paragraph(
+                        f"{blk['aggregate_cagr']}%" if blk["aggregate_cagr"] else "n/a", st["cellr"]
+                    ),
+                    Paragraph(f"{_pp(blk['alpha_vs_median_pp'])} pp", st["cellr"]),
+                    Paragraph(f"{_pp(vs)} pp" if vs else "n/a", st["cellr"]),
+                    Paragraph(f"{blk['members_used']} of {blk['group_size'] - 1}", st["cellr"]),
+                ]
+            )
+        if len(rows) > 1:
+            out.append(
+                _table(
+                    rows,
+                    [20 * mm, 40 * mm, 18 * mm, 18 * mm, 20 * mm, 20 * mm, 18 * mm, W - 154 * mm],
+                )
+            )
+        out += [Paragraph(clean(n), st["small"]) for n in gaps]
+        for key in ("revenue", "net_profit"):
+            blk = ig["metrics"].get(key) or {}
+            if blk.get("available"):
+                mrows = [_hdr(st, "Company in the group", "CAGR", "Evidence")]
+                for m in blk["members"]:
+                    mrows.append(
+                        [
+                            Paragraph(clean(m["name"]), st["cell"]),
+                            Paragraph(f"{m['cagr']}%", st["cellr"]),
+                            Paragraph(_ids(m["evidence_ids"]), st["small"]),
+                        ]
+                    )
+                out.append(
+                    KeepTogether(
+                        [
+                            Paragraph(clean(f"{blk['label']}: group members used"), st["h2"]),
+                            _table(mrows, [70 * mm, 30 * mm, W - 100 * mm]),
+                        ]
+                    )
+                )
+    else:
+        out.append(
+            Paragraph(
+                clean(
+                    "Not available: "
+                    + str(ig.get("reason") or "no industry label has been collected")
+                    + "."
+                    + (f" Provider label: {ig['label']}." if ig.get("label") else "")
+                ),
+                st["small"],
+            )
+        )
     out.append(Paragraph("Relative price return (defined separately)", st["h2"]))
     if g["price_return"]:
         rows = [_hdr(st, "Period", "Company", "Peer-set median", "Difference", "As of")]

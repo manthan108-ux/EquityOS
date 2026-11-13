@@ -296,7 +296,7 @@ def test_relative_price_return_is_the_difference_to_the_peer_median(seeded):  # 
 def test_the_growth_section_discloses_definitions_and_the_peer_set_proxy():
     flat = _flat(_axis())
     assert "5. Growth versus the industry: CAGR and growth alpha" in flat
-    assert "EquityOS holds no industry-wide statistics" in flat
+    assert "EquityOS has no official industry statistics" in flat
     assert "CAGR = (ending value / starting value)" in flat and "not investment alpha" in flat
     assert "Relative price return (defined separately)" in flat
 

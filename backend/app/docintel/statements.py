@@ -26,6 +26,7 @@ from app.docintel.layout import (
     find_columns,
     group_lines,
     merge_split_numbers,
+    move_middle_labels,
     parse_cell,
     phrases,
     split_row,
@@ -53,8 +54,19 @@ _YEARISH = re.compile(r"^\(?((19|20)\d{2}|\d{1,2})\)?$")
 MIN_GUTTER = 12.0  # narrowest empty strip (in PDF points) accepted as the gap between two tables
 
 
+# OCR reads a table's ruled lines as "|", "[" or "!" at the start of a label, and a damaged bracket
+# in a serial number ("{a)"). A trailing cross-reference ("(3)+(4)", "(a}+(b}+(c}") is not part of
+# the item name either.
+_RULING = re.compile(r"^[\s|\[\]!¦]+")
+_BRACKET_ENUM = re.compile(r"^[\{\[]((\d{1,2}|[ivx]{1,5}|[a-h]))[.)}\]]\s+", re.IGNORECASE)
+_TRAILING_FORMULA = re.compile(r"\s*\(\w{1,4}[)}\]]\s*(?:[-+]\s*\(?\w{1,4}[)}\]]?\s*)+$")
+
+
 def _strip_enumeration(label: str) -> str:
-    return _LEADING_ENUM.sub("", label.strip())
+    text = _RULING.sub("", label.strip())
+    text = _BRACKET_ENUM.sub("", text)
+    text = _RULING.sub("", _LEADING_ENUM.sub("", text))
+    return _TRAILING_FORMULA.sub("", text).strip()
 
 
 def _header_row(row) -> bool:
@@ -835,7 +847,7 @@ def extract_page_statements(
             for half in halves
             for block in extract_page_statements(page_number, half, ocr=ocr, _split=False)
         ]
-    lines = [merge_split_numbers(line) for line in group_lines(words)]
+    lines = [merge_split_numbers(line) for line in group_lines(move_middle_labels(words))]
     titles = [
         (i, detect.classify_title(line.text) or detect.classify_disclosure_title(line.text))
         for i, line in enumerate(lines)

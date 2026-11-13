@@ -320,3 +320,20 @@ def test_unwritable_cache_directory_disables_caching_instead_of_crashing(tmp_pat
     second = env.fetch(ttl=timedelta(hours=1))
     assert first.ok and second.ok and not second.from_cache  # works, just without a cache
     assert len(env.requests) == 2
+
+
+def test_an_unreachable_host_is_a_network_error_not_a_robots_block():
+    """No DNS record / refused connection must not be reported as 'disallowed by robots.txt'."""
+
+    def handler(request):
+        raise httpx.ConnectError("name or service not known")
+
+    env = Env(handler, respect_robots=True)
+    result = env.fetch()
+    assert result.status is FetchStatus.NETWORK_ERROR and "unreachable" in result.error
+    assert env.hits("/file.csv") == 0  # the page itself was never requested
+
+
+def test_a_robots_server_error_is_still_reported_as_blocked():
+    env = Env(robots_site(httpx.Response(503)), respect_robots=True)
+    assert env.fetch().status is FetchStatus.BLOCKED_BY_ROBOTS

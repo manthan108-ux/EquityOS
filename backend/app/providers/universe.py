@@ -17,8 +17,9 @@ whatever this run (and any user upload) has made available.
 
 import logging
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models import (
@@ -46,18 +47,43 @@ class UniverseRun:
     stopped: str | None = None
 
 
-def pick_batch(session: Session, limit: int) -> list[Company]:
-    """NSE-listed companies without a verified website first, then the rest, in name order."""
-    registered = select(CompanyWebsiteRegistry.company_id).where(
-        CompanyWebsiteRegistry.status.in_(("VERIFIED", "MANUAL"))
+def pick_batch(session: Session, limit: int, now: datetime | None = None) -> list[Company]:
+    """The companies that most need work, so every run advances the universe.
+
+    Tier 0: never tried (no website-registry row).  Tier 1: a failed/ambiguous website whose retry
+    window has opened.  Tier 2: no Upstox refresh recorded yet.  Tier 3: everything else (cheap
+    no-ops thanks to the per-step cool-downs).  NSE-listed first inside a tier, then name order.
+    A company whose website is in its retry back-off and whose Upstox data exists is not picked
+    ahead of work that is actually due - the old ordering kept returning the same failures.
+    """
+    now = now or datetime.now(UTC)
+    reg = CompanyWebsiteRegistry
+    never_tried = ~select(reg.company_id).where(reg.company_id == Company.id).exists()
+    retry_due = (
+        select(reg.company_id)
+        .where(
+            reg.company_id == Company.id,
+            reg.status.notin_(("VERIFIED", "MANUAL")),
+            or_(reg.next_retry_at.is_(None), reg.next_retry_at <= now),
+        )
+        .exists()
     )
+    no_upstox = (
+        ~select(ProviderRefreshState.company_id)
+        .where(
+            ProviderRefreshState.company_id == Company.id,
+            ProviderRefreshState.provider_code == "UPSTOX_FUNDAMENTALS",
+        )
+        .exists()
+    )
+    tier = case((never_tried, 0), (retry_due, 1), (no_upstox, 2), else_=3)
     q = (
         select(Company)
         .join(Security, Security.company_id == Company.id)
         .where(Security.isin.is_not(None))
         .group_by(Company.id)
         .order_by(
-            Company.id.in_(registered).asc(),
+            tier,
             func.bool_or(Security.security_code.is_(None)).desc(),
             Company.common_name,
         )
@@ -91,8 +117,6 @@ def run_company(session: Session, company: Company, *, steps, client, llm, upsto
         from app.providers import upstox_refresh as ur
 
         state = session.get(ProviderRefreshState, (ur.SOURCE_CODE, company.id))
-        from datetime import UTC, datetime
-
         if state and state.next_due_at and state.next_due_at > datetime.now(UTC):
             return f"skipped (fresh until {state.next_due_at:%d/%m/%Y})"
         o = ur.refresh_company(session, upstox, company)

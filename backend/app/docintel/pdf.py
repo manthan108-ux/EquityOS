@@ -13,6 +13,7 @@ Page text methods: `text_layer` (born digital), `embedded_ocr` (a scan carrying 
 invisible OCR text), `ocr` (read by our Tesseract run), `none`.
 """
 
+import re
 import unicodedata
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -147,6 +148,89 @@ def _readable_share(text: str) -> float:
     return normal / len(chars)
 
 
+_NUMERIC_TOKEN = re.compile(r"^\(?-?[\d,]+(\.\d+)?\)?$")
+UNIT_CHECK_MIN_ROWS = 8  # a page with this many rows of figures is a statement page
+
+
+def lacks_unit_statement(raw_words, text: str) -> bool:
+    """A page of statement figures whose text layer does not say what unit they are in.
+
+    Some filings draw the "(Rs. in million)" line as outlines, so only OCR can read it. Counted per
+    printed row, so pages with a few figures (covering letters, prose) are never touched.
+    """
+    from app.docintel.detect import find_units  # local: detect imports nothing from here
+
+    if find_units(text):
+        return False
+    boxes = [
+        Word(float(w[0]), float(w[1]), float(w[2]), float(w[3]), str(w[4]))
+        for w in raw_words
+        if str(w[4]).strip()
+    ]
+    rows = sum(
+        1
+        for line in group_lines(boxes)
+        if sum(1 for w in line.words if _NUMERIC_TOKEN.match(w.text.strip())) >= 2
+    )
+    return rows >= UNIT_CHECK_MIN_ROWS
+
+
+def merge_ocr_labels(raw_words, ocr_words):
+    """Text-layer words (exact figures) plus the OCR'd WORDS that the text layer lacks.
+
+    The figures stay exactly as the filing encodes them; only alphabetic words (row labels, the
+    unit line) are taken from OCR, and only where no text-layer word already sits on that spot.
+    OCR digits are never used: Tesseract mis-reads them far more often than it mis-reads words.
+    """
+    merged = [tuple(w[:5]) for w in raw_words]
+
+    def covered(o) -> bool:
+        cx, cy = (o.x0 + o.x1) / 2, (o.y0 + o.y1) / 2
+        return any(w[0] <= cx <= w[2] and w[1] <= cy <= w[3] for w in merged[: len(raw_words)])
+
+    added = 0
+    for o in ocr_words:
+        if sum(c.isalpha() for c in o.text) >= 2 and not covered(o):
+            merged.append((o.x0, o.y0, o.x1, o.y1, o.text))
+            added += 1
+    return merged, added
+
+
+POOR_EMBEDDED_OCR_SHARE = 0.03  # malformed words in a scan's own OCR text: re-read it ourselves
+REPLACE_EMBEDDED_MIN_CONFIDENCE = 75.0
+GOOD_OCR_CONFIDENCE = 70.0
+
+
+def malformed_share(text: str) -> float:
+    """Share of 4+ letter words that look like OCR debris ("llJnauditedl", a capital mid-word)."""
+    words = re.findall(r"[A-Za-z]{4,}", text)
+    odd = sum(bool(re.search(r"[a-z][A-Z]", w) or re.match(r"^[lI]{2}", w)) for w in words)
+    return odd / len(words) if words else 0.0
+
+
+def ocr_best(page) -> list:
+    """OCR one page; when the default reading is poor, also try denser / automatic-layout readings.
+
+    The default (300 dpi, one text block) reads ruled bank tables badly: a real SBI scan came back
+    at 48% confidence with 87 intact amounts, against 81-84% and about 250 amounts with automatic
+    layout (300 dpi) or block layouts (450 dpi). The most confident reading wins; nothing is ever
+    edited. (Choosing by recognised heading words instead was tried and extracted less.)
+    """
+    first = ocr_png(render_png(page))
+    best, best_conf = first, mean_confidence(first) or 0.0
+    if best_conf >= GOOD_OCR_CONFIDENCE:
+        return best
+    for dpi, psm in ((450, 4), (450, 11), (300, 3)):
+        try:
+            alt = ocr_png(render_png(page, dpi), dpi=dpi, psm=psm)
+        except OcrError:
+            continue
+        conf = mean_confidence(alt) or 0.0
+        if alt and conf > best_conf:
+            best, best_conf = alt, conf
+    return best
+
+
 def read_pdf(path: Path, *, use_ocr: bool | None = None) -> PdfContent:
     """Text and words for every page. Never raises for a bad file: `error` explains instead."""
     try:
@@ -202,20 +286,46 @@ def _read_page(page, number: int, ocr: bool, out: PdfContent) -> PageData:
     if char_count and has_embedded_ocr(page):
         method = "embedded_ocr"
     confidence = None
-    if (scanned or garbled) and ocr:
+    poor_embedded = (
+        method == "embedded_ocr" and ocr and malformed_share(text) >= POOR_EMBEDDED_OCR_SHARE
+    )
+    if (scanned or garbled or poor_embedded) and ocr:
         try:
-            ocr_words = ocr_png(render_png(page))
-            if ocr_words:
+            ocr_words = ocr_best(page)
+            conf = mean_confidence(ocr_words) or 0.0
+            # an embedded layer is only replaced by our own reading when that is clearly good
+            if ocr_words and (not poor_embedded or conf >= REPLACE_EMBEDDED_MIN_CONFIDENCE):
                 raw_words = [(w.x0, w.y0, w.x1, w.y1, w.text) for w in ocr_words]
                 text = "\n".join(line.text for line in group_lines(ocr_words))
                 char_count = len(text.strip())
-                confidence = mean_confidence(ocr_words)
+                confidence = conf
                 method = "ocr"
                 out.ocr_used = True
                 scanned = garbled = False
                 page_ocr_words = ocr_words
         except OcrError:
             pass  # the page stays flagged as unreadable; nothing is guessed
+    if method == "text_layer" and ocr and not (scanned or garbled):
+        if lacks_unit_statement(raw_words, text):
+            try:
+                # only the OCR'd line(s) that state a unit are added; no OCR digit is ever used
+                from app.docintel.detect import find_units
+
+                unit_lines = [
+                    ln for ln in group_lines(ocr_png(render_png(page))) if find_units(ln.text, True)
+                ]
+                merged, added = merge_ocr_labels(
+                    raw_words, [w for ln in unit_lines for w in ln.words]
+                )
+                if added:
+                    raw_words = merged
+                    boxes = [Word(*map(float, w[:4]), str(w[4])) for w in merged]
+                    text = "\n".join(line.text for line in group_lines(boxes))
+                    char_count = len(text.strip())
+                    method = "text_layer+ocr"
+                    out.ocr_used = True
+            except OcrError:
+                pass  # the unit stays unstated; the uploader is asked, nothing is guessed
     # NFKC turns typographic ligatures back into letters ("ﬂow" -> "flow", "Proﬁt" -> "Profit");
     # the rupee sign and dashes are unaffected.
     words = [

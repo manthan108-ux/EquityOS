@@ -307,3 +307,58 @@ def phrases(line: Line, gap_ratio: float = 0.9) -> list[Line]:
         else:
             out[-1].append(word)
     return [Line(p) for p in out]
+
+
+# ---- statements that print the row label BETWEEN two groups of figures ----
+
+_ENUMERATION = re.compile(r"^(?:[A-Za-z]{1,4}|\(\w{1,3}\))$")  # "i", "iv", "A", "(a)": not a figure
+MIDDLE_LABEL_MIN_ROWS = 6
+MIDDLE_LABEL_MIN_SHARE = 0.5
+
+
+def _figure(word: Word) -> bool:
+    return is_value_token(word.text) and not _ENUMERATION.match(word.text.strip())
+
+
+def move_middle_labels(words: list[Word]) -> list[Word]:
+    """Some filings print `[this quarter | last quarter | a year ago]  LABEL  [half year | ...]`.
+
+    Row labels then sit in the middle of the row, which every row reader here (labels left of the
+    first value column) cannot handle. When a page clearly uses that layout - at least six rows with
+    two or more figures on the left of a text run AND figures on its right, and that is at least
+    half of the rows with figures - the words of the label column are moved to the left edge,
+    keeping their order, spacing and height. Figures are never touched, so the cell boxes used for
+    citations stay exactly where the filing printed them. A page that does not match returns
+    unchanged, and so does any line that mixes label words from outside the label column (titles,
+    captions, headers), so text is never reordered.
+    """
+    lines = group_lines(words)
+    zone: list[tuple[float, float]] = []
+    figure_rows = sandwiched = 0
+    for line in lines:
+        figs = [i for i, w in enumerate(line.words) if _figure(w)]
+        if len(figs) < 2:
+            continue
+        figure_rows += 1
+        for a, b in zip(figs, figs[1:], strict=False):
+            run = line.words[a + 1 : b]
+            if run and a >= 1 and any(len(re.findall(r"[A-Za-z]", w.text)) >= 3 for w in run):
+                if sum(1 for i in figs if i <= a) >= 2 and any(i >= b for i in figs):
+                    sandwiched += 1
+                    zone.append((run[0].x0, run[-1].x1))
+                break
+    if sandwiched < MIDDLE_LABEL_MIN_ROWS or sandwiched < figure_rows * MIDDLE_LABEL_MIN_SHARE:
+        return words
+    z0, z1 = min(z[0] for z in zone), max(z[1] for z in zone)
+    first_figure = min(w.x0 for w in words if _figure(w) and w.x1 <= z0 + 1)
+    shift = z1 - (first_figure - 8)  # label column ends 8pt left of the leftmost figure
+    if shift <= 0:
+        return words
+    moved: dict[Word, Word] = {}
+    for line in lines:
+        text_words = [w for w in line.words if not _figure(w)]
+        if not text_words or any(w.x0 < z0 - 3 or w.x1 > z1 + 3 for w in text_words):
+            continue
+        for w in text_words:
+            moved[w] = Word(w.x0 - shift, w.y0, w.x1 - shift, w.y1, w.text)
+    return [moved.get(w, w) for w in words]
