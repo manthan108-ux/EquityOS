@@ -1,9 +1,53 @@
-# Next steps (updated 2026-11-10, after Phase 12)
+# Next steps (updated 2026-11-13, after the universe-coverage work)
 
 Raw documents are no longer available from the project owner, so nothing here waits for uploads.
 Documents are *optional accelerators*: if one ever arrives, save it in `data\inbox\<SYMBOL>\` (PDF) or
 run `python -m app.docintel.cli xbrl --symbol <SYMBOL> --file <file.xml>` (XBRL), then press
 **Resume research**. Companies lacking evidence are shown as *awaiting evidence*, not blocked.
+
+## Continuing the full-universe processing (exact commands)
+
+Run from `backend/` with the virtualenv and the database up (`docker start equityos-db-1`). Every command
+is resumable and idempotent; run ONE at a time per host (they share per-host request spacing), and never
+two copies of the same command (two concurrent runs can collide on the same company).
+
+```
+# where things stand (no network)
+.venv\Scripts\python -m app.providers.cli universe --status
+.venv\Scripts\python -m app.providers.cli classify --status
+.venv\Scripts\python -m app.providers.cli website-status
+
+# 1. industry labels - profile requests only, about 1 s each; repeat until "0 companies"
+.venv\Scripts\python -m app.providers.cli classify --limit 500
+
+# 2. Upstox fundamentals - about 20 s per company; stops itself after 3 refusals
+.venv\Scripts\python -m app.providers.cli upstox-refresh --limit 50
+
+# 3. official websites - discovery + verification; ambiguous ones are flagged, never guessed
+.venv\Scripts\python -m app.providers.cli discover-websites --limit 50
+
+# 4. everything for the next batch in one pass (website, upstox, documents, enrichment, evidence)
+.venv\Scripts\python -m app.providers.cli universe --limit 10
+.venv\Scripts\python -m app.providers.cli universe --symbols TCS,INFY --steps upstox,evidence --no-llm
+```
+Re-running any of them skips what is fresh (Upstox 30 days, documents 7, enrichment 30, website back-off
+7 to 90 days). Failed websites are listed by `website-status` for a person to confirm with
+`set-website`. For long runs use `run_in_background` and read the status commands, not the log
+(Python buffers stdout unless started with `-u`).
+
+## Open after the 2026-11-13 work
+1. **Coverage** is a small share of 5,551 companies; the batches above are the way to raise it. Expect
+   most refusals to come from sites that disallow automated access; those need `set-website` by hand or
+   stay unprocessed.
+2. **SBI scan**: only 2 of 12 income columns have a readable heading. Options: upload the Excel/XBRL file,
+   or improve header repair for "Quarter ended / Half year ended" in `docintel/ocr.py`.
+3. **Re-process the stored Nestle and SBI uploads** ("process again" in the Documents tab) to apply the new
+   readers; this changes stored records, so it was not done automatically.
+4. **BSE industry list** (manual download to `data/master/bse_Equity.csv`) would give an exchange
+   classification to put beside the provider label.
+5. **Industry-group coverage** grows with `upstox-refresh`; until a label has 5 refreshed companies with the
+   same fiscal years its statistics are withheld.
+6. Windows Tesseract install (administrator prompt) would let local runs read scans; Docker already can.
 
 ## Done
 * Automatic evidence fetch from the company's own website (Phase 13); BPCL went from no documents to a score with no upload.

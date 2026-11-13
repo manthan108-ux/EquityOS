@@ -52,7 +52,7 @@ function ClarifyBox({ u, onDone }: { u: Upload; onDone: (u: Upload) => void }) {
             <div className="mt-2 flex flex-wrap gap-2">
               {a.options.map((o) => (
                 <Button key={o} size="sm" onClick={() => send({ [a.code === "BASIS_UNSTATED" ? "basis" : "unit"]: o })}>
-                  {a.code === "BASIS_UNSTATED" ? titleCase(o) : o === "inr" ? "Rupees" : titleCase(o)}
+                  {a.code === "BASIS_UNSTATED" ? titleCase(o.toLowerCase()) : o === "inr" ? "Rupees" : titleCase(o)}
                 </Button>
               ))}
             </div>

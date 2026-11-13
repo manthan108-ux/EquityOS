@@ -22,9 +22,10 @@ from __future__ import annotations
 from decimal import Decimal
 from statistics import median
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import Company
+from app.models import Company, CompanyClassification
 from app.research import readiness as rd
 from app.research.analysis import _records, _s
 from app.research.sectors import AMOUNT, Metric
@@ -490,7 +491,7 @@ def _cagr_for(recs: dict, start, end):
     return {"cagr": c, "first": a, "last": b, "years": years}
 
 
-def _common_span(company_recs: dict, peer_recs: list[dict]):
+def _common_span(company_recs: dict, peer_recs: list[dict], min_peers: int = MIN_PEERS):
     """The longest span (at least MIN_YEARS) whose end points the company and enough peers all have."""
     ends = sorted(company_recs)
     best = None
@@ -504,7 +505,7 @@ def _common_span(company_recs: dict, peer_recs: list[dict]):
                 for r in peer_recs
                 if start in r and end in r and _pow_ok(r[start].value, r[end].value)
             ]
-            if len(ok) >= MIN_PEERS and (best is None or years > best[2]):
+            if len(ok) >= min_peers and (best is None or years > best[2]):
                 best = (start, end, years)
     return best
 
@@ -640,10 +641,128 @@ def growth(own_store, peer_stores, sector_code: str, prefer: str) -> dict:
             "Relative price return = the company's price return minus the median price return of the same peer set over the same period. Price return only (no dividends), not risk-adjusted, and not an index alpha.",
         ],
         "limitations": [
-            "EquityOS holds no industry-wide statistics, so the peer set (same-industry listed companies closest in size) stands in for the industry; it is small and size-selected.",
+            "EquityOS holds no official industry statistics. The peer set (same-industry listed companies closest in size) is small and size-selected; the industry-group figures cover only the other companies the data provider files under the same sector label AND whose stored filings span the same years, so they describe those companies, not the whole industry.",
             "Only the fiscal years stored are used, so spans are short; one unusual year can move a CAGR a lot.",
             "A company with an acquisition, demerger or restatement in the span is not adjusted for it.",
         ],
+    }
+
+
+# ---------------------------------------------------------------- industry group (provider label)
+
+MIN_GROUP = 5  # other companies in the group that must share the same fiscal-year end points
+MAX_GROUP = 120  # members read per metric (name order); the rest are counted, not used
+SCHEME = "UPSTOX_SECTOR"
+
+
+def industry_group(
+    session: Session, company: Company, own_store, prefer: str, sector_code: str
+) -> dict:
+    """Industry-wide growth from the filings of every stored company sharing the provider's label.
+
+    The group is "the other listed companies the data provider files under the same sector label",
+    restricted to those whose stored annual figures cover the SAME two fiscal years on the SAME
+    accounting basis as the company. The aggregate is the combined value of exactly those companies
+    at both ends, so no company enters one year and not the other. Nothing is extrapolated to the
+    members that lack data, and the coverage is always stated.
+    """
+    row = session.get(CompanyClassification, (company.id, SCHEME))
+    if row is None:
+        return {
+            "available": False,
+            "reason": "no industry label has been collected for this company yet",
+        }
+    members = list(
+        session.scalars(
+            select(Company)
+            .join(CompanyClassification, CompanyClassification.company_id == Company.id)
+            .where(
+                CompanyClassification.scheme == SCHEME,
+                CompanyClassification.label == row.label,
+                Company.id != company.id,
+            )
+            .order_by(Company.common_name)
+        )
+    )
+    out = {
+        "available": False,
+        "label": row.label,
+        "classification_source": row.retrieved_at.date().isoformat()
+        + " - Upstox Fundamentals profile (sector field); the provider's label, not an exchange one",
+        "group_companies": len(members) + 1,
+        "group_market_cap_crore": _s(row.group_market_cap_crore)
+        if row.group_market_cap_crore is not None
+        else None,
+        "metrics": {},
+    }
+    alt = "STANDALONE" if prefer == "CONSOLIDATED" else "CONSOLIDATED"
+    rev_m = BANK_REV if sector_code == "BANK" else REV
+    stores = [
+        (member, rd.load_store(session, member.id, set(rev_m.names) | set(PAT.names)))
+        for member in members[:MAX_GROUP]
+    ]
+    for metric in (rev_m, PAT):
+        out["metrics"][metric.key] = _group_metric(
+            own_store, stores, metric, [prefer, alt], len(members) + 1
+        )
+    out["available"] = any(b.get("available") for b in out["metrics"].values())
+    if not out["available"]:
+        out["reason"] = next(
+            (b.get("reason") for b in out["metrics"].values() if b.get("reason")),
+            "not enough stored data",
+        )
+    return out
+
+
+def _group_metric(own_store, stores, metric: Metric, basis_order: list[str], group_size: int):
+    for basis in basis_order:
+        own = _endpoints(own_store, metric, basis)
+        if len(own) < 2:
+            continue
+        peers = [(c.common_name, _endpoints(s, metric, basis)) for c, s in stores]
+        span = _common_span(own, [p for _, p in peers], MIN_GROUP)
+        if not span:
+            continue
+        start, end, years = span
+        c = _cagr_for(own, start, end)
+        if c is None:
+            continue
+        rows, firsts, lasts = [], Decimal(0), Decimal(0)
+        for name, recs in peers:
+            pc = _cagr_for(recs, start, end) if start in recs and end in recs else None
+            if pc:
+                rows.append(
+                    {
+                        "name": name,
+                        "cagr": _s(pc["cagr"].quantize(Decimal("0.1"))),
+                        "evidence_ids": [pc["first"].id, pc["last"].id],
+                    }
+                )
+                firsts += pc["first"].value
+                lasts += pc["last"].value
+        agg = _cagr(firsts, lasts, years)
+        med = Decimal(str(median([Decimal(r["cagr"]) for r in rows])))
+        return {
+            "available": True,
+            "label": metric.label,
+            "company": _company_block(c, start, end, basis),
+            "members": rows,
+            "members_used": len(rows),
+            "group_size": group_size,
+            "aggregate_cagr": _s(agg.quantize(Decimal("0.1"))) if agg is not None else None,
+            "median_cagr": _s(med.quantize(Decimal("0.1"))),
+            "alpha_vs_aggregate_pp": _s((c["cagr"] - agg).quantize(Decimal("0.1")))
+            if agg is not None
+            else None,
+            "alpha_vs_median_pp": _s((c["cagr"] - med).quantize(Decimal("0.1"))),
+        }
+    return {
+        "available": False,
+        "reason": (
+            f"fewer than {MIN_GROUP} other companies with the same label have stored annual "
+            f"{metric.label.lower()} for the same fiscal years on the company's accounting basis "
+            f"(the group has {group_size} companies; most have not been collected yet)"
+        ),
     }
 
 
@@ -656,13 +775,25 @@ def build(
     prefer: str,
     peer_names: list[str],
 ) -> dict:
-    return {
-        "version": VERSION,
-        "overview": overview(
-            sector_code,
-            company.industry.code if company.industry else None,
-            company.common_name,
-            peer_names,
-        ),
-        "growth": growth(own_store, peer_stores, sector_code, prefer),
-    }
+    g = growth(own_store, peer_stores, sector_code, prefer)
+    ig = g["industry_group"] = industry_group(session, company, own_store, prefer, sector_code)
+    ov = overview(
+        sector_code,
+        company.industry.code if company.industry else None,
+        company.common_name,
+        peer_names,
+    )
+    if ig.get("label"):  # what the data says about the industry, next to the general context
+        cap = ig.get("group_market_cap_crore")
+        ov["fit"]["text"] += (
+            f" The data provider files {company.common_name} under the sector label "
+            f"'{ig['label']}', which covers {ig['group_companies']} listed companies"
+            + (
+                f" with a combined market capitalisation of {Decimal(cap):,.0f} crore"
+                if cap
+                else ""
+            )
+            + f" (read {ig['classification_source'].split(' - ')[0]}). Industry-wide growth "
+            "from the filings of that group is in the growth section."
+        )
+    return {"version": VERSION, "overview": ov, "growth": g}

@@ -18,6 +18,8 @@ export type State = {
   readiness: ReturnType<typeof readiness>;
   missing: ReturnType<typeof missing>;
   uploads: ReturnType<typeof upload>[];
+  nextUpload: Partial<ReturnType<typeof upload>>; // what the next upload comes back as
+  clarifications: Record<string, string | boolean>[]; // answers the page sent
   reports: ReturnType<typeof report>[];
   failures: Record<string, number>; // path fragment -> HTTP status to answer with
   calls: string[];
@@ -28,6 +30,8 @@ export const freshState = (): State => ({
   readiness: readiness(),
   missing: missing(),
   uploads: [],
+  nextUpload: {},
+  clarifications: [],
   reports: [],
   failures: {},
   calls: [],
@@ -92,7 +96,7 @@ export async function mockApi(page: Page, state: State) {
       if (tail === "/missing") return json(route, state.missing);
       if (tail === "/uploads" && method === "GET") return json(route, state.uploads);
       if (tail === "/uploads" && method === "POST") {
-        const u = upload({ id: `u${state.uploads.length + 1}`, filename: "results.pdf" });
+        const u = upload({ id: `u${state.uploads.length + 1}`, filename: "results.pdf", ...state.nextUpload });
         state.uploads.push(u);
         return json(route, { uploads: [u] });
       }
@@ -114,6 +118,13 @@ export async function mockApi(page: Page, state: State) {
         }
         return json(route, state.session);
       }
+    }
+    const cm = path.match(/^\/api\/research\/uploads\/([^/]+)\/clarify$/);
+    if (cm && method === "POST") {
+      state.clarifications.push(JSON.parse(req.postData() ?? "{}"));
+      const i = state.uploads.findIndex((u) => u.id === cm[1]);
+      state.uploads[i] = upload({ ...state.uploads[i], status: "ACCEPTED", ambiguities: [], resolved_requirements: ["revenue"], basis: "CONSOLIDATED" });
+      return json(route, state.uploads[i]);
     }
     const rm = path.match(/^\/api\/research\/reports\/([^/]+)$/);
     if (rm) return json(route, state.reports.find((r) => r.id === rm[1]) ?? {});

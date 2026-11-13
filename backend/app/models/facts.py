@@ -248,3 +248,25 @@ class ProviderRefreshState(Base):
     last_success_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     next_due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     consecutive_failures: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class CompanyClassification(Base):
+    """The industry a PROVIDER assigns to a company, with where and when it was read.
+
+    Upstox's profile endpoint carries a `sector` label (for example "Refineries") and the combined
+    market capitalisation of that sector. The label is the provider's own, not an NSE/BSE or
+    EquityOS classification, and is only ever described as such. Companies sharing a label form the
+    industry group used for industry-level growth statistics.
+    """
+
+    __tablename__ = "company_classification"
+    __table_args__ = (Index("ix_company_classification_label", "scheme", "label"),)
+
+    company_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("companies.id", ondelete="CASCADE"), primary_key=True
+    )
+    scheme: Mapped[str] = mapped_column(String(30), primary_key=True)  # UPSTOX_SECTOR
+    label: Mapped[str] = mapped_column(String(200))
+    group_market_cap_crore: Mapped[Decimal | None] = mapped_column(Numeric(24, 2))
+    retrieved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    source: Mapped[str] = mapped_column(String(200))

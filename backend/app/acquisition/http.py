@@ -114,6 +114,7 @@ class PoliteClient:
         self._lock = threading.Lock()
         self._next_allowed: dict[str, float] = {}
         self._robots: dict[str, tuple[datetime, robotparser.RobotFileParser | None]] = {}
+        self._unreachable: set[str] = set()
         self._cache_dir = config.cache_dir
         if self._cache_dir:
             try:
@@ -178,6 +179,12 @@ class PoliteClient:
             return cached
 
         if self.config.respect_robots and not documented_api and not self._allowed_by_robots(url):
+            origin = "{0.scheme}://{0.netloc}".format(urlsplit(url))
+            if origin in self._unreachable:
+                # the host did not answer at all (no DNS record, refused, timed out): not a policy
+                return FetchResult(
+                    url, FetchStatus.NETWORK_ERROR, error="host unreachable (robots.txt not read)"
+                )
             return FetchResult(url, FetchStatus.BLOCKED_BY_ROBOTS, error="Disallowed by robots.txt")
 
         last = FetchResult(url, FetchStatus.NETWORK_ERROR, error="not attempted")
@@ -344,7 +351,9 @@ class PoliteClient:
         try:
             response = self._http.get(robots_url)
         except httpx.HTTPError:
+            self._unreachable.add(origin)
             return None, ROBOTS_FAIL_TTL  # network failure: be conservative
+        self._unreachable.discard(origin)
         code = response.status_code
         parser = robotparser.RobotFileParser()
         if 500 <= code < 600:

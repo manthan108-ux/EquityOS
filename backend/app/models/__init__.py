@@ -47,6 +47,7 @@ from app.models.evidence import (
 )
 from app.models.facts import (
     Basis,
+    CompanyClassification,
     CorporateAction,
     DatasetVerification,
     FinancialFact,
@@ -124,6 +125,7 @@ __all__ = [
     "CorporateAction",
     "DatasetVerification",
     "ProviderRefreshState",
+    "CompanyClassification",
     "FinancialFact",
     "PeriodType",
     "RatioSnapshot",

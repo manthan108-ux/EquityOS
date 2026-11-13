@@ -42,6 +42,7 @@ class FakeUpstox:
 def companies(session):
     seed_reference_data(session)
     seed_test_universe(session)
+    session.commit()  # as in production: a crash in one company must not undo committed data
     return list(session.scalars(select(Company).order_by(Company.common_name)))
 
 
@@ -149,6 +150,12 @@ def test_one_companys_crash_does_not_stop_the_batch(session, companies):
         session, Boom(profile_text=" ".join(c.legal_name for c in companies)), companies[:3]
     )
     assert not run.stopped and len(run.outcomes) == 3 and run.outcomes[0].status == ur.ERROR
+    # the other two companies were genuinely processed and saved, not swept away by the rollback
+    assert [o.status for o in run.outcomes[1:]] == [ur.REFRESHED, ur.REFRESHED]
+    states = {s.company_id: s.status for s in session.scalars(select(ProviderRefreshState))}
+    assert companies[0].id not in states  # nothing half-written; it is "never tried" so due again
+    assert companies[0].id in {c.id for c in ur.due_companies(session, 10)}
+    assert states[companies[1].id] == ur.REFRESHED
 
 
 def test_the_summary_reports_every_category(session, companies):

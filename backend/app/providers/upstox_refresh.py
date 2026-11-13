@@ -162,6 +162,11 @@ def refresh_company(
                 "the Upstox profile for this ISIN does not name this company; nothing stored",
             )
 
+    if pres.ok and isinstance(pbody, dict):
+        from app.providers import classification  # local: it imports this module
+
+        classification.store(session, company, pbody)  # the provider's sector label, kept dated
+
     results: dict = {}
     rows = 0
     for dataset in DATASETS:

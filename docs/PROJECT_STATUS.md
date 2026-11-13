@@ -455,3 +455,43 @@ Full description: [REPORT_ENGINE.md](REPORT_ENGINE.md).
   `python -m app.research.compat` builds and renders all 24 pilot companies (24 of 24 without error).
 * Tests: report-analysis suite (hand-checked arithmetic, basis and peer-comparability rules, thesis and
   conclusion rules, full Axis PDF), PDF renderer suite.
+
+### Universe coverage, upload repairs and industry research (2026-11-12 to 2026-11-13)
+
+Commits `3868a9f` (ingestion, uploads, enrichment, blank-section rules; migrations 0018-0020) and the work
+after it (migration 0021). Architecture and rules: [REPORT_ENGINE.md](REPORT_ENGINE.md). Limits:
+[KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md). Commands to continue: [NEXT_STEPS.md](NEXT_STEPS.md).
+
+**Implementation matrix** (T = covered by automated tests, L = run live)
+
+| Area | Module / command | Status |
+|---|---|---|
+| Website registry, discovery, verification | `acquisition/website_discovery.py`, `discover-websites`, `website-status` | implemented, T, L (partial coverage) |
+| Upstox universe refresh (batch, retry, breaker) | `providers/upstox_refresh.py`, `upstox-refresh` | implemented, T, L (partial coverage) |
+| Provider industry label | `providers/classification.py`, `classify`, migration 0021 | implemented, T, L (partial coverage) |
+| Universe batch (website, upstox, documents, enrich, evidence) | `providers/universe.py`, `universe` | implemented, T (13 tests), L small batches; tiered `pick_batch` so every run advances |
+| Website enrichment (verified quotes) | `research/enrich.py`, `enrich` | implemented, T, L (a few companies) |
+| Upload engine: classification, basis/unit questions, private holds | `research/vault.py`, `docintel/*` | implemented, T; Documents tab buttons browser-tested (mocked API) |
+| Mid-row-label statements, OCR unit line, denser scan OCR | `docintel/layout.py`, `pdf.py`, `statements.py` | implemented, T; Nestle read; SBI partial |
+| Uploads reach facts, readiness and the report | `tests/test_upload_flow.py` | T |
+| Industry-group CAGR, company CAGR, growth alpha | `research/industry.py` | implemented, T; shown only when at least 5 comparable group members exist |
+| Sections omitted when empty, contents recalculated | `research/pdf_pro.py`, `pdf_sections.py` | implemented, T |
+
+**Fixed in this pass:** the full-suite failure `test_one_companys_crash_does_not_stop_the_batch` (the test
+fixture never committed its seed rows, so the crash handler's rollback removed them; the test now commits as
+production does and asserts the other companies were saved); a batch ordering bug in `pick_batch` that kept
+returning the same failed websites; a robots.txt check that reported unreachable hosts as "refuse automated
+access"; a race that crashed a batch when two classification runs overlapped (the write is now one atomic
+upsert); upload buttons that showed "CONSOLIDATED" in capitals.
+
+**Measured coverage on 2026-11-13** (of 5,551 listed companies; `universe --status`, `classify --status`)
+
+| Measure | Count | Not done / failed |
+|---|---|---|
+| Verified or manual official website | 55 (31 verified by discovery, 24 pilot) | 5,496 without; of those tried: 39 failed (mostly guessed domains that do not exist or sites that refuse robots), 2 ambiguous for a person |
+| Upstox fundamentals refreshed | 84 (0 errors, 0 mapping failures) | 5,467 not yet processed (about 20 s each) |
+| Provider industry label stored | 1,929 | 143 refused because the Upstox profile did not name the company; about 3,480 not yet processed |
+| Companies with verified website quotes | 7 | sites that block automated access give none |
+
+Live batches this pass: discovery of 60 (22 verified, 36 failed, 2 ambiguous); classification of about 1,900;
+Upstox refresh of 40 more. Full NSE/BSE coverage is not claimed.

@@ -191,3 +191,66 @@ test("the mobile layout has no horizontal scroll and a collapsible navigation", 
   await page.getByRole("button", { name: "Open navigation" }).click();
   await expect(page.getByRole("navigation", { name: "Primary" })).toBeVisible();
 });
+
+async function uploadOne(page: import("@playwright/test").Page, state: ReturnType<typeof freshState>, name = "results.pdf") {
+  await signIn(page, state);
+  await openCompany(page);
+  await start(page).click();
+  await tab(page, /Documents/).click();
+  await page.locator("#file-input").setInputFiles({ name, mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4 test") });
+  await page.getByRole("button", { name: /Upload 1 file/ }).click();
+  await expect(page.getByText("Uploaded documents (1)")).toBeVisible();
+}
+
+test("a document that does not state its basis and unit asks once, then is accepted with the answers", async ({ page }) => {
+  const state = freshState();
+  state.nextUpload = {
+    status: "NEEDS_CLARIFICATION",
+    validation_status: "PENDING",
+    resolved_requirements: [],
+    basis: null,
+    ambiguities: [
+      { code: "BASIS_UNSTATED", message: "The document does not say whether these figures are consolidated or standalone.", options: ["CONSOLIDATED", "STANDALONE"] },
+      { code: "UNIT_UNSTATED", message: "The document does not state the unit of its figures.", options: ["crore", "lakh", "million", "thousand", "inr"] },
+    ],
+  };
+  await uploadOne(page, state);
+  await expect(page.getByText("Needs your answer")).toBeVisible();
+  await expect(page.getByText(/consolidated or standalone/)).toBeVisible();
+  await page.getByRole("button", { name: "Consolidated", exact: true }).click();
+  await expect.poll(() => state.clarifications.length).toBe(1);
+  expect(state.clarifications[0]).toEqual({ basis: "CONSOLIDATED" });
+  await expect(page.getByText("Validated").first()).toBeVisible();
+  await expect(page.getByText("Needs your answer")).toHaveCount(0);
+});
+
+test("the unit question offers crore, lakh, million, thousand and rupees", async ({ page }) => {
+  const state = freshState();
+  state.nextUpload = {
+    status: "NEEDS_CLARIFICATION",
+    validation_status: "PENDING",
+    resolved_requirements: [],
+    ambiguities: [{ code: "UNIT_UNSTATED", message: "The document does not state the unit of its figures.", options: ["crore", "lakh", "million", "thousand", "inr"] }],
+  };
+  await uploadOne(page, state);
+  for (const label of ["Crore", "Lakh", "Million", "Thousand", "Rupees"]) {
+    await expect(page.getByRole("button", { name: label, exact: true })).toBeVisible();
+  }
+  await page.getByRole("button", { name: "Million", exact: true }).click();
+  await expect.poll(() => state.clarifications.length).toBe(1);
+  expect(state.clarifications[0]).toEqual({ unit: "million" });
+});
+
+test("an unreadable scan is rejected with the reason and what to upload instead", async ({ page }) => {
+  const state = freshState();
+  state.nextUpload = {
+    status: "REJECTED",
+    validation_status: null,
+    resolved_requirements: [],
+    reject_reason: "This looks like a scanned document whose text could not be read reliably. Upload the company's Excel or XBRL results file instead.",
+  };
+  await uploadOne(page, state, "scan.pdf");
+  await expect(page.getByText("Rejected")).toBeVisible();
+  await expect(page.getByText(/Excel or XBRL results file/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Consolidated", exact: true })).toHaveCount(0);
+});

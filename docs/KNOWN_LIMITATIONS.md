@@ -267,3 +267,48 @@ Honest list, as of 2026-11-08 (Phase 6 added at the end). Each item says what ha
 * One HDFC Bank value (Q1 FY27 standalone net profit) differed by a single digit between two reads of
   a scanned document; the latest read is not confirmed against the source and should be reviewed.
 * Reprocessing skips documents that need our own OCR (not installed locally); run those in Docker.
+
+## Universe coverage, uploads and industry research (2026-11-13)
+
+Numbers change with every batch; `python -m app.providers.cli universe --status` prints the current ones.
+
+**Coverage**
+* Full NSE/BSE coverage is NOT claimed. Only a fraction of the 5,551 listed companies has a verified website,
+  Upstox fundamentals and a provider industry label; the rest are simply not processed yet (the status command
+  shows processed vs not processed). Nothing is estimated for them.
+* Many company sites cannot be registered: robots.txt disallows automated access, the host answers 403, or the
+  domain cannot be told apart from another company's (flagged `AMBIGUOUS`/`FAILED` for a person, never guessed).
+  A host that does not answer at all is now reported as unreachable, not as a robots refusal.
+* A full Upstox refresh takes about 20 seconds per company (about 30 hours for the universe) and Upstox's
+  terms and rate limits for fundamentals are undocumented; the run is deliberately small-batch and stops after
+  three consecutive refusals.
+* Upstox values are in crore and lack some line items (depreciation, finance costs, borrowings for some
+  companies); the report states what is missing rather than filling it.
+
+**Industry research**
+* The industry label is the data provider's (Upstox `sector`), granularity varies ("Finance", "Software",
+  "Refineries"), and it is not an NSE/BSE or EquityOS classification. The BSE industry list still needs a
+  manual download.
+* Industry-group growth covers only the companies in the label that have stored annual filings for the same
+  two fiscal years on the same basis (at least 5). It describes those companies, not the whole industry; with
+  few refreshed companies per label the figure is often withheld with its reason.
+* No market-share or industry-size statistic other than the provider's sector market capitalisation (shown for
+  context, not used in calculations) is available. The qualitative sector template is general context.
+* Growth alpha is relative operating growth, not investment alpha; acquisitions, demergers and restatements
+  inside the span are not adjusted for.
+
+**Website enrichment**
+* Quotes are the company's own words taken from its own pages (verbatim-checked), so they are marketing-adjacent
+  and are labelled "not independent research". Sites that block automated access (Infosys, TCS and others)
+  give nothing. A model reading a page can still miss facts; it cannot add any.
+
+**Document uploads**
+* Scanned filings depend on Tesseract, which is installed only in the Docker image. Locally, a scan is
+  explained and the Excel/XBRL file is recommended. On the real scanned SBI results the denser OCR reads pages
+  at about 83% confidence and now yields an income block and a balance-sheet block, but only 2 of 12 income
+  columns have a column heading clean enough to use, so most SBI values are still withheld.
+* The Nestle results layout is read (all six statements, unit from OCR in Docker). Without OCR the unit is
+  asked; without an answer the figures are not accepted.
+* Existing vault entries uploaded before these repairs (for example the Nestle and SBI files) keep their old
+  status until someone chooses "process again" for them; the repairs do not rewrite stored records.
+* Browser tests mock the backend; they check the Documents tab interactions, not the live API.

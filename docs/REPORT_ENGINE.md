@@ -130,3 +130,51 @@ Five components, each scored -1 / 0 / +1 (valuation counts double):
   concentration statistics, geographic revenue splits (unless a quoted passage states them), industry-wide
   market data. History reaches back only as far as the stored annual figures (at most four years), so
   cyclicality is indicated, not established.
+
+## Universe-wide report inputs (2026-11-13)
+
+What a report can now draw on beyond the 24 pilot companies, and how each input is kept honest.
+
+**Where the inputs come from**
+
+| Input | Module | Stored in | Rule |
+|---|---|---|---|
+| Fundamentals (income, balance sheet, cash flow, ratios, shareholding, actions) | `providers/upstox_refresh.py` | evidence store | Upstox is keyed by ISIN; the profile text must name the company or nothing is stored |
+| Industry label + sector market cap | `providers/classification.py` | `company_classification` | the PROVIDER's label, dated, with its source; never described as an exchange classification |
+| Official website | `acquisition/website_discovery.py` | `company_website_registry`, `companies.website` | only a verified page is registered; ambiguity is flagged for a person; a verified URL is never replaced |
+| Public documents | `acquisition/evidence_fetch.py` (existing) | documents, evidence | runs once a website is registered |
+| History, leadership, business quotes | `research/enrich.py` | `company_enrichment` | a model only EXTRACTS; every quote must appear verbatim in the fetched page; leadership needs the name and the title inside the quote |
+| User uploads | `research/vault.py` + `docintel/*` | documents, evidence | basis/unit questions are asked, never assumed; private uploads never feed shared reports |
+
+**Sections that are left out.** A section appears only if it has something real to show. Growth,
+cyclicality, peers and management commentary are omitted when empty; a mostly empty company profile
+collapses to one "Not available for this company: ..." line; the contents page and section numbers are
+recalculated, and a conditional page break replaces the hard one after the profile.
+
+**Industry growth, in two tiers** (`research/industry.py`)
+1. *Peer set* (existing): the stored same-industry peers closest in size, at least 3 with the same two
+   fiscal years on the same basis.
+2. *Industry group* (new, `industry_group`): the other companies the provider files under the same sector
+   label, restricted to those whose stored annual figures cover the SAME two fiscal years on the SAME basis
+   as the company; at least 5 are required. The aggregate is the combined value of exactly those companies
+   at both ends (nobody enters one year and not the other). Reported: company CAGR, group median CAGR,
+   group combined CAGR, growth alpha vs each (company minus group, percentage points), companies used out of
+   the group size, and each member's CAGR with evidence ids. The provider's sector market capitalisation is
+   shown for context and used in no calculation. If fewer than 5 qualify, the report prints the reason and
+   no number. These figures describe the companies that have stored filings, not the whole industry, and
+   say so; coverage rises as `upstox-refresh` proceeds through the universe.
+
+The qualitative sector template is unchanged and still labelled as general context with no statistics.
+
+**Document engine repairs that feed reports** (`docintel/`)
+* A statement whose row labels sit BETWEEN two groups of figures (a real Nestle results layout) is read:
+  `layout.move_middle_labels` moves the label column to the left edge only when at least six rows and half
+  of all figure rows use that layout; figures (and so citation boxes) are never moved.
+* A page of figures with no unit line in its text layer ("(Rs. in million)" drawn as outlines) gets one OCR
+  read for the unit line only (`pdf.lacks_unit_statement`, `merge_ocr_labels`); no OCR digit is ever used.
+  Needs Tesseract (Docker image); without it the uploader is asked.
+* Poor scans are re-read at denser settings and the most confident reading wins (`pdf.ocr_best`); a scan's
+  own OCR layer with a high share of malformed words is replaced only when our reading is at least 75%
+  confident. OCR ruling marks ("|", "[") and cross-references ("(3)+(4)") are stripped from labels.
+* A document that does not print its basis or unit raises a question once (buttons in the Documents tab);
+  the answer is recorded as "stated by the uploader" and a printed value always wins.

@@ -23,7 +23,7 @@ from app.acquisition.factory import build_client
 from app.core.database import get_engine
 from app.coverage import Status, build_coverage
 from app.docintel.entity import company_names
-from app.models import Company, DatasetVerification, RawPayload, Security
+from app.models import Company, CompanyClassification, DatasetVerification, RawPayload, Security
 from app.providers.base import CompanyRef, DataProvider, Dataset, Outcome
 from app.providers.company_ir import names_group_entity
 from app.providers.documents import AssociationMismatch, DocumentProvider
@@ -563,6 +563,41 @@ def cmd_universe(args, providers, router) -> int:
     return 0
 
 
+def cmd_classify(args, providers, router) -> int:
+    """Collect the provider's industry label for companies that have none (profile requests only)."""
+    import json
+
+    from app.providers import classification
+
+    upstox = {p.spec.code: p for p in providers}.get("UPSTOX_FUNDAMENTALS")
+    with Session(get_engine()) as session:
+        if args.status:
+            print(json.dumps(classification.summary(session), indent=2, default=str))
+            return 0
+        if upstox is None or not upstox.is_configured():
+            raise SystemExit("Upstox is not configured (UPSTOX_ANALYTICS_TOKEN).")
+        if args.symbols:
+            wanted = [find_company(session, x.strip()) for x in args.symbols.split(",")]
+            have = {
+                r.company_id
+                for r in session.query(CompanyClassification).filter_by(
+                    scheme=classification.SCHEME
+                )
+            }
+            todo = [c for c in wanted if c.id not in have]
+        else:
+            todo = classification.missing(session, args.limit)
+        print(f"{len(todo)} companies without a classification")
+        run = classification.backfill(
+            session, upstox, todo, on_company=lambda c: print(f"  stored: {c.common_name}")
+        )
+        print(f"stored {run.stored}; not stored: {run.skipped or 'none'}")
+        if run.stopped:
+            print("STOPPED:", run.stopped)
+        print(json.dumps(classification.summary(session), indent=2, default=str))
+    return 0
+
+
 def cmd_set_website(args, providers, router) -> int:
     from app.acquisition.evidence_fetch import WebsiteRejected, set_website
 
@@ -684,6 +719,12 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--no-llm", action="store_true")
     p.add_argument("--status", action="store_true", help="print coverage and exit")
     p = sub.add_parser(
+        "classify", help="collect the provider industry label (profile requests only)"
+    )
+    p.add_argument("--limit", type=int, default=50, help="companies per run (default 50)")
+    p.add_argument("--status", action="store_true", help="print classification coverage and exit")
+    p.add_argument("--symbols", help="comma-separated symbols instead of the next batch")
+    p = sub.add_parser(
         "website-status", help="registry coverage and the mappings that need a person"
     )
     p.add_argument("--limit", type=int, default=30)
@@ -716,6 +757,7 @@ def main(argv: list[str] | None = None) -> int:
         "upstox-refresh": cmd_upstox_refresh,
         "enrich": cmd_enrich,
         "universe": cmd_universe,
+        "classify": cmd_classify,
         "fetch-evidence": cmd_fetch_evidence,
         "backfill-prices": cmd_backfill_prices,
     }

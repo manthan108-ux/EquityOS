@@ -512,16 +512,18 @@ def discover(
         row.next_retry_at = _backoff(row.attempts)
         result.status = row.status
         blocked = [t for t in result.tried if "BLOCKED_BY_ROBOTS" in t["reason"]]
+        gone = [t for t in result.tried if "NETWORK_ERROR" in t["reason"]]
+        parts = []
+        if blocked:
+            parts.append(
+                f"{len(blocked)} of {len(result.tried)} refuse automated access (robots.txt)"
+            )
+        if gone:
+            parts.append(f"{len(gone)} of {len(result.tried)} unreachable")
         result.note = (
             "no candidate address found"
             if not result.tried
-            else (
-                f"{len(blocked)} of {len(result.tried)} candidates refuse automated access (robots.txt)"
-                if blocked
-                else ""
-            )
-            + ("; " if blocked else "")
-            + "none passed verification"
+            else "; ".join([*parts, "none passed verification"])
         )
     session.commit()
     return result

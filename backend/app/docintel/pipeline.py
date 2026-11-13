@@ -613,7 +613,9 @@ def _extract(
         try:
             blocks.extend(
                 extract_page_statements(
-                    page.number, page.words, ocr=page.method in ("ocr", "embedded_ocr")
+                    page.number,
+                    page.words,
+                    ocr=page.method in ("ocr", "embedded_ocr", "text_layer+ocr"),
                 )
             )
         except Exception as exc:  # noqa: BLE001 - one odd page must not lose the whole document
