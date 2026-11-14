@@ -312,3 +312,62 @@ Numbers change with every batch; `python -m app.providers.cli universe --status`
 * Existing vault entries uploaded before these repairs (for example the Nestle and SBI files) keep their old
   status until someone chooses "process again" for them; the repairs do not rewrite stored records.
 * Browser tests mock the backend; they check the Documents tab interactions, not the live API.
+
+## Audit findings of 2026-11-13 and their status on 2026-11-14
+
+Fixed (code, tests, and checked on live data; see PROJECT_STATUS.md):
+
+* Fetched documents were stored but never read. The `extract` stage now reads them in the pipeline
+  (type check, extraction, promotion), records every outcome, and retries failures.
+* `upstox-refresh` alone left companies without validated evidence (117 of 134). The `evidence` and
+  `calculate` stages cover this, and `run --select missing-evidence` clears any backlog.
+* Document typing: compliance, governance, brochure, certificate and policy files are never financial
+  filings (link level and content level). 4 earlier mislabelled files were retyped with audit events.
+* Website verification: a parked/dispute page, a page in an unreadable script, or a page that does not
+  describe the provider's business is AMBIGUOUS. Re-review withdrew the 3 wrong sites in the audit list
+  and 3 more for a person to look at (below). A rejected domain cannot be accepted again.
+* Provider labels `DVR`, `Miscellaneous` and similar build no industry group.
+* Readiness no longer says "no validated revenue" when the chosen basis stopped reporting and the other
+  basis is current (AVSL), and keeps the specific stale reason when a held document is unread.
+* An interrupted run left a company half processed with no record. Every stage is checkpointed.
+
+Still limited:
+
+* **Image-only PDFs need Tesseract.** It is installed in the Docker image only. Locally those files are
+  recorded NEEDS_OCR and picked up automatically when the pipeline runs where OCR exists (run the worker
+  in Docker with the current `app/` mounted, or rebuild the image). Old, low-quality scans can be read
+  and still contain no recognisable statements (Aurus Gem's 2013-2016 results).
+* **Website verification is still name and description based.** Only a printed ISIN is conclusive (2 of
+  the 68 verified sites print one). The business-description check runs only where the provider's profile
+  is stored. 55 of the 56 sites verified before the new checks were re-reviewed (Asian Paints could not be reached
+  that day and was left as it was); sites found since use the new checks.
+  A few are moderate confidence (ABH Healthcare: the page names it as the owner of a division).
+  `MANUAL` is the only confirmed state. Three sites withdrawn for review (AAA Technologies, ABM
+  International, AVRO INDIA) may be correct; their site did not resemble the provider's business
+  description.
+* **Provider industry labels are the provider's.** Some look wrong for the company (3B Blackbio Dx is
+  filed under "Agrochemicals"); 55 of 149 labels have fewer than 5 members, so most industry-group
+  statistics stay withheld by design.
+* **Document selection takes what the site offers.** The newest file on a site can be years old (Aurus
+  Gem publishes results only up to 2016), and script-driven sites yield nothing.
+* **No wall-clock budget per stage.** A slow site with many large files can hold a worker for 20+ minutes
+  (observed once in the 25-company run). Other companies continue on other workers; a budget per stage
+  is an open item.
+* **Upstox is one request stream (about 20 s per company)**, so the full universe is about 30 hours of
+  Upstox time however many workers run.
+* **The pipeline worker is a separate process** (`python -m app.pipeline.cli serve`); the API only
+  records runs. Without a running worker, runs queued from the browser wait.
+* **Pause and cancel act between stages**, not inside one: a stage in progress finishes first.
+* **Stage rate limits are in-process.** Two workers on two machines would not share the gates.
+
+## Pipeline reliability (2026-11-14)
+
+* Stage budgets stop network and document stages (child process); database-only stages are bounded by a
+  best-effort `statement_timeout`. A document that hangs the reader every time is retried only through the
+  stage back-off (up to 7 days); the stage does not yet record which document it was reading.
+* A run whose worker died is taken over after a 10 minute heartbeat gap, not sooner.
+* Scheduled, unattended execution has been exercised for about 25 minutes on 5 companies, not for hours.
+* The integrity audit reports 26 stale peer-rank and peer-median calculations in 3 companies (their peer
+  inputs were refreshed afterwards). They are kept, not repaired; re-running the sector PEERS and SCORING
+  stages for those companies produces current versions.
+* Pacing between processes is per machine (lock files in the data folder); two machines would not share it.

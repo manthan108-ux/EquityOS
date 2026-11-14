@@ -46,7 +46,8 @@ def db_recorder(source: str, result: FetchResult) -> None:
         log.exception("could not write acquisition log")
 
 
-def build_client(*, record: bool = True) -> PoliteClient:
+def build_client(*, record: bool = True, shared_pacing: bool = False) -> PoliteClient:
+    """`shared_pacing` makes host spacing hold across processes (stages run in children)."""
     settings = get_settings()
     config = ClientConfig(
         user_agent=settings.http_user_agent,
@@ -55,4 +56,9 @@ def build_client(*, record: bool = True) -> PoliteClient:
         host_throttle_codes=HOST_THROTTLE_CODES,
         host_backoff_s=HOST_BACKOFF_S,
     )
-    return PoliteClient(config, recorder=db_recorder if record else None)
+    pacer = None
+    if shared_pacing:
+        from app.acquisition.pacing import SharedPacer
+
+        pacer = SharedPacer(resolve_data_dir(settings) / "pacing").reserve
+    return PoliteClient(config, recorder=db_recorder if record else None, pacer=pacer)

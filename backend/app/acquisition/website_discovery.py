@@ -34,10 +34,12 @@ from app.core.text import normalize_text
 from app.docintel.entity import company_names
 from app.models import (
     Company,
+    CompanyClassification,
     CompanyWebsiteRegistry,
     Document,
     DocumentExtraction,
     DocumentPage,
+    RawPayload,
     Security,
 )
 from app.providers.company_ir import extract_ir_links, validate_html
@@ -81,6 +83,24 @@ _ADDRESS = re.compile(
     r"\b(?:https?://)?(?:www\.)([a-z0-9][a-z0-9-]{1,60}(?:\.[a-z0-9-]{2,24}){1,3})\b", re.I
 )
 _TITLE_SPLIT = re.compile(r"\s[|\-–—:·»]\s|\s[|\-–—:·»]|[|\-–—:·»]\s")
+
+# A page that names the company is still not its website when it is a domain-dispute ruling, a parked
+# or for-sale domain, or written in a script the checks cannot read.
+_UNUSABLE_PAGE = re.compile(
+    r"reverse domain name|domain name (?:dispute|hijack)|\budrp\b|"
+    r"(?:this|the) domain(?: name)? (?:is|may be) for sale|buy this domain|domain (?:is )?parked",
+    re.I,
+)
+MIN_LATIN_SHARE = 0.6
+# The provider's description of the business must be recognisable on the site: genuine sites share at
+# least about a quarter of its distinctive words; a different company's site shares almost none.
+MIN_PROFILE_WORDS = 15
+MIN_PROFILE_OVERLAP = 0.20
+_PROFILE_STOP = frozenset(
+    "limited company based india indian engaged business provider services service solutions "
+    "products product including offers segments segment also other include which their with from "
+    "that this these such into across various range".split()
+)
 
 
 @dataclass
@@ -239,8 +259,57 @@ def _name_in_head(names: set[str], segments: list[str]) -> str | None:
     return None
 
 
-def judge_page(html: str, names: set[str], isin: str | None, domain: str = "") -> tuple[str, dict]:
-    """(outcome, signals) for one home page. Pure: no network."""
+def content_words(text: str) -> set[str]:
+    return {w for w in re.findall(r"[a-z]{5,}", (text or "").lower()) if w not in _PROFILE_STOP}
+
+
+def profile_overlap(profile: str | None, page_text: str) -> dict | None:
+    """How much of the provider's business description appears on the page (None: nothing to compare)."""
+    words = content_words(profile or "")
+    if len(words) < MIN_PROFILE_WORDS:
+        return None
+    shared = words & content_words(page_text)
+    return {
+        "profile_words": len(words),
+        "shared": len(shared),
+        "ratio": round(len(shared) / len(words), 2),
+    }
+
+
+def profile_text(session: Session, company_id) -> str | None:
+    """The provider's business description for the company: stored on the label, else the raw profile."""
+    row = session.scalar(
+        select(CompanyClassification.description).where(
+            CompanyClassification.company_id == company_id,
+            CompanyClassification.description.is_not(None),
+        )
+    )
+    if row:
+        return row
+    payload = session.scalar(
+        select(RawPayload)
+        .where(RawPayload.company_id == company_id, RawPayload.dataset.ilike("%profile%"))
+        .order_by(RawPayload.retrieved_at.desc())
+        .limit(1)
+    )
+    data = (payload.payload or {}).get("data") if payload else None
+    text = data.get("company_profile") if isinstance(data, dict) else None
+    return text if isinstance(text, str) and text else None
+
+
+def judge_page(
+    html: str,
+    names: set[str],
+    isin: str | None,
+    domain: str = "",
+    profile: str | None = None,
+) -> tuple[str, dict]:
+    """(outcome, signals) for one home page. Pure: no network.
+
+    A name match alone is not enough: a page that is a domain dispute or parked, one the checks
+    cannot read, or one that does not describe the business the data provider describes is AMBIGUOUS
+    (a person decides) unless the page prints the company's ISIN.
+    """
     soup = BeautifulSoup(html, "html.parser")
     title = soup.title.get_text(" ") if soup.title else ""
     site_name = ""
@@ -287,7 +356,28 @@ def judge_page(html: str, names: set[str], isin: str | None, domain: str = "") -
         or signals["isin_printed"]
     )
     if strong and (signals["name_in_body"] or signals["isin_printed"]):
-        return VERIFIED, signals
+        visible = soup.get_text(" ")
+        letters = [ch for ch in visible if ch.isalpha()]
+        signals["latin_share"] = (
+            round(sum(ch.isascii() for ch in letters) / len(letters), 2) if letters else None
+        )
+        signals["unusable_page"] = bool(_UNUSABLE_PAGE.search(f"{title} {visible[:2500]}"))
+        signals["profile_overlap"] = profile_overlap(profile, visible)
+        overlap = signals["profile_overlap"]
+        veto = None
+        if signals["unusable_page"]:
+            veto = "the page is a domain dispute / parked page, not the company's site"
+        elif signals["latin_share"] is not None and signals["latin_share"] < MIN_LATIN_SHARE:
+            veto = "the page is mostly in a script the check cannot read"
+        elif overlap and overlap["ratio"] < MIN_PROFILE_OVERLAP and not signals["isin_printed"]:
+            veto = (
+                "the page does not describe the business the data provider describes "
+                f"({overlap['shared']} of {overlap['profile_words']} distinctive words in common)"
+            )
+        if veto is None:
+            return VERIFIED, signals
+        signals["veto"] = veto
+        return AMBIGUOUS, signals
     if signals["name_in_body"]:
         return AMBIGUOUS, signals
     return "REJECTED", signals
@@ -300,7 +390,13 @@ def check_candidate(
     client: PoliteClient,
     names: set[str],
     isin: str | None,
+    profile: str | None = None,
 ) -> Verdict:
+    row = session.get(CompanyWebsiteRegistry, company.id)
+    if row is not None and registrable(url) in rejected_domains(row):
+        return Verdict(
+            "REJECTED", url, reason="reviewed earlier and rejected as not this company's site"
+        )
     try:
         _public_host(url)
     except WebsiteRejected as exc:
@@ -319,7 +415,7 @@ def check_candidate(
         return Verdict(
             "REJECTED", url, final, reason="redirects to a site that is not a company site"
         )
-    outcome, signals = judge_page(home.text, names, isin, registrable(final))
+    outcome, signals = judge_page(home.text, names, isin, registrable(final), profile)
     signals["redirected_to"] = final if registrable(final) != registrable(url) else None
     if outcome == VERIFIED:
         owner = session.scalar(
@@ -341,7 +437,8 @@ def check_candidate(
             )
     reason = {
         VERIFIED: "company name found in the page title, site name or copyright line, and in the page text",
-        AMBIGUOUS: "the name appears in the page text only; not enough to call this the official site",
+        AMBIGUOUS: signals.get("veto")
+        or "the name appears in the page text only; not enough to call this the official site",
         "REJECTED": "the page does not mention this company",
     }[outcome]
     return Verdict(outcome, url, final, signals, reason, home.text)
@@ -439,6 +536,7 @@ def discover(
     isin = next((s.isin for s in securities if s.isin), None)
     symbols = sorted({s.symbol for s in securities if s.symbol})
     result = DiscoveryResult(company.common_name, NO_CANDIDATE)
+    profile = profile_text(session, company.id)
 
     def try_candidates(urls: list[str], source: str) -> Verdict | None:
         seen_domains: set[str] = set()
@@ -448,7 +546,7 @@ def discover(
             if dom in seen_domains:
                 continue
             seen_domains.add(dom)
-            v = check_candidate(session, company, url, client, names, isin)
+            v = check_candidate(session, company, url, client, names, isin, profile)
             result.tried.append(
                 {
                     "url": url,
@@ -476,7 +574,7 @@ def discover(
 
     row.attempts = (row.attempts or 0) + 1
     row.last_attempt_at = now
-    row.verification = {"tried": result.tried[-12:]}
+    row.verification = _carry(row, {"tried": result.tried[-12:]})
     if verdict and verdict.outcome == VERIFIED:
         site = (verdict.final_url or verdict.url).rstrip("/")
         parts = urlsplit(site)
@@ -493,11 +591,10 @@ def discover(
             company.investor_relations_url = ir
         row.status, row.website, row.investor_relations_url = VERIFIED, stored, ir
         row.discovery_source, row.verified_at, row.next_retry_at = result.source, now, None
-        row.verification = {
-            "tried": result.tried[-12:],
-            "signals": verdict.signals,
-            "reason": verdict.reason,
-        }
+        row.verification = _carry(
+            row,
+            {"tried": result.tried[-12:], "signals": verdict.signals, "reason": verdict.reason},
+        )
         result.status, result.website, result.investor_relations_url = VERIFIED, stored, ir
     elif verdict and verdict.outcome == AMBIGUOUS:
         row.status, row.next_retry_at = (
@@ -506,6 +603,10 @@ def discover(
         )  # a person decides; not retried automatically
         row.website = (verdict.final_url or verdict.url).rstrip("/")
         row.discovery_source = result.source
+        row.verification = _carry(
+            row,
+            {"tried": result.tried[-12:], "signals": verdict.signals, "reason": verdict.reason},
+        )
         result.status, result.note = AMBIGUOUS, f"needs a person: {verdict.reason}"
     else:
         row.status = NO_CANDIDATE if not result.tried else FAILED
@@ -527,6 +628,111 @@ def discover(
         )
     session.commit()
     return result
+
+
+_KEEP = ("rejected", "review_history")
+
+
+def _carry(row: CompanyWebsiteRegistry, new: dict) -> dict:
+    """New verification evidence, keeping what a reviewer recorded (rejected domains, history)."""
+    old = row.verification or {}
+    return {**{k: old[k] for k in _KEEP if k in old}, **new}
+
+
+def rejected_domains(row: CompanyWebsiteRegistry) -> set[str]:
+    return {r.get("domain", "") for r in (row.verification or {}).get("rejected", [])}
+
+
+def mark_unverified(
+    session: Session,
+    company: Company,
+    *,
+    reason: str,
+    evidence: dict | None = None,
+    status: str = AMBIGUOUS,
+    actor: str = "review",
+    now: datetime | None = None,
+) -> CompanyWebsiteRegistry:
+    """Withdraw a website that failed review. Nothing is deleted or guessed.
+
+    The company stops using the address (its site is cleared so documents are not fetched from it),
+    the registry row keeps it as an AMBIGUOUS candidate for a person, the earlier verification is
+    preserved in `review_history`, and the domain is remembered so discovery cannot re-accept it.
+    A MANUAL website (set by a person) is never touched.
+    """
+    now = now or datetime.now(UTC)
+    row = registry_row(session, company)
+    if row.status == MANUAL:
+        raise ValueError("a website set by hand is not changed by an automated review")
+    site = row.website or company.website
+    old = dict(row.verification or {})
+    history = list(old.get("review_history", []))
+    history.append(
+        {
+            "at": now.isoformat(),
+            "actor": actor,
+            "previous_status": row.status,
+            "previous_website": site,
+            "reason": reason,
+            "evidence": evidence or {},
+            "previous_verification": {k: v for k, v in old.items() if k not in _KEEP},
+        }
+    )
+    rejected = list(old.get("rejected", []))
+    if site and registrable(site) not in {r.get("domain") for r in rejected}:
+        rejected.append({"domain": registrable(site), "reason": reason, "at": now.isoformat()})
+    row.verification = {
+        **{k: v for k, v in old.items() if k == "tried"},
+        "rejected": rejected,
+        "review_history": history,
+        "reason": reason,
+    }
+    row.status = status
+    row.next_retry_at = None
+    row.verified_at = None
+    if company.website and (not site or registrable(company.website) == registrable(site)):
+        company.website = None
+        company.investor_relations_url = None
+        row.investor_relations_url = None
+    session.commit()
+    return row
+
+
+def review_registered(
+    session: Session, company: Company, client: PoliteClient, *, now: datetime | None = None
+) -> dict:
+    """Re-judge an automatically VERIFIED website with the current checks.
+
+    Returns {"outcome": CONFIRMED | WITHDRAWN | SKIPPED, "reason": ...}. A site that cannot be
+    fetched is left as it is (SKIPPED): being unreachable today is not evidence against it.
+    """
+    now = now or datetime.now(UTC)
+    row = session.get(CompanyWebsiteRegistry, company.id)
+    if row is None or row.status != VERIFIED or not company.website:
+        return {"outcome": "SKIPPED", "reason": "not an automatically verified website"}
+    home = client.fetch(company.website, source="COMPANY_IR", validate=validate_html)
+    if not home.ok:
+        return {"outcome": "SKIPPED", "reason": f"not retrieved ({home.status.value})"}
+    names = company_names(session, company.id)
+    isin = session.scalar(
+        select(Security.isin).where(Security.company_id == company.id, Security.isin.is_not(None))
+    )
+    outcome, signals = judge_page(
+        home.text,
+        names,
+        isin,
+        registrable(home.final_url or company.website),
+        profile_text(session, company.id),
+    )
+    if outcome == VERIFIED:
+        v = dict(row.verification or {})
+        v["review"] = {"at": now.isoformat(), "outcome": "CONFIRMED", "signals": signals}
+        row.verification = v
+        session.commit()
+        return {"outcome": "CONFIRMED", "reason": "passes the current checks"}
+    reason = signals.get("veto") or "the page no longer passes verification"
+    mark_unverified(session, company, reason=reason, evidence=signals, now=now)
+    return {"outcome": "WITHDRAWN", "reason": reason}
 
 
 def registry_summary(session: Session) -> dict:

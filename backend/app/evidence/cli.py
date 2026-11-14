@@ -102,6 +102,34 @@ def cmd_validate_all(args) -> int:
     return 0
 
 
+def cmd_integrity(args) -> int:
+    """Read-only audit: does the evidence store agree with what it was built from?"""
+    import json
+
+    from app.core.config import get_settings, resolve_data_dir
+    from app.evidence import integrity
+
+    with Session(get_engine()) as session:
+        company = find_company(session, args.symbol) if args.symbol else None
+        report = integrity.audit(
+            session,
+            company_id=company.id if company else None,
+            data_dir=resolve_data_dir(get_settings()),
+        )
+        integrity.names(session, report)
+    if args.json:
+        print(json.dumps(report.as_dict(), indent=2, default=str))
+    else:
+        print(f"{report.scope}: {report.status}  ({report.evidence_rows} evidence rows)")
+        for c in report.checks:
+            flag = "ok " if c.clean else c.severity[:4]
+            extra = "" if c.clean else f"  {c.count} in {c.companies} companies"
+            print(f"  [{flag}] {c.code:20} {c.title}{extra}")
+            for e in c.examples[: args.examples]:
+                print("         ", {k: v for k, v in e.items() if k != "company_id"})
+    return 1 if report.errors else 0
+
+
 def cmd_summary(args) -> int:
     with Session(get_engine()) as session:
         company = find_company(session, args.symbol)
@@ -287,6 +315,12 @@ def main(argv: list[str] | None = None) -> int:
 
     p = sub.add_parser("validate-all", help="validate every company that has stored data")
     p.set_defaults(func=cmd_validate_all)
+
+    p = sub.add_parser("integrity", help="read-only audit of the evidence store")
+    p.add_argument("--symbol")
+    p.add_argument("--json", action="store_true")
+    p.add_argument("--examples", type=int, default=3)
+    p.set_defaults(func=cmd_integrity)
 
     p = sub.add_parser("summary")
     p.add_argument("--symbol", required=True)

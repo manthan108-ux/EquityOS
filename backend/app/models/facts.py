@@ -270,3 +270,5 @@ class CompanyClassification(Base):
     group_market_cap_crore: Mapped[Decimal | None] = mapped_column(Numeric(24, 2))
     retrieved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     source: Mapped[str] = mapped_column(String(200))
+    # the provider's business description, kept as identity evidence (e.g. to corroborate a website)
+    description: Mapped[str | None] = mapped_column(Text)

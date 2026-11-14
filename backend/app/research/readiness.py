@@ -511,6 +511,28 @@ def _pick(
             f"newest value is for {best.period_end:%d %b %Y}, older than the "
             f"{age_limit}-day limit for this requirement"
         )
+        # The chosen basis stopped reporting (e.g. no consolidated statements since FY2018) while
+        # the other basis is current: say so, not that the company has no recent data.
+        if req.basis != "NA":
+            newer = [
+                r
+                for r in cands
+                if r.basis not in (prefs.basis, None)
+                and r.period_end
+                and best.period_end
+                and r.period_end > best.period_end
+                and _age_ok(r.period_end, today, age_limit)
+            ]
+            if newer:
+                other = max(newer, key=lambda r: r.period_end.toordinal())
+                other_name = "standalone" if prefs.basis == "CONSOLIDATED" else "consolidated"
+                st.other_basis = {"basis": other.basis, "period_end": other.period_end.isoformat()}
+                st.reason = (
+                    f"the {prefs.basis.lower()} figures were last reported for "
+                    f"{best.period_end:%d %b %Y}, older than the {age_limit}-day limit; "
+                    f"{other_name} figures exist for {other.period_end:%d %b %Y}. They are not "
+                    "used unless you change the basis preference"
+                )
     return st, note
 
 
@@ -585,7 +607,9 @@ def _decide_action(
     st.held_documents = relevant[:6]
     if relevant and any(d["extraction"] == "NOT_RUN" for d in relevant):
         st.action = "EXTRACT_HELD"
-        st.reason = "a stored document of the right type has not been processed yet"
+        pending = "a stored document of the right type has not been processed yet"
+        # keep a specific reason (a stale value, a blocked one) and add to it, never replace it
+        st.reason = f"{st.reason}; {pending}" if st.status == STALE and st.reason else pending
     elif relevant and st.action == "UPLOAD":
         st.reason += (
             "; EquityOS already holds a matching document type but the figure was not found in it"

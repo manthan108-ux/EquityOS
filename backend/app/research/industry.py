@@ -655,6 +655,11 @@ MAX_GROUP = 120  # members read per metric (name order); the rest are counted, n
 SCHEME = "UPSTOX_SECTOR"
 
 
+# Labels the provider uses that do not describe a line of business: a DVR is a class of share, and
+# "Miscellaneous" is a bucket. Companies under them are not comparable, so no group statistic is built.
+NOT_AN_INDUSTRY = frozenset({"dvr", "miscellaneous", "others", "other", "na", "n/a"})
+
+
 def industry_group(
     session: Session, company: Company, own_store, prefer: str, sector_code: str
 ) -> dict:
@@ -671,6 +676,13 @@ def industry_group(
         return {
             "available": False,
             "reason": "no industry label has been collected for this company yet",
+        }
+    if row.label.strip().lower() in NOT_AN_INDUSTRY:
+        return {
+            "available": False,
+            "label": row.label,
+            "reason": f"the provider's label '{row.label}' is not an industry (it is a share class "
+            "or a catch-all), so it cannot define a group of comparable companies",
         }
     members = list(
         session.scalars(

@@ -7,6 +7,7 @@ from app.api import (
     documents,
     evidence,
     health,
+    pipeline,
     providers,
     research,
     scoring,
@@ -35,6 +36,7 @@ def create_app() -> FastAPI:
     app.include_router(sector.router)
     app.include_router(scoring.router)
     app.include_router(research.router)
+    app.include_router(pipeline.router)
     return app
 
 

@@ -17,6 +17,7 @@ services:
 
   backend:
     build: ./backend
+    image: equityos-backend:latest
     environment:
       ENVIRONMENT: ${ENVIRONMENT:-development}
       # Inside the compose network the database host is the service name `db`, port 5432.
@@ -37,6 +38,29 @@ services:
       - ${DATA_HOST_DIR:-./data}:/app/data
     ports:
       - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # The pipeline worker: executes queued, scheduled and API-created runs, with OCR (Tesseract is in
+  # the image) and per-stage time limits. Not started by a plain `docker compose up`:
+  #   docker compose --profile worker up -d worker
+  # It uses the same image as the API, so rebuild with `docker compose build backend` after a
+  # code change, then restart it.
+  worker:
+    image: equityos-backend:latest
+    profiles: ["worker"]
+    restart: unless-stopped
+    command: ["python", "-m", "app.pipeline.cli", "serve"]
+    environment:
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-equityos}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-equityos}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      UPSTOX_ANALYTICS_TOKEN: ${UPSTOX_ANALYTICS_TOKEN:-}
+    user: "${DATA_UID:-1000}:${DATA_GID:-1000}"
+    volumes:
+      - ${DATA_HOST_DIR:-./data}:/app/data
     depends_on:
       db:
         condition: service_healthy

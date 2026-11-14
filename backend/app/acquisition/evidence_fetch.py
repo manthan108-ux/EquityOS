@@ -41,6 +41,7 @@ from app.providers.company_ir import (
     extract_ir_links,
     guess_period,
     names_group_entity,
+    not_a_financial_file,
     validate_html,
 )
 from app.providers.documents import DocumentProvider
@@ -184,6 +185,8 @@ def landing_candidates(html: str, page_url: str, inherited_kind: str) -> list[Ca
             continue
         text = " ".join(a.get_text(" ").split())[:150]
         subject = f"{text} {urlsplit(url).path.rsplit('/', 1)[-1]}"
+        if not_a_financial_file(subject):
+            continue  # a compliance report or brochure inherits nothing from the page it sits on
         if inherited_kind == "annual_report" and _NOT_AN_ANNUAL_REPORT.search(subject):
             continue
         if inherited_kind == "financial_results" and _NOT_FINANCIAL_RESULTS.search(subject):

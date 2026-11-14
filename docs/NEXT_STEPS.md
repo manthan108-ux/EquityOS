@@ -1,4 +1,4 @@
-# Next steps (updated 2026-11-13, after the universe-coverage work)
+# Next steps (updated 2026-11-14, after the integrated pipeline)
 
 Raw documents are no longer available from the project owner, so nothing here waits for uploads.
 Documents are *optional accelerators*: if one ever arrives, save it in `data\inbox\<SYMBOL>\` (PDF) or
@@ -7,33 +7,66 @@ run `python -m app.docintel.cli xbrl --symbol <SYMBOL> --file <file.xml>` (XBRL)
 
 ## Continuing the full-universe processing (exact commands)
 
-Run from `backend/` with the virtualenv and the database up (`docker start equityos-db-1`). Every command
-is resumable and idempotent; run ONE at a time per host (they share per-host request spacing), and never
-two copies of the same command (two concurrent runs can collide on the same company).
+One pipeline does everything now (see [PIPELINE.md](PIPELINE.md)). Run from `backend/` with the
+virtualenv and database up (`docker start equityos-db-1`). Every command resumes where it stopped.
+Run ONE pipeline process at a time per host; the stage guard stops two runs working on the same
+company, but they would still share the sites' request spacing.
 
 ```
 # where things stand (no network)
+.venv\Scripts\python -m app.pipeline.cli status
 .venv\Scripts\python -m app.providers.cli universe --status
-.venv\Scripts\python -m app.providers.cli classify --status
-.venv\Scripts\python -m app.providers.cli website-status
 
-# 1. industry labels - profile requests only, about 1 s each; repeat until "0 companies"
+# 1. keep the backlogs at zero (local, fast, no network)
+.venv\Scripts\python -m app.pipeline.cli run --select missing-evidence --limit 200 --stages evidence,calculate,readiness
+.venv\Scripts\python -m app.pipeline.cli run --select unread-documents --limit 50 --stages extract,evidence,calculate,readiness
+
+# 2. industry labels for the rest of the universe (profile requests only, about 1 s each)
 .venv\Scripts\python -m app.providers.cli classify --limit 500
 
-# 2. Upstox fundamentals - about 20 s per company; stops itself after 3 refusals
-.venv\Scripts\python -m app.providers.cli upstox-refresh --limit 50
+# 3. the next batch, every stage (about 2 min per company; Upstox alone is about 20 s each)
+.venv\Scripts\python -m app.pipeline.cli run --limit 25 --workers 3
 
-# 3. official websites - discovery + verification; ambiguous ones are flagged, never guessed
-.venv\Scripts\python -m app.providers.cli discover-websites --limit 50
+# 4. retry what failed (waits out each stage's back-off)
+.venv\Scripts\python -m app.pipeline.cli retry-failed --limit 25
 
-# 4. everything for the next batch in one pass (website, upstox, documents, enrichment, evidence)
-.venv\Scripts\python -m app.providers.cli universe --limit 10
-.venv\Scripts\python -m app.providers.cli universe --symbols TCS,INFY --steps upstox,evidence --no-llm
+# 5. unattended: schedule, then run the worker (it also executes runs queued from the browser)
+.venv\Scripts\python -m app.pipeline.cli schedule --enable --interval 360 --batch 25 --workers 3
+.venv\Scripts\python -m app.pipeline.cli serve
 ```
-Re-running any of them skips what is fresh (Upstox 30 days, documents 7, enrichment 30, website back-off
-7 to 90 days). Failed websites are listed by `website-status` for a person to confirm with
-`set-website`. For long runs use `run_in_background` and read the status commands, not the log
-(Python buffers stdout unless started with `-u`).
+
+Scanned PDFs need Tesseract, which only the Docker image has. To run any command above with OCR,
+without rebuilding the image, mount the current code over it:
+
+```
+docker compose run --rm --no-deps -v "<repo>/backend/app:/app/app" backend python -m app.pipeline.cli run --select unread-documents --stages extract,evidence,calculate,readiness
+```
+
+(on Windows use the `C:/...` form of the path). To make this permanent, rebuild: `docker compose build backend`.
+
+Pause, resume, cancel: `python -m app.pipeline.cli pause|resume|cancel <run id>`, or the buttons on the
+`/pipeline` page (needs an admin key). `events --run <id>` is the stage log. Failed websites are listed
+by `website-status`; confirm one by hand with `set-website`; withdraw a wrong one with `mark-website`.
+Re-judge verified sites with `review-websites`.
+
+## Before the full-universe run
+
+The 5-, 25- and backlog runs are done and verified. These still decide whether a long unattended run is
+safe, in this order:
+
+1. **Review the 15 AMBIGUOUS websites** (`website-status`), including AAA Technologies, ABM International
+   and AVRO INDIA (withdrawn by the new checks; they may be right) and AGI Greenpac, ACS Technologies,
+   AA Plus Tradelink. Use `set-website` for the ones you confirm. Do not guess domains.
+2. **Add a wall-clock budget per stage** (one `documents` stage ran 33 minutes on a slow site) so a slow
+   host cannot hold a worker. Until then keep `--workers` at 3 or fewer and watch `/pipeline`.
+3. **Run the worker in Docker** (or rebuild the image) so scanned documents are read during the run,
+   not left NEEDS_OCR.
+4. **Try one unattended scheduled run** (`schedule --enable --interval 60 --batch 5`, `serve`) and read
+   `/pipeline` after it. Scheduled and unattended execution has been exercised by tests and the
+   worker, not yet left alone for hours.
+5. Decide the basis question for small companies: most have only standalone statements, so readiness
+   (default consolidated) shows them as "exist on the other basis". That is the user's choice per
+   report; changing the default is a product decision.
 
 ## Open after the 2026-11-13 work
 1. **Coverage** is a small share of 5,551 companies; the batches above are the way to raise it. Expect
@@ -87,3 +120,25 @@ verification and raw prices stay untouched.
 4. A DCF for non-banks needs a documented forecast and discount-rate policy (user decision).
 5. Peer coverage: HDFC, Kotak and SBI consolidated ROE/P-B (extraction) so bank comparisons need not
    fall back to the standalone basis.
+
+## Milestone 1 commands (2026-11-14)
+
+```
+# is it healthy? (exit code 2 when CRITICAL)
+.venv\Scripts\python -m app.pipeline.cli health
+.venv\Scripts\python -m app.pipeline.cli metrics --hours 168
+.venv\Scripts\python -m app.evidence.cli integrity            # read-only audit; exit code 1 on an ERROR
+
+# unattended, selected companies only, in Docker (OCR included)
+docker compose build backend
+docker compose --profile worker up -d worker
+.venv\Scripts\python -m app.pipeline.cli schedule --enable --interval 360 --workers 2 --symbols ICICIBANK,TCS
+.venv\Scripts\python -m app.pipeline.cli schedule --disable
+docker compose --profile worker stop worker
+docker compose run --rm --no-deps backend python -m app.docintel.cli ocr-check
+```
+
+Run the schedule for a few hours on the selected companies and read `/pipeline` before trusting it with
+more. Roadmap order after Milestone 1: financial statement depth, sector peer metrics, DCF and sector
+valuation, management and governance, business model and segments, company-specific risks and thesis,
+report quality gate.

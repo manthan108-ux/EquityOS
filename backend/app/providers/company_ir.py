@@ -44,6 +44,23 @@ _KINDS = [
     ("investor_relations", re.compile(r"investor|shareholder|stakeholder", re.I)),
 ]
 _NOT_AN_ANNUAL_REPORT = re.compile(r"esg|sustainab|brsr|csr|responsib|climate|tcfd", re.I)
+# Files that sit on investor pages but are not financial filings: compliance and governance reports,
+# brochures, policies, certificates. A link to one is never an annual report, results or
+# presentation, whatever the page around it is called.
+_NOT_A_FINANCIAL_FILE = re.compile(
+    r"secretarial|compliance|governance|\bcg[\s_-]*report|brochure|company[\s_-]*profile|"
+    r"certificate|code[\s_-]*of[\s_-]*conduct|polic(?:y|ies)|whistle|nomination|remuneration|"
+    r"insider|related[\s_-]*party|shareholding[\s_-]*pattern|newspaper|advertisement|leaflet|"
+    r"catalogue|datasheet|\bfaq\b|annual[\s_-]*return|unclaimed|grievance|credit[\s_-]*rating",
+    re.I,
+)
+_FINANCIAL_KINDS = ("annual_report", "financial_results", "investor_presentation")
+
+
+def not_a_financial_file(subject: str) -> bool:
+    return bool(_NOT_A_FINANCIAL_FILE.search(subject))
+
+
 _RESULT_WORDS = re.compile(r"financial|quarter|half|results|statement", re.I)
 # Shareholder-meeting and procedural documents also contain the word "results".
 _NOT_FINANCIAL_RESULTS = re.compile(
@@ -162,6 +179,8 @@ def extract_ir_links(html: str, base_url: str) -> list[IrLink]:
             ):
                 continue
             if kind == "annual_report" and _NOT_AN_ANNUAL_REPORT.search(primary):
+                continue
+            if kind in _FINANCIAL_KINDS and _NOT_A_FINANCIAL_FILE.search(primary):
                 continue
             if pattern.search(subject):
                 found.setdefault(
