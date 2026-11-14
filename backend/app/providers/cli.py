@@ -24,6 +24,7 @@ from app.core.database import get_engine
 from app.coverage import Status, build_coverage
 from app.docintel.entity import company_names
 from app.models import Company, CompanyClassification, DatasetVerification, RawPayload, Security
+from app.pipeline.state import STAGES
 from app.providers.base import CompanyRef, DataProvider, Dataset, Outcome
 from app.providers.company_ir import names_group_entity
 from app.providers.documents import AssociationMismatch, DocumentProvider
@@ -713,9 +714,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     p.add_argument("--symbols", help="comma-separated symbols instead of the next batch")
     p.add_argument("--limit", type=int, default=10, help="batch size (default 10)")
-    p.add_argument(
-        "--steps", default=",".join(("website", "upstox", "documents", "enrich", "evidence"))
-    )
+    p.add_argument("--steps", default=",".join(STAGES))
     p.add_argument("--no-llm", action="store_true")
     p.add_argument("--status", action="store_true", help="print coverage and exit")
     p = sub.add_parser(

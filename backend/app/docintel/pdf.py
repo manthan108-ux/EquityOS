@@ -386,3 +386,39 @@ def text_layer_quality(source: "Path | bytes", sample: int = 4) -> dict:
         "malformed_share": round(odd / words, 3) if words else 0.0,
         "words": words,
     }
+
+
+SELFTEST_FIGURES = ("1,234.56", "98,765.43")
+
+
+def ocr_selftest() -> dict:
+    """Prove that scanned pages can be read here, end to end, with a page we make ourselves.
+
+    Draws two statement lines, turns the page into a picture inside a PDF that has NO text layer
+    (what a scan is), then runs the same render-and-recognise path real scans take. Returns what
+    was found; nothing is stored. Used by `docintel.cli ocr-check` after a deployment.
+    """
+    import pymupdf  # noqa: PLC0415
+
+    version = tesseract_version()
+    report: dict = {"engine": version, "available": version is not None}
+    if version is None:
+        return {**report, "ok": False, "reason": "tesseract is not installed or not on PATH"}
+    text = f"Revenue from operations {SELFTEST_FIGURES[0]}   Total assets {SELFTEST_FIGURES[1]}"
+    source = pymupdf.open()
+    source.new_page(width=595, height=200).insert_text((30, 100), text, fontsize=16)
+    png = source.load_page(0).get_pixmap(dpi=200).tobytes("png")
+    scan = pymupdf.open()
+    scan.new_page(width=595, height=200).insert_image(pymupdf.Rect(0, 0, 595, 200), stream=png)
+    reopened = pymupdf.open(stream=scan.tobytes(), filetype="pdf")
+    page = reopened.load_page(0)
+    report["text_layer_chars"] = len(page.get_text().strip())  # a scan has none
+    words = ocr_png(render_png(page))
+    recognised = " ".join(w.text for w in words)
+    report["recognised"] = recognised
+    report["figures_found"] = [f for f in SELFTEST_FIGURES if f in recognised]
+    report["mean_confidence"] = mean_confidence(words)
+    report["ok"] = report["text_layer_chars"] == 0 and len(report["figures_found"]) == len(
+        SELFTEST_FIGURES
+    )
+    return report

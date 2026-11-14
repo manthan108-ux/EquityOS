@@ -495,3 +495,174 @@ upsert); upload buttons that showed "CONSOLIDATED" in capitals.
 
 Live batches this pass: discovery of 60 (22 verified, 36 failed, 2 ambiguous); classification of about 1,900;
 Upstox refresh of 40 more. Full NSE/BSE coverage is not claimed.
+
+### Post-execution audit of the universe pipeline (2026-11-13)
+
+Read-only audit of what the latest runs (`classify --limit 500`, `upstox-refresh --limit 50`,
+`discover-websites --limit 50`, `universe --limit 10`) actually produced in the database. Nothing was
+modified, deleted or re-scored. Terms: **implemented** = code exists; **executed** = it ran on live data;
+**verified** = its output was checked against the stored rows / files; **pending** = not done.
+
+| Component | Implemented | Executed | Verified | Verdict |
+|---|---|---|---|---|
+| Guessed URLs are never registered | yes | yes (66 failed, 4 ambiguous) | yes: all 66 FAILED rows have no website anywhere; the 4 AMBIGUOUS candidates sit only in the registry, `companies.website` is empty | working |
+| Website verification (62 VERIFIED) | yes | yes | **partly**: only 2 verified by an ISIN printed on the page; 60 by company name in title/body. At least 3 are wrong or doubtful (see below) | partial |
+| Upstox refresh (134 companies) | yes | yes | yes: 134 REFRESHED, every fact has a source URL, period, unit and basis; no cell is held by two providers | working |
+| Upstox facts become research evidence | yes (inside `universe`'s evidence step) | **only 17 of 134** | 117 companies have facts but no validated statement evidence (e.g. ABB India: 312 facts, 0 evidence, readiness BLOCKED) | partial: not part of `upstox-refresh` |
+| Provider industry label (2,263 stored) | yes | yes | yes; but 28 companies are labelled `DVR` (a share class, not an industry), 44 `Miscellaneous`, 55 of 149 labels have fewer than 5 members | partial: data quality |
+| Document fetch (10 FETCHED runs) | yes | yes | files exist and are readable PDFs, but only 4 runs gave documents worth reading (see below) | partial |
+| Document **extraction** of fetched files | yes (`docintel.cli extract`) | **no, not part of `universe`** | 0 of the 21 files fetched in the last two days have an extraction, fact or promoted figure | **broken link in the chain** |
+| Readiness and report from fetched documents | yes | yes (3 reports generated) | 0 requirements are satisfied from a pipeline-fetched document; readiness says so ("a stored document of the right type has not been processed yet") | working as designed, nothing to use yet |
+| Document-to-company association check | yes | yes | yes: 5 wrong-issuer files were stored unlinked (ICICI Pru AMC, ITC Hotels, BSE letters) | working |
+| Resumability after an interrupted run | yes | partly | A B Infrabuild: documents and enrichment saved, evidence step never ran, and nothing records or re-queues it | partial |
+
+**Companies in the latest runs:** 134 Upstox refreshed (44 on 2026-11-12, 90 on 2026-11-13); 132 website
+attempts (62 verified, 66 failed, 4 ambiguous) plus 24 manual; 2,263 industry labels; 11 fetch runs on
+2026-11-13 (20 Microns to AWL Agri Business, alphabetical, NSE first; the 10 FETCHED runs include the BPCL and Hyundai pilot runs of 2026-11-10).
+
+**Traced end to end**
+
+| Company | Website / IR | Upstox | Documents | Facts and evidence | Readiness | Report |
+|---|---|---|---|---|---|---|
+| 63 moons technologies (verified, with IR) | `63moons.com`, `/investors.aspx` (name in title + copyright) | REFRESHED, 312 facts, latest FY Mar 2026 and quarter Sep 2026, consolidated and standalone | 3 linked (annual reports FY2025/26, a 2019 results PDF), 2 BSE letters correctly left unlinked | 312 Upstox facts, 360 evidence rows, tier 5 | ASSISTED, 44/100, 6 of 18 available, from Upstox only | 18 pages, mode AVAILABLE_EVIDENCE; none of the fetched documents is cited |
+| AVSL Industries (verified, no IR) | `avsl.co.in`, no IR URL | REFRESHED, 216 facts, annual only (quarterly: no data) | 1 file, "CG Report", typed `annual_report`, image-only (2 characters of text), association UNVERIFIED | 216 facts, 237 evidence rows | BLOCKED, 5/100; annual figures flagged STALE because no quarter is stored; message says "no validated revenue or profit" although annual revenue exists | 14 pages |
+| ABB India (website discovery failed) | none stored; every guessed domain unreachable, retry 2026-11-20 | REFRESHED, 312 facts, calendar-year Dec 2025 | none (no website) | 312 facts, **28 evidence rows, no statement evidence** | BLOCKED, 34/100, "no validated value" for all statement figures | 12 pages |
+
+**Document usefulness of the 10 FETCHED runs** (files opened and read)
+
+* Useful: BPCL (4 files, all extracted earlier by the manual command), 63 moons (2 annual reports),
+  360 ONE (Q2 FY27 results update), 20 Microns (July 2026 presentation).
+* Readable but old or partly image-only: A B Infrabuild (2020-21 annual report, results of 2019 to 2024, one
+  garbled text layer, one image-only), Aurus Gem (annual reports 2017-18 and 2022-23 issued as *Lypsa Gems*;
+  results from 2013 to 2016, four image-only).
+* Mislabelled or empty: AVG Logistics ("Corporate Brochure" stored as `quarterly_result`), AVSL ("CG Report"
+  as `annual_report`), AWL (two "Secretarial Compliance Report" files as `annual_report`, no text layer),
+  Hyundai (a one-page notice). Cause: landing-page PDFs inherit the page's kind and
+  `_NOT_AN_ANNUAL_REPORT` / `_NOT_FINANCIAL_RESULTS` in `providers/company_ir.py` have no secretarial,
+  compliance, governance, brochure terms.
+
+**Wrong or doubtful website verifications (not changed; a person should review):** AGI Greenpac ->
+`hsil.com` (the page title is a domain-dispute ruling, so the domain does not appear to be the company's), ACS Technologies ->
+`acstechnologies.com` (a church-software company, not this one), AA Plus Tradelink -> a page titled in Bengali about a
+"live game", ABH Healthcare -> a page titled "Samsunn Health Care", AMBANI ORGOCHEM -> "Ambani Organics".
+None has been fetched or enriched yet, so no evidence is contaminated.
+
+**Failures and skips (from the database; the latest four commands left no log files)**
+* Websites: 66 failed after 538 candidate URLs; 368 (68%) were guessed domains that do not resolve, 117 pages
+  did not mention the company, 32 refused access, 19 were blocked by robots.txt. Retries are scheduled
+  (60 on 2026-11-20); the 4 ambiguous need a person.
+* Documents: TCS, Infosys, Nestle and Godrej answered HTTP 403 (not bypassed); Britannia, IOC, Tata Motors PV,
+  3i Infotech, 5Paisa, AVRO found nothing (script-driven pages); ONGC's files are blocked by robots.txt.
+* Upstox: 0 errors, 0 mapping failures, no retries needed.
+* Duplicates: none found (unique file hashes, no ISIN shared between companies, no website shared).
+  Stale: 1 company with its newest fact older than 15 months.
+
+**Tests:** full backend suite re-run after the audit, 1,313 passed, 0 failed (9 min 1 s). The audit itself added no code and no tests; it changed documentation only. The gaps above have no failing test because the tests assert the designed behaviour (download, validate, report) and none covers "a fetched document is extracted".
+
+### Integrated pipeline: documents, evidence, calculation, checkpoints, schedule (2026-11-14)
+
+Answers the audit above. Architecture, commands and API: [PIPELINE.md](PIPELINE.md). Open limits:
+[KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md). Not committed or pushed. Migration 0022 is applied
+(upgrade only).
+
+Terms: **implemented** = code exists, **executed** = ran on live data, **verified** = its output was
+checked in the database or the generated report, **automated test** = covered by tests.
+
+| Stage / capability | Implemented | Executed (live) | Verified | Status |
+|---|---|---|---|---|
+| `extract` in the pipeline (type check, read, promote) | yes | yes: 1 company, then 10, then 20+ more | 63 moons: 3 of 3 read, 14 figures promoted, 2 readiness requirements and the report now cite the documents (id and page) | working |
+| Document typing | yes | yes | 4 mislabelled files retyped with audit events (AVG brochure, AVSL CG report, AWL x2 compliance); wrong-issuer files stay unlinked and unread | working |
+| OCR for image-only PDFs | uses existing OCR | yes, in Docker (`app/` mounted): 2 + 5 companies | scans read (A B Infrabuild, 5 companies of the 25-company run); Aurus Gem's 4 old scans read, no statements in them; none left NEEDS_OCR | partial: works only where Tesseract is (Docker) |
+| `evidence` for provider facts | yes | yes: 117-company backlog cleared | companies with statement evidence 41 -> 158, missing 117 -> 0; revenue from a document equals Upstox's figure to the rupee (63 moons, Rs 211.59 crore) | working |
+| `calculate` (derived metrics) | yes (new stage) | yes: 35 companies | growth etc. appear in readiness; found and fixed a calc bug on list-style bonus data | working |
+| Readiness accuracy | yes | yes | AVSL and ABB India: reasons now state the real cause; ABB BLOCKED -> ASSISTED 44.0 | working |
+| Website verification checks | yes | yes: 61 of 62 re-reviewed (1 unreachable that day) | 3 withdrawn from the audit list, 3 more for a person; ABH kept (moderate); Ambani confirmed (matches profile) | partial: name/description based |
+| Industry labels | yes | yes | `DVR`, `Miscellaneous` no longer build groups | working |
+| Stage checkpoints, retry, resume | yes | yes | live run paused mid-company and resumed: finished stages not repeated; 2 failed stages retried and recovered | working |
+| Concurrency guard | yes | yes (found by a live collision) | two runs cannot start the same stage of a company | working |
+| Central orchestration (10 stages) | yes | yes: 5, 25 and 2+2 company live runs | see below | working |
+| Scheduler, worker, API, UI | yes | scheduler/API/UI by tests only | the worker executed queued runs (live); the schedule was not left enabled | partial: no unattended run yet |
+| Report regeneration | yes | no (no saved report existed for a processed company) | automated test: new version only when inputs change | implemented, not executed live |
+| Per-stage time budget | no | - | one stage ran 33 minutes on a slow site | open |
+
+**Live runs** (all against the real database and the real sites, robots.txt obeyed, nothing bypassed)
+
+| Run | What | Result |
+|---|---|---|
+| 63MOONS | extract, evidence, readiness | 3 documents read; readiness 44.0 -> 55.3 |
+| backlog | evidence, readiness for 117 companies | 117 of 117 done in about 2 minutes; 0 missing now |
+| 5 companies, every stage | paused from another process mid-company, then resumed by the worker | completed: 5 of 5; the resumed company continued from `upstox`, earlier stages not repeated |
+| 25 companies, every stage, 3 workers | next batch of never-processed companies | completed in 50 minutes: 25 of 25 reached readiness; 10 websites verified, 15 not found (documents correctly skipped, nothing guessed); 8 companies fetched 2 to 7 documents each; 7 companies' documents read; 2 `calculate` failures (a real bug in `calc/adjust.py`, fixed) recovered on retry; 0 failed stages now |
+| unread documents | extract, evidence, calculate, readiness for 10 companies, then OCR in Docker for 2 + 5 more | of the 83 documents fetched since the audit: 49 read, 21 contain no statements (mostly presentations), 13 deliberately not read (4 retyped as not financial, 9 wrong-issuer and unlinked), 0 need OCR; 0 companies with unread documents |
+| 2 never-refreshed companies | classify, upstox, evidence, calculate, readiness | fresh Upstox refresh and everything after it in one run |
+
+Not run live: a scheduled (unattended) run, and report regeneration for a saved report. The 25 companies
+all landed as ASSISTED, none AUTOMATIC: most small companies have only standalone statements (readiness
+defaults to the consolidated basis and says so) or too little recent data. Readiness measures
+evidence, and the pipeline does not raise it.
+
+**Company-level evidence** (the three audit cases)
+
+| Company | Before | After |
+|---|---|---|
+| 63 moons technologies | 3 fetched PDFs unread; readiness 44.0; 18 pages | all 3 read (96/188/109 facts); 55.3; 20 pages; revenue, total assets etc. cite the annual report page |
+| ABB India | 312 facts, 28 evidence rows, BLOCKED 33.8 ("no validated value") | 312 facts + statement evidence; ASSISTED 44.0 (6 of 18); 16-page report |
+| AVSL Industries | BLOCKED 5.3, "no validated revenue or profit" and "document not processed" | ASSISTED; reason: consolidated figures last reported 31 Mar 2018, standalone exist for 31 Mar 2026; the CG report is retyped as not financial |
+| Aban Offshore | 5 documents unread | all read; its report draws revenue, assets, equity and cash flow from the FY2026 annual report (pages 113-115) |
+
+**Tests (final, run alone: concurrent test runs share one test database and corrupt each other)**
+
+| Check | Result |
+|---|---|
+| Backend `pytest` (whole suite) | 1,405 passed, 0 failed (was 1,313; +92 new, no existing test weakened or removed). It includes migration down/up on the isolated test database, model-versus-migration drift, PDF generation and the one-module-imports-pymupdf rule |
+| Backend `ruff` check and format | clean |
+| Frontend `tsc`, `eslint` | clean |
+| Frontend `vitest` | 59 passed (+10 for the pipeline page) |
+| Playwright (mocked backend, existing dev server on port 3000) | 21 passed (+4 for the pipeline page) |
+| Live runs | 63MOONS; 117-company backlog; 5 companies (paused and resumed); 25 companies; 10 + 7 companies' documents; Docker OCR |
+
+The full suite caught one real defect during this work (a new module imported `pymupdf` directly,
+which the architecture test forbids); the live 25-company run caught two others (a calc-engine crash on
+list-style corporate-action details, and two runs colliding on one company). All three are fixed and
+covered by tests.
+
+**Earlier flaky failures (migration, resolver):** one cause confirmed. Running two pytest processes at
+the same time shares `<database>_test` and produces hundreds of errors (seen again this session); run
+alone, the suite passes every time. Run one pytest process at a time.
+
+### Milestone 1: pipeline reliability (2026-11-14)
+
+Roadmap change: Milestones 2 (universe coverage) and 4 (AI copilot) are frozen; Milestone 1 (reliability)
+and Milestone 3 (institutional-quality research) are the priorities. Nothing is committed or pushed.
+Migration 0023 is applied to the development database (upgrade only).
+
+| Item | Implemented | Executed (live) | Verified | Status |
+|---|---|---|---|---|
+| Per-stage time budgets, child-process isolation | yes (`pipeline/isolation.py`) | yes: a real stage stopped at a 1 s budget; extract/documents ran as child processes in the Docker worker | killed at budget, helper processes stopped too, exit codes reported, later stages still run | working |
+| Cross-process request spacing | yes (`acquisition/pacing.py`) | worker ran children against real sites | two processes wait their turn; stale locks recover | working |
+| Read-only evidence-integrity audit | yes (`evidence/integrity.py`, CLI, API) | yes, 69,636 evidence rows | 13 planted-defect tests; found a real issue class (26 stale peer-rank calculations in 3 companies, left untouched) | working |
+| Monitoring: stage durations, health alerts | yes (`pipeline/metrics.py`, CLI, API, `/pipeline`) | yes | `WORKER_DOWN` raised within 3 minutes of a killed worker and cleared after recovery | working |
+| Worker heartbeat, run heartbeat thread | yes | yes | a long stage no longer looks like a dead run | working |
+| Schedule scope (selected companies only) | yes | yes: 5 pilot companies | enabling without companies is refused; the whole universe needs `--allow-universe` | working |
+| OCR deployment | image rebuilt, `ocr-check`, Docker `worker` service | yes | Tesseract 5.5.0 read a self-drawn scan (figures recovered, 95% confidence) in the rebuilt image without a code mount | working |
+| Report regeneration | yes | yes: 4 saved reports (Axis Bank, Infosys, Nestle India, TCS) | originals untouched (13 of 13 identical id/hash), new versions only when inputs changed, forced rerun writes nothing, PDFs render (18 to 27 pages) | working |
+| Unattended scheduled run | yes | yes: 4 scheduled cycles in the Docker worker, plus a hard kill mid-run | see below | working on a 5-company scope; not run for hours |
+
+**Unattended test** (Docker worker, schedule every 5 minutes, ICICIBANK, AXISBANK, INFY, NESTLEIND, TCS, all
+10 stages): run 18 did the real work (Upstox refresh, 4 new Axis Bank documents fetched, 1 document set read,
+evidence, calculation, readiness) in 139 s; run 19 skipped what was current (Upstox, evidence, calculation,
+classification) and regenerated 4 reports; the worker container was then killed mid-run (run 20), health went
+CRITICAL (`WORKER_DOWN`, exit code 2), and a restarted worker took the run over after its 10 minute heartbeat
+limit and finished in 29 s with no stage repeated; run 21 showed `enrich` and `website` no longer repeated.
+0 failed stages in every run. The schedule is disabled again and the worker stopped.
+
+**Defects the live test found and fixed:** the scheduler's stored stage list had gone stale (it lacked
+`calculate`: a schedule now means every stage); `enrich` and `website` repeated network and model work every
+cycle when nothing was stored (stage-level cooldowns, 30 days); the report stage printed a skip reason one
+character at a time; a first audit lookup ignored the company (source keys are unique per company) and
+reported 44,000 false mismatches.
+
+**Known open items:** 26 stale peer-rank/peer-median calculations in 3 companies (documented limitation:
+other companies' changes do not re-run PEERS/SCORING); a document that always hangs the reader is only handled
+by stage back-off; the database `statement_timeout` for DB-only stages is best effort; scheduled runs have been
+exercised for about 25 minutes, not hours.

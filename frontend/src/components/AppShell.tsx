@@ -24,6 +24,7 @@ export const NAV: { href: string; label: string; icon: Icon; match: (p: string) 
   { href: "/research", label: "Research Workspace", icon: svg("M4 5h16M4 12h10M4 19h16"), match: (p) => p.startsWith("/research") },
   { href: "/readiness", label: "Research Readiness", icon: svg("M5 13l4 4L19 7"), match: (p) => p.startsWith("/readiness") },
   { href: "/documents", label: "Documents", icon: svg("M7 3h7l5 5v13H7zM14 3v5h5"), match: (p) => p.startsWith("/documents") },
+  { href: "/pipeline", label: "Data Pipeline", icon: svg("M4 6h4v4H4zM16 6h4v4h-4zM10 14h4v4h-4zM8 8h8M12 10v4"), match: (p) => p.startsWith("/pipeline") },
   { href: "/reports", label: "Reports", icon: svg("M5 20V10m5 10V4m5 16v-7m5 7V8"), match: (p) => p.startsWith("/reports") },
   { href: "/settings", label: "Settings", icon: svg("M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19 12l2-1-2-3-2 .5-1.5-1L15 5h-4l-.5 2.5-1.5 1L7 8l-2 3 2 1v2l-2 1 2 3 2-.5 1.5 1L11 19h4l.5-2.5 1.5-1 2 .5 2-3-2-1z"), match: (p) => p.startsWith("/settings") },
 ];

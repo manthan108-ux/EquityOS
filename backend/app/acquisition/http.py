@@ -101,8 +101,12 @@ class PoliteClient:
         now: Callable[[], datetime] = lambda: datetime.now(UTC),
         jitter: Callable[[], float] = lambda: random.uniform(0, 0.25),
         recorder: Callable[[str, FetchResult], None] | None = None,
+        pacer: Callable[[str, float, float], float] | None = None,
     ) -> None:
         self.config = config
+        self._pacer = (
+            pacer  # (host, interval, earliest) -> seconds to wait; shared across processes
+        )
         self._http = httpx.Client(
             transport=transport,
             timeout=config.timeout_s,
@@ -309,6 +313,8 @@ class PoliteClient:
         with self._lock:
             now = self._clock()
             wait = max(0.0, self._next_allowed.get(host, 0.0) - now)
+            if self._pacer is not None:
+                wait = max(wait, self._pacer(host, self._interval_for(host), wait))
             self._next_allowed[host] = now + wait + self._interval_for(host)
         if wait > 0:
             self._sleep(wait)

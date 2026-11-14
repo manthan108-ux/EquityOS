@@ -178,3 +178,22 @@ The qualitative sector template is unchanged and still labelled as general conte
   confident. OCR ruling marks ("|", "[") and cross-references ("(3)+(4)") are stripped from labels.
 * A document that does not print its basis or unit raises a question once (buttons in the Documents tab);
   the answer is recorded as "stated by the uploader" and a printed value always wins.
+
+## What feeds a report (updated 2026-11-14)
+
+A report uses only evidence that has been validated: Upstox facts after the `evidence` stage, figures
+extracted from documents after the `extract` stage, derived metrics after the `calculate` stage, and
+user uploads after processing. The pipeline ([PIPELINE.md](PIPELINE.md)) now runs all of these for every
+company it processes, so a freshly fetched filing is read, validated, calculated and reflected in
+readiness without a manual step. A document that is merely stored is listed as held and counted in
+"document coverage" but contributes no figure, and readiness says "a stored document of the right type
+has not been processed yet" only when that is true.
+
+When a company has an existing saved report, the `report` stage regenerates it as a new version if its
+readiness inputs changed (the earlier version is kept; unchanged content writes nothing). The pipeline
+never starts a report nobody asked for.
+
+Readiness messages: when the chosen basis (default consolidated) stopped reporting and the other basis
+is current, the reason names both ("the consolidated figures were last reported for 31 Mar 2018 ...
+standalone figures exist for 31 Mar 2026") and the company is ASSISTED, not BLOCKED; a specific stale
+reason is never replaced by the generic "document not processed" text.

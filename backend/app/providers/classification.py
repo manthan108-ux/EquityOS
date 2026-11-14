@@ -27,6 +27,7 @@ log = logging.getLogger("equityos.classification")
 SCHEME = "UPSTOX_SECTOR"
 SOURCE = "Upstox Fundamentals API, company profile (field: sector)"
 MAX_LABEL = 120
+MAX_DESCRIPTION = 700
 
 
 def parse_profile(body) -> tuple[str, Decimal | None] | None:
@@ -61,6 +62,10 @@ def store(
         return None
     label, crore = parsed
     now = retrieved_at or datetime.now(UTC)
+    text = ((body.get("data") or {}).get("company_profile")) if isinstance(body, dict) else None
+    description = None
+    if isinstance(text, str) and text:
+        description = " ".join(text.split())[:MAX_DESCRIPTION]
     # one atomic statement: two runs reading the same company at once cannot collide
     stmt = pg_insert(CompanyClassification).values(
         company_id=company.id,
@@ -69,6 +74,7 @@ def store(
         group_market_cap_crore=crore,
         retrieved_at=now,
         source=SOURCE,
+        description=description,
     )
     session.execute(
         stmt.on_conflict_do_update(
@@ -78,6 +84,7 @@ def store(
                 "group_market_cap_crore": stmt.excluded.group_market_cap_crore,
                 "retrieved_at": stmt.excluded.retrieved_at,
                 "source": stmt.excluded.source,
+                "description": stmt.excluded.description,
             },
         )
     )

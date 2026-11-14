@@ -415,6 +415,22 @@ def cmd_ocr_status(_args) -> int:
     return 1
 
 
+def cmd_ocr_check(_args) -> int:
+    """Read a page we draw ourselves as a scan: is OCR working in THIS environment?"""
+    from app.docintel.pdf import ocr_selftest
+
+    result = ocr_selftest()
+    print(f"engine: {result.get('engine') or 'none'}")
+    if not result["available"]:
+        print(f"FAIL: {result['reason']}")
+        return 1
+    print(f"scan has a text layer: {'yes' if result['text_layer_chars'] else 'no (a true scan)'}")
+    print(f"recognised: {result['recognised']!r}")
+    print(f"figures found: {result['figures_found']}  confidence: {result['mean_confidence']}")
+    print("OK: scanned pages can be read here" if result["ok"] else "FAIL: figures not recovered")
+    return 0 if result["ok"] else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     parser = argparse.ArgumentParser(prog="python -m app.docintel.cli")
@@ -436,6 +452,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--symbol", required=True)
     p.add_argument("--statement", choices=["INCOME", "BALANCE_SHEET", "CASH_FLOW"])
     sub.add_parser("ocr-status")
+    sub.add_parser("ocr-check", help="read a self-made scan: proves OCR works in this environment")
     p = sub.add_parser("search")
     p.add_argument("--symbol", required=True)
     p.add_argument("query")
@@ -473,6 +490,7 @@ def main(argv: list[str] | None = None) -> int:
         "show": cmd_show,
         "facts": cmd_facts,
         "ocr-status": cmd_ocr_status,
+        "ocr-check": cmd_ocr_check,
         "xbrl": cmd_xbrl,
         "storage-check": cmd_storage_check,
         "ingest-inbox": cmd_ingest_inbox,

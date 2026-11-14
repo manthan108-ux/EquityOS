@@ -148,6 +148,17 @@ def parse_action_factor(action_type: str, ratio_text: str) -> tuple[Decimal, Adj
     return None
 
 
+def _verification(action) -> dict:
+    """The verification block stored with an action, if its details are a mapping.
+
+    Some providers store details as a list of name/value pairs (Upstox bonus and dividend events);
+    there is no block then.
+    """
+    details = getattr(action, "details", None)
+    block = details.get("verification") if isinstance(details, dict) else None
+    return block if isinstance(block, dict) else {}
+
+
 def events_from_actions(
     actions: list[CorporateAction],
 ) -> tuple[list[Event], list[str]]:
@@ -181,7 +192,7 @@ def events_from_actions(
                 source={
                     "provider": a.provider_code,
                     "source_url": getattr(a, "source_url", None),
-                    **((getattr(a, "details", None) or {}).get("verification") or {}),
+                    **_verification(a),
                 },
             )
         )

@@ -59,6 +59,12 @@ from app.models.facts import (
     Statement,
 )
 from app.models.imports import MasterDataImport
+from app.models.pipeline import (
+    PipelineEvent,
+    PipelineRun,
+    PipelineSchedule,
+    PipelineStageState,
+)
 from app.models.reference import Exchange, Industry, Sector
 from app.models.research import (
     ResearchReport,
@@ -126,6 +132,10 @@ __all__ = [
     "DatasetVerification",
     "ProviderRefreshState",
     "CompanyClassification",
+    "PipelineEvent",
+    "PipelineRun",
+    "PipelineSchedule",
+    "PipelineStageState",
     "FinancialFact",
     "PeriodType",
     "RatioSnapshot",

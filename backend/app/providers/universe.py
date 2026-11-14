@@ -30,9 +30,10 @@ from app.models import (
     ProviderRefreshState,
     Security,
 )
+from app.pipeline.state import STAGES
 
 log = logging.getLogger("equityos.universe")
-STEPS = ("website", "upstox", "documents", "enrich", "evidence")
+STEPS = STAGES
 
 
 @dataclass
@@ -93,65 +94,11 @@ def pick_batch(session: Session, limit: int, now: datetime | None = None) -> lis
 
 
 def run_company(session: Session, company: Company, *, steps, client, llm, upstox) -> CompanyRun:
-    out = CompanyRun(company.common_name)
+    """One company through the pipeline stages (checkpointed; see `app.pipeline`)."""
+    from app.pipeline import runner
 
-    def step(name: str, fn) -> None:
-        if name not in steps:
-            return
-        try:
-            out.steps[name] = fn() or "done"
-        except Exception as exc:  # noqa: BLE001 - failure isolation: record and carry on
-            session.rollback()
-            log.exception("%s step failed for %s", name, company.common_name)
-            out.steps[name] = f"error: {type(exc).__name__}"
-
-    def website():
-        from app.acquisition import website_discovery as wd
-
-        res = wd.discover(session, company, client, llm, use_llm=llm is not None)
-        return f"{res.status}{(' - ' + res.note) if res.note else ''}"
-
-    def upstox_step():
-        if upstox is None or not upstox.is_configured():
-            return "skipped (Upstox not configured)"
-        from app.providers import upstox_refresh as ur
-
-        state = session.get(ProviderRefreshState, (ur.SOURCE_CODE, company.id))
-        if state and state.next_due_at and state.next_due_at > datetime.now(UTC):
-            return f"skipped (fresh until {state.next_due_at:%d/%m/%Y})"
-        o = ur.refresh_company(session, upstox, company)
-        return f"{o.status} {o.note}".strip()
-
-    def documents():
-        from app.acquisition.evidence_fetch import fetch_evidence
-
-        if not company.website:
-            return "skipped (no verified website)"
-        rep = fetch_evidence(session, company, client)
-        return f"{rep.status} (candidates {rep.candidates}, downloaded {rep.downloaded})"
-
-    def enrich_step():
-        from app.research import enrich
-
-        if llm is None or not company.website:
-            return "skipped (no website or no language model)"
-        rep = enrich.enrich_company(session, company, client, llm)
-        return f"stored {rep.stored}, discarded {rep.discarded}" + (
-            f"; {rep.notes[0]}" if rep.notes else ""
-        )
-
-    def evidence():
-        from app.evidence.engine import validate_company
-
-        validate_company(session, company.id)
-        return "validated"
-
-    step("website", website)
-    step("upstox", upstox_step)
-    step("documents", documents)
-    step("enrich", enrich_step)
-    step("evidence", evidence)
-    return out
+    res = runner.run_company(session, company, stages=steps, client=client, llm=llm, upstox=upstox)
+    return CompanyRun(res.name, dict(res.steps))
 
 
 def run_batch(
