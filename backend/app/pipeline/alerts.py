@@ -137,7 +137,9 @@ def deliver(
             "reminder": kind == ALERT,
         }
         send(payload)
-        st.event(session, None, None, None, ALERT, f"{key}|{alert['level']}: {alert['message']}")
+        st.event(
+            session, None, None, None, ALERT, f"{key}|{alert['level']}: {alert['message']}", at=now
+        )
     for key, (kind, _when) in previous.items():
         if kind == ALERT and key not in current:
             payload = {
@@ -149,5 +151,5 @@ def deliver(
                 "at": now.isoformat(),
             }
             send(payload)
-            st.event(session, None, None, None, RESOLVED, f"{key}|cleared")
+            st.event(session, None, None, None, RESOLVED, f"{key}|cleared", at=now)
     return sent

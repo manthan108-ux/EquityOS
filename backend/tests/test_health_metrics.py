@@ -198,3 +198,10 @@ def test_a_single_borrowings_line_is_used_as_printed(session, co):
     run(session, co)
     assert value(session, co, "LEVERAGE.total_borrowings", FY26) == D(400) * CR
     assert near(value(session, co, "LEVERAGE.debt_to_equity", FY26), D("0.4"))
+
+
+def test_employee_cost_ratio_is_employee_benefits_over_revenue(session, co):
+    d = doc(session, co)
+    year(session, co, d, revenue=1000, employee_benefits_expense=550)
+    run(session, co)
+    assert near(value(session, co, "MARGIN.employee_cost_ratio", FY26), 55)

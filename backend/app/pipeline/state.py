@@ -175,16 +175,19 @@ def event(
     stage: str | None,
     status: str,
     message: str,
+    at: datetime | None = None,
 ) -> None:
-    session.add(
-        PipelineEvent(
-            run_id=run_id,
-            company_id=company_id,
-            stage=stage,
-            status=status,
-            message=message[:MAX_MESSAGE],
-        )
+    """Record a pipeline event; `at` stamps it with a given time, else the database clock."""
+    row = PipelineEvent(
+        run_id=run_id,
+        company_id=company_id,
+        stage=stage,
+        status=status,
+        message=message[:MAX_MESSAGE],
     )
+    if at is not None:
+        row.at = at
+    session.add(row)
     session.commit()
 
 

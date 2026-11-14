@@ -716,3 +716,96 @@ def test_a_thin_peer_group_never_produces_an_overall_score(seeded):
     assert report.pillar_records and report.overall is None
     assert report.peer_set.summary["overall"] is None
     assert "minimum 3" in report.peer_set.summary["overall_withheld"]
+
+
+# ---- peer selection by business similarity -------------------------------------------------------------------
+
+
+def _cand(name, size, traits=None, industry="it_services"):
+    from app.sector.core import Candidate
+
+    return Candidate(name, name, "it", industry, "NONFIN", D(size), traits)
+
+
+def _traits(**kw):
+    from app.sector.core import Traits
+
+    return Traits(**kw)
+
+
+def test_segment_words_ignore_generic_labels():
+    from app.sector.core import segment_words
+
+    assert segment_words(["Retail Banking", "Other segment", "Unallocated"]) == {
+        "retail",
+        "banking",
+    }
+
+
+def test_similarity_uses_only_the_traits_both_companies_have():
+    from app.sector.core import similarity
+
+    a = _traits(segments=frozenset({"retail", "cards"}), label="it", employee_cost_ratio=D(50))
+    b = _traits(segments=frozenset({"retail", "cards"}), label="it", employee_cost_ratio=D(50))
+    s, parts = similarity(a, b)
+    assert s == 1.0 and set(parts) == {"segments", "industry label", "employee cost share"}
+    assert similarity(a, None) == (None, ()) and similarity(_traits(), b) == (None, ())
+    s2, parts2 = similarity(_traits(label="x"), _traits(label="y"))
+    assert s2 == 0.0 and parts2 == ("industry label",)
+
+
+def test_the_closer_business_wins_over_a_closer_size():
+    from app.sector.core import select_peers
+
+    subject = _cand(
+        "Subject",
+        1000,
+        _traits(segments=frozenset({"retail", "cards"}), label="a", employee_cost_ratio=D(40)),
+    )
+    near_size_other_business = _cand(
+        "NearSize",
+        1000,
+        _traits(segments=frozenset({"mining", "ports"}), label="a", employee_cost_ratio=D(40)),
+    )
+    far_size_same_business = _cand(
+        "SameBiz",
+        3000,
+        _traits(segments=frozenset({"retail", "cards"}), label="a", employee_cost_ratio=D(40)),
+    )
+    picks, _ = select_peers(subject, [subject, near_size_other_business, far_size_same_business])
+    assert [p.candidate.name for p in picks] == ["SameBiz", "NearSize"]
+    assert picks[0].similarity == D("1.0") and "business similarity 1.0" in picks[0].reason
+
+
+def test_a_clearly_different_business_is_rejected_with_the_reason():
+    from app.sector.core import select_peers
+
+    subject = _cand(
+        "Subject",
+        1000,
+        _traits(segments=frozenset({"retail", "cards"}), label="a", employee_cost_ratio=D(40)),
+    )
+    other = _cand(
+        "Other",
+        1000,
+        _traits(segments=frozenset({"mining", "ports"}), label="b", employee_cost_ratio=D(5)),
+    )
+    picks, rejected = select_peers(subject, [subject, other])
+    assert picks == [] and "too different" in rejected[0][1] and "similarity" in rejected[0][1]
+
+
+def test_a_company_with_few_comparable_traits_is_not_rejected_for_dissimilarity():
+    from app.sector.core import select_peers
+
+    subject = _cand("Subject", 1000, _traits(label="a"))
+    other = _cand("Other", 1000, _traits(label="b"))
+    picks, _ = select_peers(subject, [subject, other])
+    assert len(picks) == 1, "one comparable trait is too little to exclude a same-industry peer"
+
+
+def test_without_any_traits_selection_is_by_size_as_before():
+    from app.sector.core import select_peers
+
+    subject = _cand("Subject", 1000)
+    picks, _ = select_peers(subject, [subject, _cand("Far", 9000), _cand("Near", 1100)])
+    assert [p.candidate.name for p in picks] == ["Near", "Far"] and picks[0].similarity is None

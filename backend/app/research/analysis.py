@@ -33,6 +33,10 @@ STABLE_PCT = Decimal(
 )  # an amount that moved by less than 1% is called stable (presentation rule)
 STABLE_PP = Decimal("0.25")  # a ratio that moved by less than 0.25 points is called stable
 UNUSUAL_PCT = Decimal("25")  # an annual change of more than 25% is flagged for explanation
+MIN_RANK_PEERS = 4  # comparable peers needed before a rank or better/worse verdict is given
+MIN_RANK_SHARE = Decimal("0.5")  # ... and this share of the selected peers
+RANK_HIGH_PEERS = 5
+RANK_HIGH_SHARE = Decimal("0.7")
 IN_LINE = Decimal("0.05")  # within 5% of the peer median counts as in line (presentation rule)
 MIN_PEERS = 3  # no ranking or median unless at least three peers are comparable
 QUARTER_DAYS = (80, 100)
@@ -436,11 +440,36 @@ def compare_metric(
                 entry |= {"comparable": False, "reason": "different basis or unit"}
         row["peers"].append(entry)
     row["n_comparable"] = len(comparable)
+    selected = len(peer_stores)
+    share = Decimal(len(comparable)) / Decimal(selected) if selected else Decimal(0)
+    row["coverage"] = {
+        "comparable": len(comparable),
+        "selected": selected,
+        "share_pct": _s((share * 100).quantize(Decimal("1"))),
+    }
+    row["reliability"] = (
+        "HIGH"
+        if len(comparable) >= RANK_HIGH_PEERS and share >= RANK_HIGH_SHARE
+        else "MEDIUM"
+        if len(comparable) >= MIN_RANK_PEERS and share >= MIN_RANK_SHARE
+        else "LOW"
+        if len(comparable) >= MIN_PEERS
+        else "NONE"
+    )
     own_v = own.value
     if len(comparable) >= MIN_PEERS:
         med = Decimal(str(median(comparable)))
         row["median"] = _s(med)
-        if m.better:
+        if m.better and row["reliability"] == "LOW":
+            # a median from three peers is shown, but a rank among so few (or so small a share of the
+            # selected peers) would read as a verdict the evidence cannot support
+            row["position"] = "not ranked"
+            row["note"] = (
+                f"{len(comparable)} of {selected} selected peers are comparable; a rank or better/worse "
+                f"verdict needs at least {MIN_RANK_PEERS} comparable peers and {int(MIN_RANK_SHARE * 100)}% "
+                "of the selected peers, so only the median is given"
+            )
+        elif m.better:
             ranked = sorted(comparable + [own_v], reverse=(m.better == "higher"))
             row["rank"] = ranked.index(own_v) + 1
             row["of"] = len(ranked)

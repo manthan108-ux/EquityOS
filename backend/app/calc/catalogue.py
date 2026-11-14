@@ -762,6 +762,22 @@ CATALOGUE: tuple[Metric, ...] = (
         profile="NONFIN",
         anchor=(EQ,),
     ),
+    Metric(
+        "MARGIN.employee_cost_ratio",
+        "Employee benefits expense / revenue from operations",
+        "MARGIN",
+        (
+            one(
+                "employees / revenue * 100",
+                {"employees": ref("INCOME.employee_benefits_expense"), "revenue": ref(REV)},
+            ),
+        ),
+        "percent",
+        ALL_TYPES,
+        profile="NONFIN",
+        requires=(("revenue", ">", 0),),
+        anchor=("INCOME.employee_benefits_expense",),
+    ),
     # ---- working capital (annual: days are measured on a year's revenue or cost of goods) -------
     Metric(
         "WORKING_CAPITAL.receivable_days",

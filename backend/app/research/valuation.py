@@ -1,13 +1,15 @@
 """Valuation analysis (report phase 5): historical, peer, intrinsic and scenario views.
 
 Honesty rules:
-* Every input is stored evidence. A model whose inputs are missing is listed as NOT COMPLETED with the
-  reason; nothing is filled with a default.
-* The only things that are not evidence are the SCENARIO ASSUMPTIONS (cost of equity, long-run growth,
-  ROE shifts). They are EquityOS's illustrative defaults, printed next to every result and labelled
-  ASSUMPTION. No risk-free rate or beta is stored, so no figure is presented as the "correct" discount
-  rate.
-* Results are scenario-implied values under stated assumptions, not target prices.
+* Every input is either stored evidence (a validated actual) or an entry in the assumption ledger
+  (research/assumptions.py): a SOURCED input with its source and date, or a USER assumption with its
+  author and rationale. A model whose inputs are missing is listed as NOT COMPLETED with exactly what is
+  missing; nothing is filled with a default. There is NO built-in risk-free rate, equity risk premium,
+  beta, cost of equity or growth rate.
+* Cost of equity, long-run growth and ROE shift per scenario come only from entered inputs (the base cost
+  of equity may be derived by CAPM from an entered risk-free rate, beta and premium).
+* Results are scenario-implied values under the entered assumptions, not target prices. Every result lists
+  the evidence ids of the inputs it used.
 """
 
 from __future__ import annotations
@@ -21,24 +23,20 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import EodPrice, PriceAdjustment, Security
+from app.research import assumptions as asm
 from app.research import readiness as rd
 from app.research.analysis import _records, _s, dec, series_for
 from app.research.sectors import Metric, Sector
 
 VERSION = "1.0"
 
-# Illustrative scenario assumptions (EquityOS defaults, not market data). Percent points.
-SCENARIOS = {
-    "bear": {"roe_shift": Decimal("-2"), "cost_of_equity": Decimal("13"), "growth": Decimal("5")},
-    "base": {"roe_shift": Decimal("0"), "cost_of_equity": Decimal("12"), "growth": Decimal("6")},
-    "bull": {"roe_shift": Decimal("2"), "cost_of_equity": Decimal("11"), "growth": Decimal("7")},
-}
+SCENARIO_NAMES = asm.SCENARIOS  # bear, base, bull: the NAMES only; every figure is an entered input
 SENS_ROE_SHIFTS = (Decimal("-2"), Decimal("0"), Decimal("2"), Decimal("4"))
 SENS_COE = (Decimal("11"), Decimal("12"), Decimal("13"), Decimal("14"))
 ASSUMPTION_NOTE = (
-    "Cost of equity, long-run growth and the ROE shifts are illustrative EquityOS assumptions, not "
-    "market data or forecasts; no risk-free rate or beta is stored. Results are scenario-implied "
-    "values under those assumptions, not target prices."
+    "Cost of equity, long-run growth and the ROE shifts are entered inputs, each with its source or author, "
+    "date and rationale in the input ledger; none is built in and none is market data unless its source says "
+    "so. Results are scenario-implied values under those inputs, not target prices."
 )
 
 PE = Metric("pe", "P/E", ("VALUATION.pe_annual", "VALUATION.pe_ttm"), "x", ptype="ANY")
@@ -223,7 +221,9 @@ def _roe_on_basis(store, sector: Sector, basis):
     return recs[max(recs)] if recs else None
 
 
-def bank_intrinsic(own_store, sector: Sector, prefer: str, price, pb, roe_row) -> dict:
+def bank_intrinsic(
+    own_store, sector: Sector, prefer: str, price, pb, roe_row, scenarios=None, missing=None
+) -> dict:
     if pb is None or price is None:
         return {"completed": False, "reason": "price or price-to-book is not stored"}
     if pb.basis is None:
@@ -248,25 +248,54 @@ def bank_intrinsic(own_store, sector: Sector, prefer: str, price, pb, roe_row) -
     bvps = dec(price.value) / pbv if pbv else None
     if roe is None or not bvps:
         return {"completed": False, "reason": "book value per share cannot be derived"}
+    scenarios, missing = scenarios or {}, missing or {}
+    actual_ids = [roe_pt["evidence_id"], price.id, pb.id]
     scen = {}
-    for name, a in SCENARIOS.items():
-        r = roe + a["roe_shift"]
-        jpb = _justified_pb(r, a["cost_of_equity"], a["growth"])
-        if jpb is None or jpb <= 0:
+    for name in SCENARIO_NAMES:
+        a = scenarios.get(name)
+        if a is None:
             scen[name] = {
-                "assumptions": {k: _s(v) for k, v in a.items()},
-                "roe": _s(r),
-                "note": "no positive justified P/B under these assumptions",
+                "completed": False,
+                "missing": missing.get(name) or [f"inputs for the {name} scenario"],
             }
+            continue
+        r = roe + a["roe_shift"]
+        shown = {
+            "cost_of_equity": _s(a["cost_of_equity"]),
+            "growth": _s(a["growth"]),
+            "roe_shift": _s(a["roe_shift"]),
+        }
+        jpb = _justified_pb(r, a["cost_of_equity"], a["growth"])
+        base = {
+            "completed": True,
+            "assumptions": shown,
+            "input_ids": a["input_ids"],
+            "flags": a["flags"],
+            "roe": _s(r),
+            "evidence_ids": [*actual_ids, *a["input_ids"]],
+        }
+        if jpb is None or jpb <= 0:
+            scen[name] = {**base, "note": "no positive justified P/B under these assumptions"}
             continue
         value = jpb * bvps
         scen[name] = {
-            "assumptions": {k: _s(v) for k, v in a.items()},
-            "roe": _s(r),
+            **base,
             "justified_pb": _s(jpb.quantize(Decimal("0.01"))),
             "value_per_share": _s(value.quantize(Decimal("1"))),
             "vs_price_pct": _s(((value / dec(price.value) - 1) * 100).quantize(Decimal("0.1"))),
         }
+    if "base" not in scenarios:
+        return {
+            "completed": False,
+            "method": "justified price-to-book (residual income)",
+            "reason": "the base scenario needs entered inputs: "
+            + "; ".join(missing.get("base") or ["cost of equity, long-run growth and ROE shift"])
+            + ". None is assumed",
+            "missing": missing,
+            "scenarios": scen,
+            "inputs": {"roe": roe_pt, "price": _ref(price), "price_to_book": _ref(pb)},
+        }
+    g = scenarios["base"]["growth"]
     sens = [
         {
             "cost_of_equity": _s(coe),
@@ -275,9 +304,7 @@ def bank_intrinsic(own_store, sector: Sector, prefer: str, price, pb, roe_row) -
                     "roe": _s(roe + shift),
                     "justified_pb": (
                         _s(j.quantize(Decimal("0.01")))
-                        if (j := _justified_pb(roe + shift, coe, SCENARIOS["base"]["growth"]))
-                        is not None
-                        and j > 0
+                        if (j := _justified_pb(roe + shift, coe, g)) is not None and j > 0
                         else None
                     ),
                 }
@@ -289,9 +316,7 @@ def bank_intrinsic(own_store, sector: Sector, prefer: str, price, pb, roe_row) -
     implied = [
         {
             "cost_of_equity": _s(coe),
-            "implied_roe": _s(
-                _implied_roe(pbv, coe, SCENARIOS["base"]["growth"]).quantize(Decimal("0.1"))
-            ),
+            "implied_roe": _s(_implied_roe(pbv, coe, g).quantize(Decimal("0.1"))),
         }
         for coe in SENS_COE
     ]
@@ -312,10 +337,10 @@ def bank_intrinsic(own_store, sector: Sector, prefer: str, price, pb, roe_row) -
         },
         "scenarios": scen,
         "sensitivity": sens,
-        "sensitivity_note": f"justified P/B at long-run growth {SCENARIOS['base']['growth']}%; columns are ROE shifts from the latest annual ROE",
+        "sensitivity_note": f"justified P/B at the base long-run growth of {_s(g)}% (an entered input); the cost-of-equity rows and ROE-shift columns are a grid of hypotheticals, not inputs; columns are ROE shifts from the latest annual ROE",
         "market_implied": {
             "rows": implied,
-            "note": "the ROE the current P/B would need to be justified at each cost of equity (growth at the base value)",
+            "note": "the ROE the current P/B would need to be justified at each cost of equity in the grid (growth at the entered base value)",
         },
     }
 
@@ -372,6 +397,11 @@ def build(
     pe = _latest(own_store, PE.names)
     pb = _latest(own_store, PB.names)
     snapshot = {"price": _ref(price), "pe": _ref(pe), "pb": _ref(pb)}
+    from app.research import clock
+
+    inputs = asm.current_inputs(session, company_id, clock.today())
+    capm = asm.capm_cost_of_equity(session, company_id, inputs)
+    scenarios, missing = asm.scenario_sets(inputs, capm)
     out = {
         "version": VERSION,
         "snapshot": snapshot,
@@ -384,7 +414,7 @@ def build(
     if sector.valuation == "BANK":
         out["pb_vs_roe"] = bank_pb_roe(peer_rows)
         out["intrinsic"] = bank_intrinsic(
-            own_store, sector, prefer, price, pb, trend_by_key.get("roe")
+            own_store, sector, prefer, price, pb, trend_by_key.get("roe"), scenarios, missing
         )
         out["not_completed"].append(
             "Historical P/B: share counts for past dates are not stored, so past book value per share cannot be derived."
@@ -394,8 +424,54 @@ def build(
             "completed": False,
             "method": "discounted cash flow (FCFF/FCFE)",
             "reason": "a DCF needs explicit multi-year forecasts and a sourced discount rate; the evidence store holds history only, so none is built",
+            "needs": [
+                "an entered risk-free rate, beta and equity risk premium (or a cost of equity) with their sources",
+                "explicit multi-year forecasts of cash flow with a stated basis",
+            ],
         }
         out["not_completed"].append(
             "Historical P/B and EV-based multiples: past share counts and enterprise-value inputs are not stored."
         )
+    out["input_ledger"] = input_ledger(
+        inputs, capm, snapshot, out.get("intrinsic") or {}, scenarios
+    )
     return out
+
+
+def input_ledger(
+    inputs: dict, capm: dict, snapshot: dict, intrinsic: dict, scenarios: dict
+) -> dict:
+    """Every material valuation input in its class, with provenance; and what the outputs rest on."""
+    view = asm.ledger_view(inputs, capm)
+    actuals = []
+    for key, label in (("price", "Share price"), ("pe", "P/E"), ("pb", "P/B")):
+        ref = snapshot.get(key)
+        if ref:
+            actuals.append({"label": label, **ref})
+    roe = (intrinsic.get("inputs") or {}).get("roe")
+    if roe:
+        actuals.append({"label": "Latest annual return on equity", **roe})
+    outputs = []
+    for name, sc in (intrinsic.get("scenarios") or {}).items():
+        if sc.get("completed"):
+            outputs.append(
+                {
+                    "scenario": name,
+                    "justified_pb": sc.get("justified_pb"),
+                    "value_per_share": sc.get("value_per_share"),
+                    "evidence_ids": sc["evidence_ids"],
+                    "flags": sc["flags"],
+                }
+            )
+    return {
+        "historical_actuals": actuals,
+        "sourced_inputs": view["sourced_inputs"],
+        "user_assumptions": view["user_assumptions"],
+        "derived_inputs": view["derived"],
+        "derived_outputs": outputs,
+        "capm": view["capm"],
+        "market_inputs_missing": view["market_inputs_missing"],
+        "flags": view["flags"],
+        "scenarios_complete": sorted(scenarios),
+        "how_to_enter": "python -m app.research.assumption_cli set --symbol SYMBOL --input NAME ... (or POST /api/companies/{id}/valuation-inputs); an edit supersedes the old value and keeps the history",
+    }

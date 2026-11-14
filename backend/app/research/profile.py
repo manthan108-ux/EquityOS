@@ -62,6 +62,64 @@ TOPICS: dict[str, tuple[str, str, str]] = {
         "",
     ),
 }
+TOPICS.update(
+    {
+        "business_model": (
+            "Business model and what the company does",
+            r"\b(is engaged in|are engaged in|principal (?:business|activit)\w*|our business (?:model|comprises|"
+            r"consists)|business model|the company (?:operates|provides|offers|manufactures|markets)|"
+            r"we (?:operate|provide|offer|manufacture|market) |our (?:offerings|products and services|"
+            r"portfolio) (?:include|comprise|span|consist))",
+            "",
+        ),
+        "revenue_sources": (
+            "Revenue sources",
+            r"\b(revenue|income|sales|earnings)\b[^.]{0,50}\b(is|are|was|were)? ?(?:primarily |mainly |largely |"
+            r"predominantly )?(?:derived|generated|earned|comes?|came) (?:from|through)\b|"
+            r"\bsources? of (?:revenue|income)\b|\b(?:revenue|income) streams?\b|"
+            r"\b(?:net interest income|fee income|commission)\b[^.]{0,40}\b(?:accounted|contribut\w+|constituted)\b",
+            "",
+        ),
+        "product_exposure": (
+            "Product and portfolio exposure",
+            r"\b(?:product|service|portfolio|vertical|offering|brand|category|segment)s?\b[^.]{0,80}"
+            r"\b(?:accounted for|contributed|constituted|comprised|represent\w*)\b[^.]{0,40}\d+(?:\.\d+)?\s?(?:%|per ?cent)|"
+            r"\b(?:accounted for|contributed|constituted)\b[^.]{0,30}\d+(?:\.\d+)?\s?(?:%|per ?cent)\b[^.]{0,60}"
+            r"\b(?:revenue|sales|business|portfolio|volumes?)\b|\bproduct mix\b|\bpremiumi[sz]ation\b",
+            "",
+        ),
+        "advantages": (
+            "Competitive advantages and strengths",
+            r"\b(competitive (?:advantage|strength|edge|moat)s?|our (?:key )?strengths?|core strengths?|"
+            r"(?:strong|powerful|trusted|well[- ]known) brands?|economies of scale|scale advantage|cost "
+            r"(?:leadership|advantage)|(?:extensive|wide|largest|deep) (?:distribution|dealer|branch|retail|service) "
+            r"(?:network|reach|footprint)|proprietary (?:technology|platform|IP)|differentiat\w+|"
+            r"entry barriers?|switching costs?|long[- ]standing (?:relationships?|clients?|customers?))",
+            "",
+        ),
+        "positioning": (
+            "Competitive positioning",
+            r"\b(market share|market leader|leadership position|(?:largest|second[- ]largest|third[- ]largest|"
+            r"leading|number (?:one|1)|No\.? ?1|top[- ](?:three|five|3|5)) (?:\w+ ){0,4}(?:in India|in the country|"
+            r"company|player|provider|manufacturer|producer|bank|lender|brand|refiner|exporter|retailer|"
+            r"in its segment|globally|worldwide)|ranked (?:among|as|number)|ranks? (?:first|second|third|among))",
+            "",
+        ),
+        "weaknesses": (
+            "Dependencies and structural risks",
+            r"(?:\bdepend\w*|\breliant|\breliance) (?:heavily |significantly |substantially |largely )?(?:on|upon) "
+            r"(?:a |an |the |our |its |few |limited |one |single |certain |key |major |large )?(?:\w+ ){0,3}"
+            r"(?:customers?|clients?|suppliers?|vendors?|markets?|geograph\w+|products?|segments?|crude|imports?|"
+            r"government|subsidiar\w+|contracts?|dealers?|partners?|commodity|commodities|monsoon)\b|"
+            r"\b(?:customer|revenue|client|supplier|geographic|product|portfolio) concentration\b|"
+            r"\b(?:significant|substantial|large) (?:portion|proportion|part|share) of (?:our |its |the )?"
+            r"(?:revenue|business|sales|income)\b|\bsingle (?:customer|client|supplier|product|market|geography)\b|"
+            r"\bcyclical(?:ity)?\b|\bcommodity (?:price|prices|risk)\b|\bintense competition\b|"
+            r"\b(?:competition from|competitive pressure|pricing pressure|margin pressure)\b",
+            "",
+        ),
+    }
+)
 _RX = {k: re.compile(v[1], re.I | re.S) for k, v in TOPICS.items()}
 _SKIP = re.compile(
     r"(Listing Regulations|Regulation \d+|Section \d+|Companies Act|attended|remuneration|sitting fee|"
@@ -195,8 +253,34 @@ def leaders(pages: list[tuple[int, str]]) -> list[dict]:
     return sorted(out, key=lambda r: -r["mentions"])[:8]
 
 
-def _usable(sentence: str, need: str) -> bool:
+# Per-topic exclusions: a cue word is also used for things that are not the topic (forward-looking
+# disclaimers, macro commentary, awards and personal rankings, livelihood programmes).
+_TOPIC_SKIP = {
+    "business_model": r"Annual Report|reviewed|Accountability|Statement|Board and Management|stakeholder",
+    "revenue_sources": r"livelihood|farmers|economic security|smallholder|households|women",
+    "positioning": r"general counsel|He has|She has|\bMr\b|\bMs\b|Award|Legal 500|\bIMF\b|global growth|"
+    r"Chairman|Director|alumni|graduate",
+    "weaknesses": r"does not|do not|doesn't|no other|not directly|not exposed|hedg|forward contracts?|credit risk|liquidity "
+    r"risk|incentives|trade receivables|expected credit|financial instruments?|derivatives?|well-positioned|"
+    r"strong balance sheet|value chain partners|assessed|forward[- ]looking|projections|expectations based|assumptions|ecosystems?\b|natural resources|"
+    r"\bIMF\b|geo-?political|global growth|macroeconomic|Concentration of Purchases|Parameter|"
+    r"no single customer|diversified|not (?:significantly )?(?:dependent|reliant)|biodiversity|climate|"
+    r"supply chain disruptions|trade-related",
+    "advantages": r"Intellectual Capital|helping our|global customers integrate",
+}
+_TOPIC_SKIP_RX = {k: re.compile(v, re.I) for k, v in _TOPIC_SKIP.items()}
+# these topics describe the company itself: the sentence must have the company as its subject
+_SELF = re.compile(r"\b(we|our|us|the (?:company|bank|group|corporation))\b", re.I)
+_ACRONYM = re.compile(r"\b[A-Z]{3,}(?:'s)?\b")
+_SELF_TOPICS = {"weaknesses", "positioning", "advantages", "business_model"}
+
+
+def _usable(sentence: str, need: str, topic: str | None = None) -> bool:
     if _SKIP.search(sentence):
+        return False
+    if topic in _TOPIC_SKIP_RX and _TOPIC_SKIP_RX[topic].search(sentence):
+        return False
+    if topic in _SELF_TOPICS and not (_SELF.search(sentence) or _ACRONYM.search(sentence)):
         return False
     if need == "year" and not YEAR.search(sentence):
         return False
@@ -216,7 +300,7 @@ def extract(pages: list[tuple[int, str]]) -> dict[str, list[dict]]:
                 continue
             seen.add(key)
             for topic, rx in _RX.items():
-                if rx.search(s) and _usable(s, TOPICS[topic][2]):
+                if rx.search(s) and _usable(s, TOPICS[topic][2], topic):
                     bonus = len(YEAR.findall(s)) + (2 if NAMED.search(s) else 0)
                     pool[topic].append((len(rx.findall(s)) * 2 + bonus, page, s))
     used: set[str] = set()
@@ -384,6 +468,12 @@ def segments(store: rd._Store, prefer: str) -> dict:
                 else None
             )
             rr = res.get(name, {}).get(latest)
+            rp = res.get(name, {}).get(prev) if prev else None
+            result_growth = (
+                (rr.value / rp.value - 1) * 100
+                if rr is not None and rp is not None and rp.value and rp.value > 0 and rr.value > 0
+                else None
+            )
             rows.append(
                 {
                     "segment": name,
@@ -395,6 +485,10 @@ def segments(store: rd._Store, prefer: str) -> dict:
                     if growth is not None
                     else None,
                     "result": _s(rr.value) if rr is not None else None,
+                    "result_growth_pct": _s(result_growth.quantize(Decimal("0.1")))
+                    if result_growth is not None
+                    else None,
+                    "result_evidence_id": rr.id if rr is not None else None,
                     "result_margin_pct": _s((rr.value / r.value * 100).quantize(Decimal("0.1")))
                     if rr is not None and r.value
                     else None,
@@ -402,8 +496,21 @@ def segments(store: rd._Store, prefer: str) -> dict:
                     "unit": r.unit,
                 }
             )
+        # profit contribution: each segment's result as a share of the segments' combined result
+        with_result = [r for r in rows if r["result"] is not None]
+        result_total = sum((Decimal(r["result"]) for r in with_result), Decimal(0))
+        for r in rows:
+            r["result_share_pct"] = (
+                _s((Decimal(r["result"]) / result_total * 100).quantize(Decimal("0.1")))
+                if r["result"] is not None and result_total > 0
+                else None
+            )
+        largest = max(rows, key=lambda r: Decimal(r["share_pct"] or 0), default=None)
         return {
             "available": True,
+            "results_reported_for": len(with_result),
+            "largest_segment": largest["segment"] if largest else None,
+            "largest_share_pct": largest["share_pct"] if largest else None,
             "period_end": latest.isoformat(),
             "prior_period_end": prev.isoformat() if prev else None,
             "period_type": ptype,

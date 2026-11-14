@@ -774,3 +774,9 @@ Implemented and integrated (analysis, PDF, calculation catalogue, tests: `test_c
 ## CP5 - working capital and financial health (2026-11-14)
 Implemented and integrated (calculation catalogue, analysis, PDF "Working capital and financial health",
 tests `test_health.py`, `test_health_metrics.py`). Committed and pushed on the user's instruction.
+
+## CP6-CP10 (2026-11-14)
+CP6 sector indicators, CP7 company and business analysis, CP8 management/governance/capital allocation, CP9 industry
+and peer analysis (business-similarity peer selection, rank guards, benchmark labels) and CP10 valuation assumption
+ledger (sourced and user inputs, editing by supersession, CAPM derivation, no invented defaults) are implemented,
+tested and integrated into the report and API. Committed and pushed after CP10 on the user's instruction.

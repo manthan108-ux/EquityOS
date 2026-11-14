@@ -280,6 +280,22 @@ ITEMS: tuple[Item, ...] = (
     ),
     _i("dividends_paid", CASH_FLOW, r"dividends? paid.*"),
     _i(
+        "buyback_of_shares",
+        CASH_FLOW,
+        r"(?:payments?|amounts?) (?:made )?for (?:the )?buy[- ]?back(?: of (?:equity )?shares)?.*",
+        r"buy[- ]?back of (?:equity )?shares.*",
+        r"repurchase of (?:equity )?shares.*",
+        r"payment for share buy[- ]?back.*",
+    ),
+    _i(
+        "acquisition_of_subsidiaries_and_businesses",
+        CASH_FLOW,
+        r"acquisitions? of (?:a )?(?:subsidiar\w+|business(?:es)?)(?:,? net of cash acquired)?.*",
+        r"purchase of (?:investments? in )?(?:subsidiar\w+|business(?:es)?)(?:,? net of cash acquired)?.*",
+        r"payments? for (?:the )?acquisition of (?:subsidiar\w+|business(?:es)?).*",
+        r"consideration paid for (?:the )?acquisition.*",
+    ),
+    _i(
         "fx_effect_on_cash",
         CASH_FLOW,
         r"effect of exchange (rate )?(differences?|fluctuations?|changes?|rate changes?)( on .*)?",

@@ -12,6 +12,7 @@ from app.api import (
     research,
     scoring,
     sector,
+    valuation_inputs,
 )
 from app.core.config import get_settings
 
@@ -37,6 +38,7 @@ def create_app() -> FastAPI:
     app.include_router(scoring.router)
     app.include_router(research.router)
     app.include_router(pipeline.router)
+    app.include_router(valuation_inputs.router)
     return app
 
 
