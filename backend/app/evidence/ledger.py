@@ -136,9 +136,14 @@ def register_assumption(
     period_type: str | None = None,
     basis: str | None = None,
     supports: tuple[int, ...] = (),
+    extra: dict | None = None,
     now: datetime | None = None,
 ) -> EvidenceRecord:
-    """Record an assumption: stated, justified, attributed. Idempotent for identical input."""
+    """Record an assumption: stated, justified, attributed. Idempotent for identical input.
+
+    `extra` carries provenance beyond the rationale (source, source date, class, what it replaces).
+    It is stored with the record and is part of the identity, so a changed source is a new record.
+    """
     if not _METRIC.match(metric):
         raise LedgerError(f"metric {metric!r} must look like 'FORECAST.revenue_growth'")
     if not statement or not statement.strip():
@@ -163,6 +168,7 @@ def register_assumption(
         basis,
         sorted(supports),
         created_by,
+        extra or {},
     )
     existing = session.scalar(
         select(EvidenceRecord).where(
@@ -185,7 +191,7 @@ def register_assumption(
         value=value,
         unit=unit,
         statement_text=statement.strip(),
-        details={"rationale": rationale.strip()},
+        details={**(extra or {}), "rationale": rationale.strip()},
         content_hash=digest,
         created_by=created_by,
         status_changed_at=now or datetime.now(UTC),

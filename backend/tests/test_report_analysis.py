@@ -1,3 +1,4 @@
+# ruff: noqa: F811
 """The analytical layer of the research report (phases 2-7): trends, peers, valuation, commentary,
 thesis, sector profiles, and the full PDF built from them. Evidence is synthetic; the arithmetic is
 checked by hand."""
@@ -160,12 +161,56 @@ def _peer_row(session, c, key="roe"):
     return next((r for r in a["rows"] if r["key"] == key), None), a
 
 
-def test_peer_rank_median_and_position_with_three_comparable_peers(seeded):  # noqa: F811
+def test_peer_rank_median_and_position_with_four_comparable_peers(seeded):  # noqa: F811
+    c, _ = _bank_with_peers(seeded, 12, [10, 14, 16, 18])
+    r, a = _peer_row(seeded, c)
+    assert r["n_comparable"] == 4 and D(r["median"]) == D("15")
+    assert (r["rank"], r["of"], r["position"]) == (4, 5, "worse")  # higher ROE is better
+    assert r["reliability"] == "MEDIUM" and r["coverage"]["comparable"] == 4
+    assert a["summary"]["worse"] == ["Return on equity"]
+
+
+def test_three_comparable_peers_give_a_median_but_no_rank_or_verdict(seeded):  # noqa: F811
     c, _ = _bank_with_peers(seeded, 12, [10, 14, 16])
     r, a = _peer_row(seeded, c)
     assert r["n_comparable"] == 3 and D(r["median"]) == D("14")
-    assert (r["rank"], r["of"], r["position"]) == (3, 4, "worse")  # higher ROE is better
-    assert a["summary"]["worse"] == ["Return on equity"]
+    assert r["position"] == "not ranked" and "rank" not in r and r["reliability"] == "LOW"
+    assert "at least 4 comparable peers" in r["note"]
+    assert a["summary"]["worse"] == [] and a["summary"]["better"] == []
+
+
+def test_a_small_share_of_the_selected_peers_is_not_enough_to_rank(seeded):  # noqa: F811
+    c = mk_company(seeded, "Own Bank", *BANK_SECTOR)
+    add(seeded, c, "RETURN.roe_closing", [12], ends=[FY[3]], unit="percent", kind="CALCULATION")
+    peers = []
+    for i in range(9):  # nine selected peers: only four are on the company's period
+        p = mk_company(seeded, f"Peer Bank {i}", *BANK_SECTOR)
+        end = FY[3] if i < 4 else FY[2]
+        add(
+            seeded,
+            p,
+            "RETURN.roe_closing",
+            [10 + i],
+            ends=[end],
+            unit="percent",
+            kind="CALCULATION",
+        )
+        peers.append(p)
+    peerset(seeded, c, peers)
+    r, a = _peer_row(seeded, c)
+    assert r["n_comparable"] == 4 and r["coverage"] == {
+        "comparable": 4,
+        "selected": 9,
+        "share_pct": "44",
+    }
+    assert r["position"] == "not ranked" and r["reliability"] == "LOW" and "rank" not in r
+    assert D(r["median"]) == D("11.5") and a["summary"]["better"] == []
+
+
+def test_five_comparable_peers_covering_most_of_the_group_is_high_reliability(seeded):  # noqa: F811
+    c, _ = _bank_with_peers(seeded, 12, [10, 11, 13, 14, 15])
+    r, _ = _peer_row(seeded, c)
+    assert r["reliability"] == "HIGH" and r["rank"] == 4 and r["position"] == "worse"
 
 
 def test_fewer_than_three_comparable_peers_gives_no_median_or_rank(seeded):  # noqa: F811
@@ -238,7 +283,7 @@ def test_lower_is_better_metrics_rank_the_other_way(seeded):  # noqa: F811
         unit="percent",
     )
     peers = []
-    for i, v in enumerate([1.5, 2.0, 3.0]):
+    for i, v in enumerate([1.5, 2.0, 3.0, 3.5]):
         p = mk_company(seeded, f"NPA peer {i}", *BANK_SECTOR)
         add(
             seeded,
@@ -268,6 +313,30 @@ def test_justified_pb_and_market_implied_roe_match_hand_calculation():
     assert valuation._implied_roe(D("1.5"), D("12"), D("6")) == D("15")  # inverse of the above
 
 
+ENTERED = {
+    "bear": {"roe_shift": D("-2"), "cost_of_equity": D("13"), "growth": D("5"), "input_ids": [11], "flags": []},
+    "base": {"roe_shift": D("0"), "cost_of_equity": D("12"), "growth": D("6"), "input_ids": [12], "flags": []},
+    "bull": {"roe_shift": D("2"), "cost_of_equity": D("11"), "growth": D("7"), "input_ids": [13], "flags": []},
+}  # fmt: skip
+
+
+def test_without_entered_assumptions_the_bank_valuation_is_not_completed_and_says_what_is_missing(
+    seeded,
+):  # noqa: F811
+    c = mk_company(seeded, "No Input Bank", *BANK_SECTOR)
+    add(seeded, c, "RETURN.roe_closing", [12], ends=[FY[3]], unit="percent", kind="CALCULATION")
+    add(seeded, c, "PRICE.close", [1000], ends=[date(2026, 11, 6)], ptype=None, basis=None, unit="inr_per_share", kind="PRICE")  # fmt: skip
+    add(seeded, c, "VALUATION.price_to_book", [2], ends=[date(2026, 11, 6)], ptype="QUARTERLY", unit="x", kind="CALCULATION")  # fmt: skip
+    s = store(seeded, c, BANK)
+    out = valuation.bank_intrinsic(
+        s, BANK, "CONSOLIDATED", valuation._latest(s, ("PRICE.close",)), valuation._latest(s, ("VALUATION.price_to_book",)), None,
+        {}, {"base": ["cost of equity for the base scenario"]},
+    )  # fmt: skip
+    assert out["completed"] is False and "None is assumed" in out["reason"]
+    assert "cost of equity for the base scenario" in out["reason"]
+    assert all(not sc["completed"] for sc in out["scenarios"].values())
+
+
 def test_bank_scenarios_use_stated_assumptions_and_the_pb_basis(seeded):  # noqa: F811
     c = mk_company(seeded, "Val Bank", *BANK_SECTOR)
     add(seeded, c, "RETURN.roe_closing", [12], ends=[FY[3]], unit="percent", kind="CALCULATION")
@@ -295,8 +364,12 @@ def test_bank_scenarios_use_stated_assumptions_and_the_pb_basis(seeded):  # noqa
     s = store(seeded, c, BANK)
     price = valuation._latest(s, ("PRICE.close",))
     pb = valuation._latest(s, ("VALUATION.price_to_book",))
-    out = valuation.bank_intrinsic(s, BANK, "CONSOLIDATED", price, pb, None)
+    out = valuation.bank_intrinsic(s, BANK, "CONSOLIDATED", price, pb, None, ENTERED, {})
     assert out["completed"] and out["inputs"]["book_value_per_share"] == "500"  # 1000 / 2
+    assert (
+        out["scenarios"]["base"]["input_ids"] == [12]
+        and 12 in out["scenarios"]["base"]["evidence_ids"]
+    )
     base = out["scenarios"]["base"]
     assert base["justified_pb"] == "1" and base["value_per_share"] == "500"  # (12-6)/(12-6) x 500
     assert out["scenarios"]["bear"]["assumptions"]["cost_of_equity"] == "13"
@@ -345,6 +418,8 @@ def test_bank_scenarios_use_stated_assumptions_and_the_pb_basis(seeded):  # noqa
         valuation._latest(s2, ("PRICE.close",)),
         valuation._latest(s2, ("VALUATION.price_to_book",)),
         None,
+        ENTERED,
+        {},
     )
     assert out2["completed"] is False and "consolidated basis" in out2["reason"].lower()
 

@@ -1186,6 +1186,12 @@ def _full_story(report, facts, hist, st, version, mode) -> list:
     )
     # a short profile does not leave a mostly empty page: the next section continues if there is room
     story += pa.bank_business(report, st) + ps.profile_section(report, st)
+    if ps.governance_has_content((ps._analysis(report) or {}).get("governance")):
+        story += [CondPageBreak(120 * mm), h1("Management, governance and capital allocation")]
+        story += ps.governance_section(report, st)
+    if ps.business_has_content((ps._analysis(report) or {}).get("business")):
+        story += [CondPageBreak(120 * mm), h1("Business strengths, weaknesses and positioning")]
+        story += ps.business_section(report, st)
     story += [CondPageBreak(120 * mm)]
     story += _financials(
         report,
@@ -1199,12 +1205,18 @@ def _full_story(report, facts, hist, st, version, mode) -> list:
     if ps.profitability_has_content(a.get("profitability")):
         story += [PageBreak(), h1("Growth and profitability")]
         story += ps.profitability_section(report, st)
+    if ps.sector_kpis_has_content(a.get("sector_kpis")):
+        story += [PageBreak(), h1("Sector-specific indicators")]
+        story += ps.sector_kpis_section(report, st)
     if ps.health_has_content(a.get("health")):
         story += [PageBreak(), h1("Working capital and financial health")]
         story += ps.health_section(report, st)
     if ps.cashflow_has_content(a.get("cashflow")):
         story += [PageBreak(), h1("Cash flow and earnings quality")]
         story += ps.cashflow_section(report, st)
+    if ps.industry_view_has_content(a.get("industry_view")):
+        story += [PageBreak(), h1("Industry and peer analysis")]
+        story += ps.industry_view_section(report, st)
     if ps.growth_has_content(a.get("growth")):
         story += [PageBreak(), h1("Growth versus the peer group: CAGR")]
         story += ps.growth_section(report, st)

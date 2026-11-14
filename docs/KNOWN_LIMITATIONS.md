@@ -422,3 +422,38 @@ Still limited:
   year ends; many pilot companies have only some years read, so those sections show their reasons.
 - Lease liabilities are not included in borrowings or net debt.
 - Days use closing balances (not averages) and a 365-day year; services companies have only receivable days.
+
+## Sector indicators (CP6, 2026-11-14)
+- Only bank ratios (NIM, NPA, CASA, capital adequacy), vehicle volumes, attrition and utilisation are read from
+  documents today. FMCG volume growth, energy production, realisation, throughput and GRM are not extracted,
+  so they show "not stated in the stored documents".
+- Bank peer comparisons need three banks stating the same ratio for the same period; the pilot set rarely has that.
+
+## Business analysis (CP7, 2026-11-14)
+- Quoted topics depend on a stored annual report with page text (none for Maruti, Nestle, Britannia, Godrej,
+  Hyundai and IOC at present) and on keyword cues; an annual report states few weaknesses, so that list is often
+  short. An empty list means none was stated or detected, not that none exists.
+- Segment profit share needs segment results printed in the segment note; many companies have revenue only.
+- There is no structured founder/milestone database; history is what the report states.
+
+## Management and governance (CP8, 2026-11-14)
+- Board composition, tenure, background and related-party statements need a stored annual report with page text
+  (and may be from an earlier year than the figures: the report names its period). Promoter pledges are not stored.
+- Buybacks and acquisitions cash lines exist only after a filing is read with the new taxonomy items; dividend
+  announcements cover about the last year; no dividend-per-share total or history is derived.
+- Related-party amounts, director attendance and remuneration are not extracted.
+
+## Industry and peer analysis (CP9, 2026-11-14)
+- No verified industry statistics are held, so industry size, growth and CAGR are unavailable by design; structure is
+  measured only among stored companies and is withheld when they cover under 60% of the sector-label group (banks: 18%).
+- Peer coverage in the pilot universe is thin: four or fewer peers per company, and several (Reliance, ITC, TVS, ONGC)
+  have none. Ranks are withheld below four comparable peers covering half the selection.
+- Business similarity uses the traits stored (segments, label, cost structure); companies with few traits are ordered by
+  size.
+
+## Valuation inputs (CP10, 2026-11-14)
+- No risk-free rate, equity risk premium, beta, cost of equity or growth has been entered for any pilot company, so
+  residual-income scenarios are NOT COMPLETED until someone enters them; relative scenarios are unaffected.
+- A citation is recorded exactly as given and cannot be verified by the system; market inputs are not fetched
+  automatically (no verified automated source is held).
+- There is no editing screen in the web frontend yet; inputs are entered through the CLI or the API.

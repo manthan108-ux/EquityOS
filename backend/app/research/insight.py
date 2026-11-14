@@ -13,13 +13,17 @@ from sqlalchemy.orm import Session
 from app.models import Company
 from app.research import analysis as an
 from app.research import (
+    business,
     cashflow,
     cyclicality,
+    governance,
     health,
     industry,
+    industry_view,
     mgmt,
     profile,
     profitability,
+    sector_kpis,
     thesis,
     valuation,
     verdict,
@@ -70,6 +74,9 @@ def build(
         | profitability.NAMES
         | cashflow.NAMES
         | health.NAMES
+        | sector_kpis.NAMES
+        | business.NAMES
+        | governance.NAMES
     )
     own_store = rd.load_store(session, company.id, names)
     resolution = an.resolve_basis(own_store, requested)
@@ -135,6 +142,43 @@ def build(
             "available": False,
             "reason": "the working-capital and financial-health analysis could not be built "
             f"({type(exc).__name__})",
+        }
+    try:
+        result["sector_kpis"] = sector_kpis.build(
+            own_store, peer_stores, sector.code, prefer, (prof or {}).get("segments")
+        )
+    except Exception as exc:  # noqa: BLE001 - one section must never take the whole analysis down
+        log.exception("sector indicator analysis failed for %s", company.id)
+        result["sector_kpis"] = {
+            "available": False,
+            "reason": f"the sector indicators could not be built ({type(exc).__name__})",
+        }
+    try:
+        result["business"] = business.build(result, own_store, prefer)
+    except Exception as exc:  # noqa: BLE001 - one section must never take the whole analysis down
+        log.exception("business analysis failed for %s", company.id)
+        result["business"] = {
+            "available": False,
+            "reason": f"the business analysis could not be built ({type(exc).__name__})",
+        }
+    try:
+        result["governance"] = governance.build(
+            session, company.id, own_store, prefer, result, auditor_flags
+        )
+    except Exception as exc:  # noqa: BLE001 - one section must never take the whole analysis down
+        log.exception("governance analysis failed for %s", company.id)
+        result["governance"] = {
+            "available": False,
+            "reason": "the management and governance analysis could not be built "
+            f"({type(exc).__name__})",
+        }
+    try:
+        result["industry_view"] = industry_view.build(session, company, result, prefer)
+    except Exception as exc:  # noqa: BLE001 - one section must never take the whole analysis down
+        log.exception("industry view failed for %s", company.id)
+        result["industry_view"] = {
+            "available": False,
+            "reason": f"the industry and peer analysis could not be built ({type(exc).__name__})",
         }
     monitoring = []  # filled once the thesis exists; cyclicality quotes the stored indicators
     result["thesis"] = thesis.build(

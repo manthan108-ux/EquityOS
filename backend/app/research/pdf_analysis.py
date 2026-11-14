@@ -644,6 +644,9 @@ def valuation_section(report: dict, st) -> list:
             )
         ]
         for name, sc in intr["scenarios"].items():
+            if not sc.get("completed", True):
+                rows.append([Paragraph(name.capitalize(), st["cellb"]), Paragraph(clean("not completed: needs " + "; ".join(sc.get("missing") or ["entered inputs"])), st["small"]), "", "", "", "", ""])  # fmt: skip
+                continue
             a_ = sc["assumptions"]
             rows.append([Paragraph(name.capitalize(), st["cellb"]), Paragraph(f"{Decimal(sc['roe']).quantize(Decimal('0.1'))}%", st["cellr"]),
                          Paragraph(f"{a_['cost_of_equity']}%", st["cellr"]), Paragraph(f"{a_['growth']}%", st["cellr"]),
@@ -746,12 +749,83 @@ def valuation_section(report: dict, st) -> list:
         ]
     else:
         out.append(Paragraph(clean(f"Not completed: {rel.get('reason')}."), st["body"]))
+    out += input_ledger_block(v, st)
     out.append(Paragraph("Models not completed", st["h2"]))
     nc = list(v.get("not_completed", []))
-    if intr.get("completed") is False and a["sector"]["code"] != "BANK":
-        nc.insert(0, f"{intr.get('method')}: {intr.get('reason')}")
+    if intr.get("completed") is False:
+        nc.insert(0, f"{intr.get('method') or 'Intrinsic valuation'}: {intr.get('reason')}")
     for line in nc or ["None."]:
         out.append(Paragraph(clean(line), st["bullet"], bulletText="-"))
+    return out
+
+
+def _input_value(x: dict) -> str:
+    unit = "%" if x["unit"] == "percent" else ""
+    return f"{x['value']}{unit}"
+
+
+def input_ledger_block(v: dict, st) -> list:
+    """The valuation input ledger: actuals, sourced inputs, user assumptions, derived outputs, each with provenance."""
+    led = v.get("input_ledger")
+    if not led:
+        return []
+    out = [Paragraph("Valuation inputs and their provenance", st["h2"])]
+    out.append(
+        Paragraph(
+            clean(
+                "Four kinds of input are kept apart: historical actuals (validated evidence), sourced inputs (a named, dated source), "
+                "user assumptions (a person's judgement with author and rationale) and derived outputs (calculations over the others). "
+                "No risk-free rate, equity risk premium, beta, cost of equity or growth rate is built in."
+            ),
+            st["body"],
+        )
+    )
+    if led["historical_actuals"]:
+        rows = [_hdr(st, "Historical actual", "Value", "As of", "Evidence", right_from=1)]
+        for a_ in led["historical_actuals"]:
+            rows.append([Paragraph(clean(a_["label"]), st["cell"]), Paragraph(clean(f"{Decimal(a_['value']).quantize(Decimal('0.01'))}"), st["cellr"]), Paragraph(clean(a_.get("period_end") or ""), st["cellr"]), Paragraph(str(a_["evidence_id"]), st["cellr"])])  # fmt: skip
+        out.append(_table(rows, [W - 100 * mm, 30 * mm, 36 * mm, 34 * mm]))
+    entered = [("Sourced input", x) for x in led["sourced_inputs"]] + [
+        ("User assumption", x) for x in led["user_assumptions"]
+    ]
+    if entered:
+        rows = [_hdr(st, "Kind", "Input", "Value", "As of", "Source / author", "Why", "Id")]
+        for kind, x in entered:
+            who = x["source"] if x["source_backed"] else f"{x['author']} (own assumption)"
+            label = x["label"] + (f" ({x['scenario']})" if x["scenario"] else "")
+            flag = " STALE" if x["stale"] else ""
+            rows.append([Paragraph(kind, st["small"]), Paragraph(clean(label), st["cell"]), Paragraph(_input_value(x), st["cellr"]), Paragraph(clean((x["as_of"] or "") + flag), st["small"]), Paragraph(clean(who), st["small"]), Paragraph(clean(x["rationale"] or ""), st["small"]), Paragraph(str(x["evidence_id"]), st["cellr"])])  # fmt: skip
+        out.append(
+            _table(rows, [24 * mm, 30 * mm, 18 * mm, 24 * mm, 36 * mm, W - 150 * mm, 12 * mm])
+        )
+    else:
+        out.append(Paragraph("No valuation input has been entered for this company.", st["body"]))
+    if led["capm"].get("completed"):
+        c = led["capm"]
+        out.append(Paragraph(clean(f"Derived: cost of equity {c['value']}% = {c['formula']} (evidence {c['evidence_id']}, from inputs {', '.join(map(str, c['input_ids']))}).") + " " + tag("DERIVED"), st["small"]))  # fmt: skip
+    if led["market_inputs_missing"]:
+        out.append(Paragraph(clean("Market inputs not entered (none is assumed): " + ", ".join(led["market_inputs_missing"]).lower() + "."), st["small"]))  # fmt: skip
+    for f in led["flags"]:
+        out.append(Paragraph(clean("Flag: " + f + "."), st["small"]))
+    if led["derived_outputs"]:
+        rows = [
+            _hdr(
+                st,
+                "Derived output",
+                "Justified P/B",
+                "Value / share",
+                "Rests on evidence",
+                right_from=1,
+            )
+        ]
+        for o in led["derived_outputs"]:
+            rows.append([Paragraph(o["scenario"].capitalize(), st["cellb"]), Paragraph(f"{f2(o['justified_pb'])}x" if o.get("justified_pb") else "n/a", st["cellr"]), Paragraph(f"Rs. {o['value_per_share']}" if o.get("value_per_share") else "n/a", st["cellr"]), Paragraph(", ".join(map(str, o["evidence_ids"])), st["small"])])  # fmt: skip
+        out.append(_table(rows, [28 * mm, 30 * mm, 34 * mm, W - 92 * mm]))
+    out.append(
+        Paragraph(
+            clean("How to enter or change an input: " + led["how_to_enter"] + "."), st["small"]
+        )
+    )
     return out
 
 

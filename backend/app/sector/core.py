@@ -26,6 +26,22 @@ TWO_PLACES = Decimal("0.01")
 
 
 @dataclass(frozen=True)
+class Traits:
+    """What the business looks like, from stored evidence (never from performance).
+
+    Used to order peers by how similar the BUSINESS is. Returns, growth and margins are deliberately
+    not traits: choosing peers by how well they performed would make every comparison flatter or
+    harsh by construction.
+    """
+
+    segments: frozenset[str] = frozenset()  # words of the reported segment names
+    label: str | None = None  # the data provider's industry label
+    goods_business: bool | None = None  # a goods company (cost of goods is material) or services
+    employee_cost_ratio: Decimal | None = None  # employee cost / revenue, percent
+    asset_turnover: Decimal | None = None  # total income / average assets
+
+
+@dataclass(frozen=True)
 class Candidate:
     company_id: str
     name: str
@@ -33,6 +49,7 @@ class Candidate:
     industry_code: str | None
     profile: str  # BANK | NONFIN
     size: Decimal | None  # latest annual total income, in rupees
+    traits: Traits | None = None
 
 
 @dataclass(frozen=True)
@@ -42,6 +59,10 @@ class PeerPick:
     rank: int
     size_ratio: Decimal | None
     reason: str
+    similarity: Decimal | None = (
+        None  # 0..1 business similarity, None when no trait could be compared
+    )
+    similarity_parts: tuple[str, ...] = ()  # which traits were compared
 
 
 # Industries whose companies do the same business under the same statement format. Everything
@@ -50,6 +71,56 @@ PEER_GROUPS: dict[str, str] = {
     "private_sector_bank": "banks",
     "public_sector_bank": "banks",
 }
+
+
+MIN_TRAITS = (
+    3  # a candidate is excluded for dissimilarity only when at least this many traits compare
+)
+DISSIMILAR_BELOW = 0.30
+SIMILARITY_WEIGHT = 0.5  # share of the ordering decided by business similarity (the rest is size)
+SIZE_SPAN = math.log(10)  # a tenfold difference in size counts as maximally different
+_GENERIC_WORDS = frozenset(
+    (
+        "segment segments business others other unallocated and the of total "
+        "services service operations"
+    ).split()
+)
+
+
+def segment_words(names: list[str]) -> frozenset[str]:
+    """Distinctive words of the segment names ("Retail Banking" -> retail, banking)."""
+    words: set[str] = set()
+    for name in names:
+        for w in "".join(c if c.isalnum() else " " for c in name.lower()).split():
+            if w not in _GENERIC_WORDS and len(w) > 2:
+                words.add(w)
+    return frozenset(words)
+
+
+def similarity(a: Traits | None, b: Traits | None) -> tuple[float | None, tuple[str, ...]]:
+    """Business similarity 0..1 over the traits both have, and which traits were compared."""
+    if a is None or b is None:
+        return None, ()
+    parts: list[tuple[str, float, float]] = []  # (name, score, weight)
+    if len(a.segments) >= 2 and len(b.segments) >= 2:
+        union = a.segments | b.segments
+        parts.append(("segments", len(a.segments & b.segments) / len(union), 3.0))
+    if a.label and b.label:
+        parts.append(("industry label", 1.0 if a.label == b.label else 0.0, 2.0))
+    if a.goods_business is not None and b.goods_business is not None:
+        parts.append(
+            ("goods or services", 1.0 if a.goods_business == b.goods_business else 0.0, 2.0)
+        )
+    if a.employee_cost_ratio is not None and b.employee_cost_ratio is not None:
+        gap = abs(float(a.employee_cost_ratio) - float(b.employee_cost_ratio))
+        parts.append(("employee cost share", max(0.0, 1.0 - gap / 30.0), 1.0))
+    if a.asset_turnover and b.asset_turnover and a.asset_turnover > 0 and b.asset_turnover > 0:
+        gap = abs(math.log(float(a.asset_turnover / b.asset_turnover)))
+        parts.append(("capital intensity", max(0.0, 1.0 - gap / 1.5), 1.0))
+    if not parts:
+        return None, ()
+    total = sum(w for _, _, w in parts)
+    return sum(s * w for _, s, w in parts) / total, tuple(n for n, _, _ in parts)
 
 
 def peer_group(industry_code: str | None) -> str | None:
@@ -68,7 +139,7 @@ def select_peers(
     rejected: list[tuple[Candidate, str]] = []
     if not subject.sector_code:
         return [], [(c, "the company has no sector assigned") for c in pool if c != subject]
-    scored: list[tuple[tuple, Candidate, str, Decimal | None]] = []
+    scored: list[tuple[tuple, Candidate, str, Decimal | None, tuple]] = []
     for c in pool:
         if c.company_id == subject.company_id:
             continue
@@ -92,17 +163,38 @@ def select_peers(
         if c.size and subject.size and c.size > 0 and subject.size > 0:
             ratio = (c.size / subject.size).quantize(TWO_PLACES)
             distance = abs(math.log(float(c.size / subject.size)))
-        scored.append(((0 if tier == "SAME_INDUSTRY" else 1, distance, c.name), c, tier, ratio))
+        sim, parts = similarity(subject.traits, c.traits)
+        if sim is not None and len(parts) >= MIN_TRAITS and sim < DISSIMILAR_BELOW:
+            rejected.append(
+                (c, f"the business is too different (similarity {sim:.2f} on {', '.join(parts)})")
+            )
+            continue
+        if sim is None:
+            order = distance  # no trait to compare: size alone, as before
+        else:
+            size_part = min(1.0, distance / SIZE_SPAN) if distance != math.inf else 1.0
+            order = SIMILARITY_WEIGHT * (1.0 - sim) + (1.0 - SIMILARITY_WEIGHT) * size_part
+        scored.append(
+            (
+                (0 if tier == "SAME_INDUSTRY" else 1, order, c.name),
+                c,
+                tier,
+                ratio,
+                (Decimal(str(round(sim, 2))) if sim is not None else None, parts),
+            )
+        )
     scored.sort(key=lambda t: t[0])
     picks = []
-    for i, (_key, c, tier, ratio) in enumerate(scored[:max_peers], start=1):
+    for i, (_key, c, tier, ratio, (sim, parts)) in enumerate(scored[:max_peers], start=1):
         why = "same industry" if tier == "SAME_INDUSTRY" else "same sector, different industry"
         if ratio is not None:
             why += f"; {ratio}x the company's size (annual total income)"
         else:
             why += "; size unknown, so ranked last within its tier"
-        picks.append(PeerPick(c, tier, i, ratio, why))
-    for _key, c, _tier, _ratio in scored[max_peers:]:
+        if sim is not None:
+            why += f"; business similarity {sim} ({', '.join(parts)})"
+        picks.append(PeerPick(c, tier, i, ratio, why, sim, parts))
+    for _key, c, _tier, _ratio, _sim in scored[max_peers:]:
         rejected.append((c, f"beyond the {max_peers} closest peers"))
     return picks, rejected
 
@@ -188,6 +280,9 @@ def score(
 
 __all__ = [
     "Candidate",
+    "Traits",
+    "similarity",
+    "segment_words",
     "HIGHER",
     "LOWER",
     "MAX_PEERS",

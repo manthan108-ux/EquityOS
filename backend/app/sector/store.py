@@ -21,6 +21,7 @@ from app.evidence.core import canon
 from app.evidence.ledger import ENGINE_PROVIDER
 from app.models import (
     Company,
+    CompanyClassification,
     EvidenceClass,
     EvidenceLink,
     EvidenceRecord,
@@ -32,9 +33,11 @@ from app.models import (
 from app.sector.core import (
     HIGHER,
     Candidate,
+    Traits,
     favourable_share,
     mean,
     median,
+    segment_words,
 )
 from app.sector.profiles import MIN_PEERS, ScoredMetric
 
@@ -166,6 +169,39 @@ def comparable_from_for(session: Session, company_id: uuid.UUID) -> date | None:
     return None
 
 
+def _latest_value(session: Session, rows, metric: str) -> Decimal | None:
+    """The latest annual value of a metric among the resolved rows (consolidated preferred)."""
+    hits = [r for r in rows if r.metric == metric and r.period_type == "ANNUAL"]
+    if not hits:
+        return None
+    best = max(hits, key=lambda r: (r.period_end, r.basis == "CONSOLIDATED"))
+    record = session.get(EvidenceRecord, best.selected_evidence_id)
+    return record.value if record else None
+
+
+def traits_for(session: Session, company: Company, rows) -> Traits:
+    """Business traits from stored evidence: segments, label, cost structure, capital use."""
+    seg_rows = [r for r in rows if r.metric == "SEGMENT.segment_revenue" and r.dimension]
+    names: list[str] = []
+    if seg_rows:
+        latest = max(r.period_end for r in seg_rows)
+        names = sorted({r.dimension for r in seg_rows if r.period_end == latest})
+    classification = session.get(CompanyClassification, (company.id, "UPSTOX_SECTOR"))
+    label = (
+        classification.label.strip().lower() if classification and classification.label else None
+    )
+    if label in ("dvr", "miscellaneous", "others", "other", "na", "n/a"):
+        label = None
+    goods = True if any(r.metric == "INCOME.gross_profit" for r in rows) else None
+    return Traits(
+        segments=segment_words(names),
+        label=label,
+        goods_business=goods,
+        employee_cost_ratio=_latest_value(session, rows, "MARGIN.employee_cost_ratio"),
+        asset_turnover=_latest_value(session, rows, "EFFICIENCY.asset_turnover"),
+    )
+
+
 def candidate_for(session: Session, company: Company) -> Candidate | None:
     """A company as a peer candidate, or None if it has no calculated metrics at all."""
     index_rows = list(
@@ -199,6 +235,7 @@ def candidate_for(session: Session, company: Company) -> Candidate | None:
         industry_code=company.industry.code if company.industry else None,
         profile="BANK" if bank else "NONFIN",
         size=size,
+        traits=traits_for(session, company, index_rows),
     )
 
 

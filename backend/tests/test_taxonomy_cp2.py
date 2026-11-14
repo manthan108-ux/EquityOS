@@ -205,3 +205,21 @@ def test_every_new_item_has_a_unique_key_per_statement():
     assert all(statement in {INCOME, BS, CF, tx.RATIOS} for statement, _ in seen)
     new_keys = {"provisions", "lease_liabilities", "proceeds_from_long_term_borrowings", "goodwill"}
     assert new_keys <= {k for _, k in seen}
+
+
+def test_buyback_and_acquisition_lines_in_the_cash_flow_are_recognised():
+    from app.docintel import taxonomy as t
+
+    def key(label):
+        return t.match_label(label, "CASH_FLOW", t.Context())
+
+    assert key("Payment for buy-back of shares") == "buyback_of_shares"
+    assert key("Buy back of equity shares (including tax)") == "buyback_of_shares"
+    assert (
+        key("Acquisition of subsidiaries, net of cash acquired")
+        == "acquisition_of_subsidiaries_and_businesses"
+    )
+    assert (
+        key("Payments for acquisition of business") == "acquisition_of_subsidiaries_and_businesses"
+    )
+    assert key("Purchase of Investments") == "purchase_of_investments"
