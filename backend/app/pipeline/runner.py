@@ -430,6 +430,7 @@ def execute(
     on_company: Callable[[CompanyResult], None] | None = None,
     close_sessions: bool = True,
     isolation: str = "thread",
+    stop: Callable[[], bool] | None = None,
 ) -> RunResult:
     """Execute a claimed run. Pause / cancel are honoured between stages; resume re-claims it."""
     from concurrent.futures import ThreadPoolExecutor
@@ -442,6 +443,8 @@ def execute(
         workers = workers or int((run.options or {}).get("workers") or 1)
         timeouts = (run.options or {}).get("timeouts") or None
         child_runners = (run.options or {}).get("child_runners") or None
+        refresh_peers = bool((run.options or {}).get("refresh_peers", True))
+        refresh_prices = bool((run.options or {}).get("refresh_prices", True))
         companies = pick_companies(s0, run)
         ids = [c.id for c in companies]
         st.event(
@@ -450,6 +453,9 @@ def execute(
     finally:
         if close_sessions:
             s0.close()
+    price_refresh = None
+    if refresh_prices and client is not None:
+        price_refresh = _refresh_prices(session_factory, run_id, client, close_sessions)
     gates = Gates(workers)
     stop_flag = {"value": ""}
     lock = threading.Lock()
@@ -457,6 +463,9 @@ def execute(
 
     def stopping() -> bool:
         if stop_flag["value"]:
+            return True
+        if stop is not None and stop():  # the worker was asked to shut down: pause
+            stop_flag["value"] = "PAUSE"
             return True
         control = _control(session_factory, run_id, close_sessions)
         if control in ("PAUSE", "CANCEL"):
@@ -530,11 +539,18 @@ def execute(
     finally:
         beat_stop.set()
 
+    peer_refresh = None
+    if refresh_peers and not stop_flag["value"]:
+        peer_refresh = _refresh_peers(session_factory, run_id, close_sessions)
     s1 = session_factory()
     try:
         run = s1.get(PipelineRun, run_id)
         control = stop_flag["value"] or run.control
         summary = summarise(results)
+        if peer_refresh:
+            summary["peer_refresh"] = peer_refresh
+        if price_refresh:
+            summary["price_refresh"] = price_refresh
         run.summary = {**(run.summary or {}), **summary}
         run.heartbeat_at = datetime.now(UTC)
         if control == "CANCEL":
@@ -551,6 +567,75 @@ def execute(
     finally:
         if close_sessions:
             s1.close()
+
+
+def _refresh_prices(session_factory, run_id: int, client, close_sessions: bool) -> dict | None:
+    """Before the companies: bring end-of-day prices up to date (one run-level step).
+
+    Only fetches when the newest stored price is behind; a holiday or an unpublished file is not an
+    error. The result is recorded as an event and in the run summary.
+    """
+    from app.pipeline import prices
+
+    s = session_factory()
+    try:
+        res = prices.refresh_prices(s, client)
+        if res.skipped:
+            return None
+        bad = bool(res.failed)
+        st.event(
+            s,
+            run_id,
+            None,
+            None,
+            FAILED if bad else SUCCEEDED,
+            f"price refresh: {len(res.days_stored)} day(s) stored ({res.rows_stored} prices), "
+            f"newest {res.latest_after}"
+            + (f", no file for {len(res.no_file)} day(s)" if res.no_file else "")
+            + (f"; stopped: {next(iter(res.failed.values()))}" if bad else ""),
+        )
+        return res.as_dict()
+    except Exception:  # noqa: BLE001 - prices must never fail a run
+        log.exception("price refresh failed")
+        s.rollback()
+        return None
+    finally:
+        if close_sessions:
+            s.close()
+
+
+def _refresh_peers(session_factory, run_id: int, close_sessions: bool) -> dict | None:
+    """After the companies: bring stale peer ranks, medians and scores up to date.
+
+    Companies other than the run's own can be affected (their peers just refreshed), so this looks
+    at the whole store but only touches evidence that points at replaced inputs.
+    """
+    from app.pipeline import peers
+
+    s = session_factory()
+    try:
+        res = peers.refresh_stale_peers(s)
+        if not res["stale"]:
+            return None
+        bad = len(res["failed"])
+        st.event(
+            s,
+            run_id,
+            None,
+            None,
+            FAILED if bad else SUCCEEDED,
+            f"peer refresh: {len(res['refreshed'])} of {res['stale']} companies refreshed"
+            + (f", {bad} failed" if bad else "")
+            + (f", {res['remaining']} still stale" if res["remaining"] else ""),
+        )
+        return {k: (len(v) if isinstance(v, (list, dict)) else v) for k, v in res.items()}
+    except Exception:  # noqa: BLE001 - housekeeping must never fail a run
+        log.exception("peer refresh failed")
+        s.rollback()
+        return None
+    finally:
+        if close_sessions:
+            s.close()
 
 
 def summarise(results: list[CompanyResult]) -> dict:

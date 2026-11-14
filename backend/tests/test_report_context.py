@@ -105,7 +105,7 @@ def test_the_contents_page_lists_every_section_with_page_numbers():
     for title in (
         "Industry overview",
         "Company and management profile",
-        "Growth versus the industry",
+        "Growth versus the peer group",
         "Business cyclicality",
         "Peer benchmarking",
         "Valuation analysis",
@@ -295,7 +295,7 @@ def test_relative_price_return_is_the_difference_to_the_peer_median(seeded):  # 
 
 def test_the_growth_section_discloses_definitions_and_the_peer_set_proxy():
     flat = _flat(_axis())
-    assert "5. Growth versus the industry: CAGR and growth alpha" in flat
+    assert "5. Growth versus the peer group: CAGR" in flat
     assert "EquityOS has no official industry statistics" in flat
     assert "CAGR = (ending value / starting value)" in flat and "not investment alpha" in flat
     assert "Relative price return (defined separately)" in flat
@@ -498,8 +498,8 @@ def test_a_section_with_nothing_to_show_is_omitted_and_the_contents_follow(seede
     doc = pymupdf.open(stream=data, filetype="pdf")
     flat = " ".join(p.get_text() for p in doc).replace(chr(10), " ")
     toc = doc[1].get_text().replace(chr(10), " ")
-    assert "Growth versus the industry" not in flat and "Management commentary" not in flat
-    assert "Growth versus the industry" not in toc and "Management commentary" not in toc
+    assert "Growth versus the peer group" not in flat and "Management commentary" not in flat
+    assert "Growth versus the peer group" not in toc and "Management commentary" not in toc
     # the numbering closes up: the section after cyclicality is now 6, not 7 (two sections left out)
     assert re.search(r"6\. Peer benchmarking", toc) and re.search(r"8. Investment thesis", toc)
     # nothing is left behind: no page is blank and no heading is stranded at the foot of a page
@@ -521,7 +521,7 @@ def test_partial_sections_are_kept(seeded):  # noqa: F811
     a["growth"]["profit"] = {"available": False, "reason": "undefined"}
     a["growth"]["price_return"] = []
     flat = _flat(c)
-    assert "Growth versus the industry" in flat  # revenue growth is still real
+    assert "Growth versus the peer group" in flat  # revenue growth is still real
     assert "Net profit" in flat and "undefined" in flat  # the gap is disclosed where it is
 
 

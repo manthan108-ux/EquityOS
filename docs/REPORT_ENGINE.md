@@ -197,3 +197,89 @@ Readiness messages: when the chosen basis (default consolidated) stopped reporti
 is current, the reason names both ("the consolidated figures were last reported for 31 Mar 2018 ...
 standalone figures exist for 31 Mar 2026") and the company is ASSISTED, not BLOCKED; a specific stale
 reason is never replaced by the generic "document not processed" text.
+
+## Growth and profitability (CP3, 2026-11-14)
+
+`research/profitability.py` builds `analysis["profitability"]` from stored evidence on the one resolved
+accounting basis (never mixing consolidated and standalone).
+
+- **Growth** (non-financials: revenue, gross profit, EBITDA, EBIT, net profit; banks: total income, net
+  interest income, operating profit before provisions, net profit): annual series, year-on-year growth,
+  CAGR over the full span and over exactly three years when four year ends exist. Each figure carries its
+  evidence ids. A CAGR needs a positive start and end; otherwise the reason is shown. A missing year gives
+  no year-on-year figure.
+- **Margins**: gross, EBITDA, EBIT, net (banks: PPOP margin, net profit to income) with the change in
+  basis points, EXPANDING / CONTRACTING / STABLE (within 0.5 percentage points over the window is
+  STABLE), years up and down, peak and trough, and rule-based observations citing evidence.
+- **Margin bridge** (non-financials): per-line change as a share of revenue with an explicit "not
+  itemised" remainder; withheld when fewer than three cost lines exist for two years.
+- **Peer comparison**: the company's CAGR and latest margin against the peer-group median over the same
+  fiscal years and basis, at least three peers. The benchmark is labelled "peer group" everywhere. No
+  industry statistics are held, so there is no industry CAGR and no growth alpha; the difference vs the
+  peer group is shown in percentage points.
+- New calculations: `INCOME.gross_profit`, `MARGIN.gross_margin`, `GROWTH.ebitda_yoy`, `GROWTH.ebit_yoy`,
+  `GROWTH.gross_profit_yoy`, 3-year CAGRs for revenue, EBITDA and gross profit.
+- The PDF section "Growth and profitability" is omitted when nothing is available. The older section was
+  renamed "Growth versus the peer group: CAGR".
+
+Related corrections made while validating: a subsidiary's statements printed in a parent's annual report
+(e.g. a "... Cerium Private Limited" page) are no longer attributed to the parent, and sources that differ
+by a factor of ten or more are a conflict rather than being settled by authority.
+
+## Cash flow and earnings quality (CP4, 2026-11-14)
+
+`research/cashflow.py` builds `analysis["cashflow"]` for non-financial companies on the one resolved
+accounting basis (banks are excluded, with the reason shown: a bank's operating cash flow is dominated by
+deposits and advances).
+
+- **Operating cash flow**: annual series, year-on-year growth, CAGR.
+- **CFO / PAT** by year and cumulatively over the years where both exist, read as STRONG (>= 1.0),
+  ADEQUATE (>= 0.8), WEAK (>= 0.5) or POOR; **cash conversion** = CFO / EBITDA; CFO margin.
+- **Free cash flow** = CFO + capital expenditure (stored as an outflow); calculated only where the cash
+  flow statement prints a capex line. FCF margin and FCF / PAT. No estimate is made where capex is not
+  printed; the reason is listed instead.
+- **Capital expenditure**: spend, spend / revenue, / CFO and / depreciation (above 1x grows the asset base).
+- **Accruals** = PAT - CFO; accrual ratio = accruals / average total assets (closing assets when no opening
+  balance sheet exists): cash-backed (<= 0), normal (< 5%), elevated (< 10%), high.
+- **Divergences**: years where profit was positive with zero/negative cash, cash under half of profit,
+  profit rising while cash fell (and the reverse), each citing its evidence; plus the working-capital and
+  non-cash lines the cash flow statement itemises for the latest year, labelled as not necessarily summing
+  to the gap.
+- **Peer comparison**: CFO/PAT, CFO margin, FCF margin and capex/revenue against the peer-group median
+  (>= 3 peers, same fiscal year and basis).
+- New calculations: `CASH.cfo_margin`, `CASH.cfo_to_ebitda`, `CASH.fcf_margin`, `CASH.fcf_to_net_profit`,
+  `CASH.capex_to_revenue`, `CASH.capex_to_cfo`, `CASH.capex_to_depreciation`, `ACCRUAL.accruals`,
+  `ACCRUAL.accrual_ratio`.
+- The PDF section "Cash flow and earnings quality" is omitted when nothing is available.
+
+Document reading: capital-expenditure lines were being withheld because the cash-flow statement had no
+arithmetic check that could verify the column. A check was added (operating cash flow = cash generated
+from operations - income taxes paid) and cash-balance label variants were added to the taxonomy.
+
+## Working capital and financial health (CP5, 2026-11-14)
+
+`research/health.py` builds `analysis["health"]` on the one resolved accounting basis.
+
+- **Working capital** (non-financials): receivable days (closing trade receivables / revenue x 365),
+  inventory and payable days (on cost of goods = revenue - gross profit), the operating cycle
+  (inventory + receivable days) and the cash conversion cycle (operating cycle - payable days), with the
+  change in days and a rule-based reading (within 5 days is stable).
+- **Leverage and liquidity**: debt-to-equity, net debt (borrowings - cash - other bank balances - current
+  investments; negative = net cash), net debt/EBITDA, borrowings/EBITDA, interest cover (EBIT and EBITDA over
+  finance costs), current and quick ratios, with stated-threshold readings.
+- **Repayment**: years of operating cash flow needed to repay borrowings, cash against current borrowings,
+  operating cash flow against borrowings.
+- **Returns and DuPont** (banks too): ROE, ROCE (non-banks), ROA; ROE = net margin x asset turnover x
+  equity multiplier on average balances, product-checked against the stored ROE, the leading driver of the
+  change by log decomposition, and a five-step form where EBIT is stored.
+- Peer-group comparison (>= 3 peers, same year and basis). Banks get returns and DuPont only.
+- New calculations: `WORKING_CAPITAL.*` days and cycles, `LIQUIDITY.quick_ratio`,
+  `LIQUIDITY.cash_to_short_term_debt`, `LIQUIDITY.cfo_to_debt`, `LEVERAGE.total_borrowings` (one line, or
+  non-current + current), `LEVERAGE.net_debt`, `net_debt_to_equity`, `net_debt_to_ebitda`, `debt_to_ebitda`,
+  `RATIO.ebitda_interest_cover`.
+- **Materiality gate**: gross profit (and so inventory days, payable days and the cycles) needs cost of goods
+  of at least 10% of revenue. A services company's small stock in trade (Wipro: 0.7%) produced absurd
+  figures (a cash conversion cycle of -6,600 days) before this gate.
+- **Withdrawal rule**: when a metric's condition stops being met for a period, the earlier engine-made value
+  is withdrawn with the reason, so a tightened definition cannot leave stale figures live. The calculate
+  fingerprint now covers the whole catalogue definition.

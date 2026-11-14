@@ -28,6 +28,7 @@ from bs4 import BeautifulSoup
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.acquisition import annual_reports, doc_coverage
 from app.acquisition.http import FetchResult, PoliteClient
 from app.docintel.entity import company_names
 from app.models import Company, Document, EvidenceFetchRun
@@ -62,7 +63,12 @@ KIND_TO_DOC_TYPE = {
     "investor_presentation": "investor_presentation",
 }
 # How many of each to keep: the newest only. A results PDF is small, an annual report is large.
-LIMITS = {"annual_report": 2, "financial_results": 4, "investor_presentation": 1}
+LIMITS = {
+    "annual_report": annual_reports.TARGET_YEARS,
+    "financial_results": 4,
+    "investor_presentation": 1,
+}
+SEARCH_VERSION = 2  # runs before the deeper annual-report search do not count as recent
 MAX_LANDING_PAGES = 6
 _PDF = re.compile(r"\.pdf(?:$|[?/])", re.I)
 
@@ -104,6 +110,7 @@ class FetchReport:
     candidates: int = 0
     outcomes: list[Outcome] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
+    deep: dict | None = None  # what the deeper annual-report search did
 
     @property
     def downloaded(self) -> int:
@@ -117,6 +124,8 @@ class FetchReport:
             "downloaded": self.downloaded,
             "outcomes": [o.as_dict() for o in self.outcomes],
             "notes": self.notes,
+            "deep": self.deep,
+            "search_version": SEARCH_VERSION,
         }
 
 
@@ -213,7 +222,7 @@ def _candidates_from(links: list[IrLink]) -> tuple[list[Candidate], list[IrLink]
             direct.append(
                 Candidate(link.url, link.text, link.kind, link.period_hint, link.found_on)
             )
-        else:
+        elif not annual_reports.is_noise(link.url):  # not a blog post or news item
             pages.append(link)
     return direct, pages
 
@@ -228,7 +237,12 @@ def _recent_run(session: Session, company_id) -> EvidenceFetchRun | None:
         .order_by(EvidenceFetchRun.started_at.desc())
         .limit(1)
     )
-    if run and run.finished_at and datetime.now(UTC) - run.finished_at < COOL_DOWN:
+    if (
+        run
+        and run.finished_at
+        and datetime.now(UTC) - run.finished_at < COOL_DOWN
+        and (run.detail or {}).get("search_version") == SEARCH_VERSION
+    ):
         return run
     return None
 
@@ -291,10 +305,12 @@ def fetch_evidence(
     direct, pages = _candidates_from(links)
 
     # Annual-report / results landing pages usually hold the actual files one click deeper.
+    refused_pages: dict[str, str] = {}
     for page in sorted(pages, key=lambda p: p.url)[:MAX_LANDING_PAGES]:
         fetched = client.fetch(page.url, source="COMPANY_IR", validate=validate_html)
         if not fetched.ok:
             report.notes.append(f"page {page.url} not retrieved - {_site_failure(fetched)}")
+            refused_pages[page.url] = _site_failure(fetched)
             continue
         direct += landing_candidates(fetched.text, page.url, page.kind)
 
@@ -311,6 +327,49 @@ def fetch_evidence(
             )
         else:
             own.append(cand)
+    # Annual reports: when the usual pages do not give four years, search deeper (archive pages,
+    # per-year links, the sitemap). Refusals are recorded as reasons, never worked around.
+    held_years = {
+        fy
+        for fy in (
+            doc_coverage.fiscal_year_of(d)
+            for d in session.scalars(
+                select(Document).where(
+                    Document.company_id == company.id, Document.doc_type == "annual_report"
+                )
+            )
+        )
+        if fy
+    }
+    found_years = {
+        c.period_hint for c in own if c.kind == "annual_report" and c.period_hint
+    } | held_years
+    if len(found_years) < annual_reports.TARGET_YEARS:
+        deep = annual_reports.discover(client, [u for u in seeds if u], refused=refused_pages)
+        known = {c.url for c in direct}  # the usual pages already handled these
+        for f in deep.found:
+            if f.url in known:
+                continue
+            other = names_group_entity(f.text, names)
+            if other:
+                report.outcomes.append(
+                    Outcome(
+                        f.url, "annual_report", f.period_hint, "SKIPPED", f"labelled for {other}"
+                    )
+                )
+                continue
+            own.append(
+                Candidate(f.url, f.text, "annual_report", f.period_hint, f.found_on, f.inherited)
+            )
+        report.candidates = len({c.url for c in own})
+        report.notes.extend(f"annual-report search: {b}" for b in deep.blocked[:6])
+        report.notes.extend(deep.notes)
+        report.deep = {
+            "pages": deep.pages_fetched,
+            "sitemap_urls": deep.sitemap_urls,
+            "found": len(deep.found),
+            "blocked": deep.blocked[:6],
+        }
     wanted = select_candidates(own)
     if not wanted:
         report.status = NOTHING_FOUND
@@ -397,18 +456,20 @@ def fetch_evidence(
 def _record(
     session: Session, company: Company, report: FetchReport, started: datetime, finished: datetime
 ) -> FetchReport:
-    session.add(
-        EvidenceFetchRun(
-            company_id=company.id,
-            started_at=started,
-            finished_at=finished,
-            status=report.status,
-            website=report.website,
-            candidates_found=report.candidates,
-            downloaded=report.downloaded,
-            detail=report.as_dict(),
-        )
+    run = EvidenceFetchRun(
+        company_id=company.id,
+        started_at=started,
+        finished_at=finished,
+        status=report.status,
+        website=report.website,
+        candidates_found=report.candidates,
+        downloaded=report.downloaded,
+        detail=report.as_dict(),
     )
+    session.add(run)
+    session.flush()
+    # What is held and what is missing, with the reason, saved beside the run that saw it.
+    run.detail = {**run.detail, "coverage": doc_coverage.company_coverage(session, company)}
     session.commit()
     return report
 

@@ -25,6 +25,7 @@ from sqlalchemy.orm import Session
 
 from app.core.storage import StoragePathError, resolve_inside
 from app.core.text import normalize_text
+from app.docintel import basis as basis_inference
 from app.docintel import kpi, operating, taxonomy, validate
 from app.docintel.association import build_issuer_index
 from app.docintel.disclosures import extract_shareholding, find_group_entities, find_sections
@@ -700,6 +701,15 @@ def _extract(
             )
     blocks = inherit_context(merge_continuations(blocks))
     apply_overrides(blocks, overrides)
+    # a table that states no basis may still be proven by a figure it shares with one that does
+    for note in basis_inference.infer_missing_basis(blocks):
+        issues.append(
+            {
+                "page": note["page"],
+                "code": "BASIS_INFERRED",
+                "detail": f"{note['statement']}: {note['basis'].lower()} ({note['why']})"[:300],
+            }
+        )
     if llm_router is not None:
         from app.llm.headers import resolve_headers
 

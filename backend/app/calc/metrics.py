@@ -9,7 +9,7 @@ blocked, or fail a precondition becomes a recorded GAP; nothing is estimated and
 import operator
 import uuid
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 
 from sqlalchemy import select
@@ -168,6 +168,19 @@ def _try_variant(
 
 
 def _precondition_failure(metric: Metric, found: dict[str, EvidenceRecord]) -> str | None:
+    if metric.goods_share_min is not None:
+        revenue = found.get("revenue")
+        goods = [found[a] for a in ("materials", "purchases", "inventories") if a in found]
+        if revenue is not None and revenue.value and goods:
+            share = sum((g.value for g in goods), Decimal(0)) / revenue.value
+            if share < Decimal(str(metric.goods_share_min)):
+                return (
+                    f"cost of goods is {share * 100:.1f}% of revenue; below "
+                    f"{Decimal(str(metric.goods_share_min)) * 100:.0f}% the goods lines "
+                    "are incidental "
+                    "(for example a services company's small stock in trade), so a gross "
+                    "profit, inventory days and payable days would describe nothing"
+                )
     for alias, op, number in metric.requires:
         record = found.get(alias)
         if record is None or record.value is None:
@@ -237,6 +250,34 @@ def _drop_redundant_ttm_gaps(result: FundamentalsResult) -> None:
     ]
 
 
+def _withdraw_unsupported(
+    session, company_id, inputs, metric, end, ptype, basis, reason, now
+) -> None:
+    """An earlier engine-made value for a period whose conditions are no longer met is withdrawn.
+
+    A definition can tighten (a materiality gate, a positive-denominator rule) after a value was
+    stored; leaving that value live would keep a figure the metric no longer stands behind.
+    """
+    label = metric.period_label or ptype
+    for record in session.scalars(
+        select(EvidenceRecord).where(
+            EvidenceRecord.company_id == company_id,
+            EvidenceRecord.metric == metric.code,
+            EvidenceRecord.period_end == end,
+            EvidenceRecord.period_type == label,
+            EvidenceRecord.basis == basis,
+            EvidenceRecord.status == EvidenceStatus.ACTIVE,
+            EvidenceRecord.created_by == CREATED_BY,
+        )
+    ):
+        record.status = EvidenceStatus.WITHDRAWN
+        record.status_reason = f"conditions no longer met: {reason}"[:200]
+        record.status_changed_at = now or datetime.now(UTC)
+        inputs.usable.pop((metric.code, end, ptype, basis), None)
+        inputs.blocked.add((metric.code, end, ptype, basis))
+    session.flush()
+
+
 def _calculate(
     session: Session,
     company_id: uuid.UUID,
@@ -262,6 +303,9 @@ def _calculate(
         failure = _precondition_failure(metric, found)
         if failure:
             result.gaps.append(Gap(metric.code, end, ptype, basis, failure))
+            _withdraw_unsupported(
+                session, company_id, inputs, metric, end, ptype, basis, failure, now
+            )
             return
         notes = [variant.note] if variant.note else []
         if (

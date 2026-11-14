@@ -57,6 +57,41 @@ def company_names(session: Session, company_id: uuid.UUID) -> set[str]:
     return names
 
 
+_SUFFIXES = frozenset({"limited", "ltd", "inc", "llc", "gmbh", "plc", "pte", "bv", "ag"})
+# words that end the entity's own name before a statement title or a connective starts
+_NOT_PART_OF_A_NAME = _SUFFIXES | {
+    "and", "its", "the", "for", "of", "as", "at", "on", "in", "group", "subsidiaries",
+    "consolidated", "standalone", "statement", "statements", "balance", "sheet", "profit", "loss",
+    "financial", "results", "annual", "report", "notes", "cash", "flow", "flows", "equity",
+    "changes",
+}  # fmt: skip
+
+
+def names_longer_entity(text: str, names: set[str]) -> bool:
+    """True when the company's name appears only as the start of a LONGER entity's name.
+
+    "TECH MAHINDRA CERIUM PRIVATE LIMITED" contains "tech mahindra" but is a different company: a
+    subsidiary whose accounts are printed in the parent's annual report. A name followed directly by
+    "Limited" is the company itself; a name followed by other words and then a legal suffix is
+    another entity, unless those words are part of one of the company's own names.
+    """
+    tokens = normalize_text(text).split()
+    for name in sorted(names, key=len, reverse=True):
+        needle = name.split()
+        for i in range(len(tokens) - len(needle) + 1):
+            if tokens[i : i + len(needle)] != needle:
+                continue
+            j, extra = i + len(needle), []
+            while j < len(tokens) and len(extra) < 5 and tokens[j] not in _NOT_PART_OF_A_NAME:
+                extra.append(tokens[j])
+                j += 1
+            if extra and j < len(tokens) and tokens[j] in _SUFFIXES:
+                full = " ".join([*needle, *extra])
+                if full not in names and full.removesuffix(" private") not in names:
+                    return True
+    return False
+
+
 def _mentions(text: str, names: set[str]) -> bool:
     padded = f" {normalize_text(text)} "
     return any(f" {name} " in padded for name in names)
@@ -149,12 +184,18 @@ def check_entity(
     if not names:
         return EntityCheck(False, "company names unknown")
     header = "\n".join(page_text.splitlines()[:HEADER_LINES])
+    if names_longer_entity(header, names):
+        return EntityCheck(
+            False, "the page header names a longer entity (a subsidiary or group company)"
+        )
     if _mentions(header, names):
         return EntityCheck(True, "page header")
     if _names_an_entity(header):
         return EntityCheck(False, "the page header names another entity, not this company")
     if first_page_text is not None:
         issuer = "\n".join(first_page_text.splitlines()[:HEADER_LINES])
+        if names_longer_entity(issuer, names):
+            return EntityCheck(False, "the document is issued by a longer-named group entity")
         if _mentions(issuer, names):
             return EntityCheck(True, "document cover")
         if _names_an_entity(issuer):

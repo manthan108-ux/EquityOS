@@ -415,6 +415,51 @@ def cmd_ocr_status(_args) -> int:
     return 1
 
 
+def cmd_reprocess(args) -> int:
+    """Re-read stored documents with the current rules; keep a result only if it is no worse.
+
+    A document whose new read would lose or change a previously promoted fact keeps its previous
+    extraction exactly as it was (nothing is overwritten or deleted).
+    """
+    from app.docintel.reprocess import (
+        FAILED,
+        IMPROVED,
+        KEPT_PREVIOUS,
+        UNCHANGED,
+        reprocess_document,
+    )
+
+    data_dir = data_root()
+    symbols = [s.strip() for s in args.symbols.split(",")]
+    totals = {IMPROVED: 0, UNCHANGED: 0, KEPT_PREVIOUS: 0, FAILED: 0}
+    with Session(get_engine()) as session:
+        for symbol in symbols:
+            company = find_company(session, symbol)
+            docs = session.scalars(
+                select(Document)
+                .join(DocumentExtraction, DocumentExtraction.document_id == Document.id)
+                .where(
+                    Document.company_id == company.id,
+                    Document.doc_type.in_(args.types.split(",")),
+                    DocumentExtraction.status == "COMPLETED",
+                    DocumentExtraction.superseded_at.is_(None),
+                )
+                .distinct()
+            ).all()
+            for doc in docs:
+                res = reprocess_document(session, doc, data_dir)
+                session.commit()
+                totals[res.status] += 1
+                print(
+                    f"{symbol:11} {doc.doc_type[:14]:14} {str(doc.financial_period or '-'):9} "
+                    f"{res.status:13} facts {res.before} -> {res.after}"
+                    f"{('  ' + res.note) if res.note else ''}",
+                    flush=True,
+                )
+    print(f"done: {totals}")
+    return 1 if totals[FAILED] else 0
+
+
 def cmd_ocr_check(_args) -> int:
     """Read a page we draw ourselves as a scan: is OCR working in THIS environment?"""
     from app.docintel.pdf import ocr_selftest
@@ -451,6 +496,9 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("facts")
     p.add_argument("--symbol", required=True)
     p.add_argument("--statement", choices=["INCOME", "BALANCE_SHEET", "CASH_FLOW"])
+    p = sub.add_parser("reprocess", help="re-read stored documents; keep only pure improvements")
+    p.add_argument("--symbols", required=True, help="comma list of company symbols")
+    p.add_argument("--types", default="annual_report,quarterly_result", help="document types")
     sub.add_parser("ocr-status")
     sub.add_parser("ocr-check", help="read a self-made scan: proves OCR works in this environment")
     p = sub.add_parser("search")
@@ -490,6 +538,7 @@ def main(argv: list[str] | None = None) -> int:
         "show": cmd_show,
         "facts": cmd_facts,
         "ocr-status": cmd_ocr_status,
+        "reprocess": cmd_reprocess,
         "ocr-check": cmd_ocr_check,
         "xbrl": cmd_xbrl,
         "storage-check": cmd_storage_check,

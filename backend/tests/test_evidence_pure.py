@@ -556,3 +556,39 @@ def test_a_conflict_between_units_is_described_as_such():
     percent = fact(2, metric="SHAREHOLDING.x", value=5, unit="percent", original_unit=None)
     r = resolve_group([shares, percent])
     assert r.status is ResolutionStatus.CONFLICT and "different units" in r.note
+
+
+# ---- a gross disagreement is not settled by authority ----------------------------------------------------
+
+
+def test_amounts_a_hundred_times_apart_are_a_conflict_not_a_win_for_the_stronger_source():
+    document = fact(id=1, value=353 * CRORE, provider="DOCUMENT_EXTRACTION", tier=2)
+    provider = fact(id=2, value=35_300 * CRORE, provider="UPSTOX_FUNDAMENTALS", tier=5)
+    result = resolve_group([document, provider])
+    assert result.status is ResolutionStatus.CONFLICT and result.selected is None
+    assert "wrong unit, scale or entity" in result.note
+
+
+def test_an_ordinary_restatement_is_still_settled_by_authority():
+    document = fact(id=1, value=1000 * CRORE, tier=2)
+    provider = fact(id=2, value=1180 * CRORE, provider="UPSTOX_FUNDAMENTALS", tier=5)  # 15% apart
+    result = resolve_group([document, provider])
+    assert result.status is ResolutionStatus.RESOLVED_BY_AUTHORITY and result.selected is document
+
+
+def test_a_factor_of_nine_is_not_called_a_scale_error():
+    document = fact(id=1, value=900 * CRORE, tier=2)
+    provider = fact(id=2, value=100 * CRORE, provider="UPSTOX_FUNDAMENTALS", tier=5)
+    assert resolve_group([document, provider]).status is ResolutionStatus.RESOLVED_BY_AUTHORITY
+
+
+def test_per_share_and_ratio_values_are_not_subject_to_the_scale_guard():
+    document = fact(id=1, value=10, unit="inr_per_share", tier=2)
+    provider = fact(id=2, value=1, unit="inr_per_share", provider="UPSTOX_FUNDAMENTALS", tier=5)
+    assert resolve_group([document, provider]).status is ResolutionStatus.RESOLVED_BY_AUTHORITY
+
+
+def test_a_zero_value_never_triggers_the_guard():
+    document = fact(id=1, value=0, tier=2)
+    provider = fact(id=2, value=500 * CRORE, provider="UPSTOX_FUNDAMENTALS", tier=5)
+    assert resolve_group([document, provider]).status is ResolutionStatus.RESOLVED_BY_AUTHORITY

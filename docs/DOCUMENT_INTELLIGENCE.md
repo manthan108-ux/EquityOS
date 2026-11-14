@@ -142,3 +142,41 @@ API (read-only): `GET /api/companies/{id}/documents`, `GET /api/documents/{id}/e
 The router uses `DOCUMENT_EXTRACTION` first for income, balance-sheet and cash-flow datasets
 (official filings outrank aggregators), then Upstox, then manual imports. Every attempt is still
 reported.
+
+## CP2: statement extraction improvements (2026-11-14)
+
+**Line-item mapping.** About 80 additional line items are mapped (`docintel/taxonomy.py`), chosen from the
+labels that most often failed to map in real pilot annual reports: income statement (other operating revenue,
+sale of products and services, subcontracting expense, other-comprehensive-income components, bank
+appropriations), balance sheet (provisions, lease liabilities, deferred tax, other financial assets and
+liabilities, loans, goodwill, other intangibles, right-of-use assets, capital work-in-progress, MSME and other
+trade payables, contingent liabilities, bills for collection) and cash flow (profit before tax, depreciation,
+finance costs, interest and dividends received, interest paid, working-capital changes, sale of fixed assets,
+purchase and sale of investments, borrowings, dividends and lease payments, bank deposit and advance
+movements). Lines that sit in both halves of a balance sheet carry their section (`current_` or `non_current_`).
+Nothing is folded into an existing key; ambiguous labels ("Revenue", "Others", "Total") stay unmapped. A roman
+numeral prefix ("I Revenue from operations", "III Total income") is now removed from a label.
+
+**Accounting basis.** A value is promoted only when its basis is stated. Where a table states none, the basis
+can be proven from the document itself (`docintel/basis.py`): a segment table's revenue after elimination
+equals the income statement's revenue from operations or total income; the cash flow starts from profit
+before tax; closing cash equals balance-sheet cash. A figure that matches, to the unit, the same quantity in
+a table of the same document whose basis IS stated, and matches only one basis, gives that basis. Equal on
+both bases, no match, mixed evidence, a missing unit or a small number (under 100 units) prove nothing and
+the table stays without a basis. Provider data is never used, so the inferred basis cannot be confirmed by
+the figure it came from. The inference is recorded on the statement and as a `BASIS_INFERRED` extraction issue.
+
+**Re-reading stored documents** (`python -m app.docintel.cli reprocess --symbols A,B`). A re-read replaces a
+document's extraction only if no previously promoted fact is lost or changed. A fact the new read still
+extracts but withholds because the document conflicts with itself, or a newer document supplies the period,
+does not block the gains (it is stricter validation); any other loss rolls the whole re-read back and the
+previous extraction stands exactly as it was. Three quarterly results kept their previous extraction.
+
+**Name aliases.** Three additive aliases were recorded with their reason so entity confirmation recognises
+the names the companies' own reports use: ONGC and SBI (abbreviations), "Tata Motors Limited" (the legal name
+before the 2025 demerger). Entity confirmation still requires the name on the page or the document cover.
+
+**Not changed.** Statements that state no basis and cannot be proven by an anchor stay unpromoted (about 5,000
+extracted values before this work). Cross-document restatements can make the evidence identity checks block a
+period (Wipro FY2023); the engine refuses to mix them rather than choosing.
+

@@ -43,6 +43,8 @@ ALLOWED_DOC_TYPES = {
     "other",
 }
 MAX_MANUAL_BYTES = 200 * 1024 * 1024
+# Large PDFs are slow to start; the default 30 s per-operation limit timed out real annual reports.
+DOWNLOAD_TIMEOUT_S = 180.0
 
 
 def sniff(body: bytes) -> tuple[str, str] | None:
@@ -235,7 +237,9 @@ class DocumentProvider:
         if doc_type not in ALLOWED_DOC_TYPES:
             raise ValueError(f"Unknown doc_type '{doc_type}'")
         code = source_code or self.source_code
-        fetch = self._client.fetch(url, source=code, validate=validate_document)
+        fetch = self._client.fetch(
+            url, source=code, validate=validate_document, timeout_s=DOWNLOAD_TIMEOUT_S
+        )
         if not fetch.ok or not fetch.content:
             return StoredDocument(None, False, fetch, fetch.error)
         document, created = store_document_bytes(

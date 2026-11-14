@@ -111,3 +111,73 @@ def test_a_report_that_became_blocked_is_not_overwritten(seeded):
     assert message.startswith("not regenerated: a complete report needs every critical")
     assert "; ;" not in message and "a;  ;" not in message  # a readable reason, not characters
     assert seeded.scalar(select(func.count()).select_from(ResearchReport)) == n  # nothing lost
+
+
+# ---- unchanged inputs are skipped on EVERY later run, not every second one ------------------------
+
+
+def test_unchanged_inputs_are_skipped_on_every_later_run(seeded, monkeypatch):
+    """A stage that skipped must still count as current: skipping once then running again, then
+    skipping again, was found in an unattended run (the checkpoint status became SKIPPED)."""
+    from app.calc import engine as calc_engine
+    from app.evidence import engine as ev_engine
+    from app.research import report as report_mod
+
+    co = complete_company(seeded, "Steady Co", *IT)
+    sess = ResearchSession(company_id=co.id, owner="t", query="Steady Co", status="READY")
+    seeded.add(sess)
+    seeded.flush()
+    rp.generate(seeded, sess, "AVAILABLE_EVIDENCE", "t")
+    seeded.commit()
+
+    calls = {"evidence": 0, "calculate": 0, "report": 0}
+    real_validate, real_calc, real_generate = (
+        ev_engine.validate_company,
+        calc_engine.calculate_company,
+        report_mod.generate,
+    )
+
+    def counted(name, fn):
+        def wrapper(*a, **k):
+            calls[name] += 1
+            return fn(*a, **k)
+
+        return wrapper
+
+    monkeypatch.setattr(ev_engine, "validate_company", counted("evidence", real_validate))
+    monkeypatch.setattr(calc_engine, "calculate_company", counted("calculate", real_calc))
+    monkeypatch.setattr(report_mod, "generate", counted("report", real_generate))
+
+    stages = ("evidence", "calculate", "readiness", "report")
+    outcomes = []
+    for _ in range(6):
+        outcomes.append(go(seeded, co, stages))
+    settled = dict(calls)
+    # the first runs may settle (calculation changes the evidence the next cycle sees); after that nothing
+    for _ in range(6):
+        outcomes.append(go(seeded, co, stages))
+    assert calls == settled, f"work repeated on unchanged inputs: {settled} -> {calls}"
+    last = outcomes[-1]
+    assert last.statuses["evidence"] == "SKIPPED" and last.statuses["calculate"] == "SKIPPED"
+    assert last.steps["report"].startswith("readiness unchanged")
+    assert max(settled.values()) <= 2, f"too many executions before settling: {settled}"
+    assert len(versions(seeded, sess)) <= 2
+
+
+def test_a_skip_does_not_hide_changed_inputs(seeded):
+    """After skipping, a real change must still be picked up on the next run."""
+    profile = rq.profile_for(*IT)
+    missing = pick_requirement(profile)
+    co = complete_company(seeded, "Changing Co", *IT, skip=(missing.id,))
+    sess = ResearchSession(company_id=co.id, owner="t", query="Changing Co", status="READY")
+    seeded.add(sess)
+    seeded.flush()
+    rp.generate(seeded, sess, "AVAILABLE_EVIDENCE", "t")
+    seeded.commit()
+    for _ in range(4):
+        go(seeded, co, ("readiness", "report"))
+    n = len(versions(seeded, sess))
+    satisfy(seeded, co, missing)
+    seeded.commit()
+    res = go(seeded, co, ("readiness", "report"))
+    assert "new version" in res.steps["report"] and len(versions(seeded, sess)) == n + 1

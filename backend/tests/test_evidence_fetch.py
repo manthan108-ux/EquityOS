@@ -91,12 +91,13 @@ def test_period_rank_orders_newest_first_and_puts_unknown_last():
     ]  # fmt: skip
 
 
-def test_only_the_newest_annual_reports_are_selected():
+def test_only_the_newest_four_annual_reports_are_selected():
     cands = [
         ef.Candidate(f"u{y}", "AR", "annual_report", f"FY{y}", "p")
-        for y in (2022, 2026, 2025, 2024)
+        for y in (2021, 2022, 2026, 2025, 2024, 2023)
     ]
-    assert [c.period_hint for c in ef.select_candidates(cands)] == ["FY2026", "FY2025"]
+    chosen = [c.period_hint for c in ef.select_candidates(cands)]
+    assert chosen == ["FY2026", "FY2025", "FY2024", "FY2023"]
 
 
 def test_a_second_file_for_the_same_period_is_dropped_and_own_text_wins():
@@ -160,13 +161,30 @@ def test_the_newest_documents_are_downloaded_stored_and_linked(session, co, tmp_
     docs = session.scalars(select(Document).where(Document.company_id == co.id)).all()
     by_type = sorted((d.doc_type, d.financial_period) for d in docs)
     assert by_type == [
+        ("annual_report", "FY2023"),
         ("annual_report", "FY2025"),
         ("annual_report", "FY2026"),
         ("quarterly_result", "Q2FY2027"),
     ]
     assert all(d.association_status == "CONFIRMED" for d in docs)
-    assert not any("AR_2022-23" in u for u in client.requests)  # older report never downloaded
     assert not any("Sustainability" in u or "elsewhere" in u for u in client.requests)
+
+
+def test_annual_reports_beyond_the_newest_four_are_not_downloaded(session, co, tmp_path):
+    co.website = SITE
+    extra = {
+        f"{SITE}/annual-reports": html(
+            *[(f"/files/AR_{y}-{str(y + 1)[2:]}.pdf", "Download") for y in range(2020, 2026)]
+        ),
+        **{f"{SITE}/files/AR_{y}-{str(y + 1)[2:]}.pdf": pdf(str(y)) for y in range(2020, 2026)},
+    }
+    report, client = run(session, co, site(extra), tmp=tmp_path)
+    held = sorted(
+        d.financial_period
+        for d in session.scalars(select(Document).where(Document.doc_type == "annual_report"))
+    )
+    assert held == ["FY2023", "FY2024", "FY2025", "FY2026"]
+    assert not any("AR_2020-21" in u or "AR_2021-22" in u for u in client.requests)
 
 
 def test_a_group_entity_document_is_skipped_not_stored(session, co, tmp_path):
@@ -216,9 +234,9 @@ def test_every_run_is_recorded_with_its_outcomes(session, co, tmp_path):
     co.website = SITE
     report, _ = run(session, co, tmp=tmp_path)
     row = ef.latest_run(session, co.id)
-    assert row.status == ef.FETCHED and row.downloaded == 3
+    assert row.status == ef.FETCHED and row.downloaded == 4
     statuses = [o["status"] for o in row.detail["outcomes"]]
-    assert statuses.count("STORED") == 3 and statuses.count("SKIPPED") == 1  # the Jio file
+    assert statuses.count("STORED") == 4 and statuses.count("SKIPPED") == 1  # the Jio file
 
 
 def test_a_file_that_is_not_a_document_is_a_recorded_failure(session, co, tmp_path):

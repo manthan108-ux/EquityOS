@@ -51,6 +51,10 @@ services:
     image: equityos-backend:latest
     profiles: ["worker"]
     restart: unless-stopped
+    # An init process as PID 1: signals reach the worker (a clean stop pauses the run in hand and
+    # re-queues it) and a crash of the worker exits the container, so the restart policy applies.
+    init: true
+    stop_grace_period: 90s
     command: ["python", "-m", "app.pipeline.cli", "serve"]
     environment:
       ENVIRONMENT: ${ENVIRONMENT:-development}
@@ -58,6 +62,8 @@ services:
       GROQ_API_KEY: ${GROQ_API_KEY:-}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       UPSTOX_ANALYTICS_TOKEN: ${UPSTOX_ANALYTICS_TOKEN:-}
+      # Optional: a URL you control; new and cleared pipeline alerts are POSTed to it as JSON.
+      PIPELINE_ALERT_WEBHOOK: ${PIPELINE_ALERT_WEBHOOK:-}
     user: "${DATA_UID:-1000}:${DATA_GID:-1000}"
     volumes:
       - ${DATA_HOST_DIR:-./data}:/app/data

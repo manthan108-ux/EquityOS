@@ -39,6 +39,7 @@ from app.models import (
     ScoreRun,
     Security,
 )
+from app.research import analysis as analysis_mod
 from app.research import clock, insight
 from app.research import preferences as pf
 from app.research import readiness as rd
@@ -287,6 +288,8 @@ def build_content(
     needed |= {"SEGMENT.segment_revenue", "SEGMENT.segment_result", "SEGMENT.segment_result_ebitda"}
     store = rd.load_store(session, company.id, needed)
     prefer = ready.preferences.basis
+    basis_resolution = analysis_mod.resolve_basis(store, prefer)
+    prefer = basis_resolution["used"]  # the fallback, when there is one, applies everywhere
     sec_status = {s["key"]: s for s in ready.sections}
 
     sections = []
@@ -344,6 +347,8 @@ def build_content(
         for g in (*missing[rq.CRITICAL], *missing[rq.IMPORTANT])
     ]
     notes = [r for r in ready.reasons if "standalone figures only" in r]
+    if basis_resolution["warning"]:
+        notes.insert(0, basis_resolution["warning"])
     applied = _applied_adjustments(session, company.id)
     auditor = next((s for s in sections if s["key"] == "risks_management"), {}).get(
         "auditor_report"
@@ -386,6 +391,7 @@ def build_content(
                 "period_label": ready.preferences.period_label(),
             },
             "complete": mode == COMPLETE and not missing[rq.CRITICAL],
+            "basis_resolution": basis_resolution,
         },
         "readiness": {
             "score": ready.score,

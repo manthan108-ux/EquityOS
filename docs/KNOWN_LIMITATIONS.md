@@ -371,3 +371,54 @@ Still limited:
   inputs were refreshed afterwards). They are kept, not repaired; re-running the sector PEERS and SCORING
   stages for those companies produces current versions.
 * Pacing between processes is per machine (lock files in the data folder); two machines would not share it.
+
+* Docker treats `docker kill` (SIGKILL) as a manual stop and does not restart the worker; a crash of the
+  worker process (or an out-of-memory exit) does restart it under `restart: unless-stopped`.
+* A scheduled cycle of five companies takes about 40 s even when everything is current, because each
+  isolated stage that skips still starts a child process.
+* Memory and CPU were sampled once, not over time; a long soak should record them.
+
+## Annual-report coverage (CP1, 2026-11-14)
+
+* Inaccessible sources are skipped, never worked around: a site that answers 403 (TCS, Infosys, Hindustan
+  Unilever, Nestle India, Godrej Consumer), robots.txt that disallows the files, and files a server refuses
+  or fails to deliver (HDFC Bank: HTTP 403 and 524) stay as recorded gaps with a reason code.
+* Reports that are only reachable through script-loaded lists or interactive viewers (Reliance, ITC, Maruti
+  Suzuki, Britannia, Indian Oil, Hyundai and others) are not found by the static pages or the sitemap.
+* A gap is requested from the end user when a report is generated; nobody is asked to download files by hand.
+
+## Statement extraction (CP2, 2026-11-14)
+
+* A table that states no accounting basis is promoted only when a figure in the same document proves it;
+  otherwise its values stay extracted but unpromoted. Provider data is never used for this.
+* Seven quarterly results (Axis Bank, HCL Tech, Reliance, HUL, ICICI Bank, M&M, Kotak) keep a previous
+  extraction made by an older extractor version: a re-read cannot reproduce 6 to 84 of its facts, so it is
+  rolled back rather than lose them. The new line items for those documents are not applied.
+* Restated comparatives across documents can block an evidence identity check for a period (Wipro FY2023);
+  the engine refuses to mix them rather than choose.
+* Segment values need a stated or proven basis and a unit; banks' segment tables printed without either remain
+  unpromoted (Axis Bank, Kotak).
+* Entity confirmation still needs the company's name on the page or cover; reports that name the company only
+  by an abbreviation need an alias (added for ONGC, SBI and the former name of Tata Motors).
+
+
+## Growth and profitability (CP3, 2026-11-14)
+- EBITDA, EBIT and gross profit exist only where the filing prints the lines they need (depreciation,
+  finance costs, goods-cost lines); other companies show the reason instead. Services companies have no
+  gross profit.
+- Peer comparisons need at least three peers with the same fiscal years on the same basis; with the
+  pilot universe some comparisons are unavailable and say so.
+- No industry benchmark: the comparison is with the peer group; growth alpha is not calculated.
+
+## Cash flow and earnings quality (CP4, 2026-11-14)
+- Free cash flow and the capex ratios exist only where the filing's cash flow statement was read with a
+  capital-expenditure line; others show the reason. Operating cash flow itself comes from the provider
+  summary or the filing.
+- Banks are excluded from cash conversion and accrual analysis by design.
+- Readings (strong/weak, accrual levels) are stated rules of thumb, not accounting conclusions.
+
+## Working capital and financial health (CP5, 2026-11-14)
+- Days, net debt, debt-to-equity, ROE and DuPont need balance sheets read from filings for two consecutive
+  year ends; many pilot companies have only some years read, so those sections show their reasons.
+- Lease liabilities are not included in borrowings or net debt.
+- Days use closing balances (not averages) and a 365-day year; services companies have only receivable days.

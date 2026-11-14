@@ -372,6 +372,22 @@ CHECKS: tuple[Check, ...] = (
         ),
     ),
     Check(
+        "operating cash flow = cash generated from operations - income taxes paid",
+        CASH_FLOW,
+        (
+            _f(
+                "net_cash_from_operating_activities",
+                "cash_generated_from_operations",
+                "income_taxes_paid",
+            ),
+            _f(
+                "net_cash_from_operating_activities",
+                "cash_generated_from_operations",
+                "-income_taxes_paid",
+            ),
+        ),
+    ),
+    Check(
         "closing cash = opening cash + net change",
         CASH_FLOW,
         (

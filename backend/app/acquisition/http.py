@@ -146,11 +146,21 @@ class PoliteClient:
         headers: dict[str, str] | None = None,
         documented_api: bool = False,
         secret_params: tuple[str, ...] = (),
+        timeout_s: float | None = None,
     ) -> FetchResult:
-        """Fetch `url`. `source` is the source-registry code used in the audit log."""
+        """Fetch `url`. `source` is the source-registry code used in the audit log.
+
+        `timeout_s` overrides the per-operation timeout for this request (big files start slowly).
+        """
         started = self._clock()
         result = self._fetch(
-            url, ttl, validate, max_bytes or self.config.max_bytes, headers, documented_api
+            url,
+            ttl,
+            validate,
+            max_bytes or self.config.max_bytes,
+            headers,
+            documented_api,
+            timeout_s,
         )
         result.duration_ms = int((self._clock() - started) * 1000)
         if secret_params:
@@ -171,6 +181,7 @@ class PoliteClient:
         max_bytes: int,
         headers: dict[str, str] | None,
         documented_api: bool,
+        timeout_s: float | None = None,
     ) -> FetchResult:
         # `headers` (e.g. an Authorization token) are sent on the wire only. They are never part of
         # the cache key, the audit log or any FetchResult. `documented_api` marks a call to an
@@ -194,7 +205,7 @@ class PoliteClient:
         last = FetchResult(url, FetchStatus.NETWORK_ERROR, error="not attempted")
         for attempt in range(1, self.config.max_attempts + 1):
             self._wait_turn(url)
-            last = self._attempt(url, validate, max_bytes, headers)
+            last = self._attempt(url, validate, max_bytes, headers, timeout_s)
             last.attempts = attempt
             retryable = last.status in (
                 FetchStatus.TIMEOUT,
@@ -211,10 +222,16 @@ class PoliteClient:
         return last
 
     def _attempt(
-        self, url: str, validate: Validator | None, max_bytes: int, headers: dict[str, str] | None
+        self,
+        url: str,
+        validate: Validator | None,
+        max_bytes: int,
+        headers: dict[str, str] | None,
+        timeout_s: float | None = None,
     ) -> FetchResult:
         try:
-            with self._http.stream("GET", url, headers=headers) as response:
+            options = {"timeout": timeout_s} if timeout_s else {}
+            with self._http.stream("GET", url, headers=headers, **options) as response:
                 code = response.status_code
                 ctype = response.headers.get("content-type")
                 if code in _DENIED_HTTP:
