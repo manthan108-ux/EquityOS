@@ -231,6 +231,20 @@ def health(session: Session, *, now: datetime | None = None, hours: int = 24) ->
             )
         )
 
+    # market prices: a long gap means everything price-based is out of date
+    from app.pipeline import prices
+
+    newest = prices.latest_price_date(session)
+    if newest is not None and (now.date() - newest).days > prices.STALE_AFTER_DAYS:
+        alerts.append(
+            _alert(
+                WARNING_LEVEL,
+                "PRICES_STALE",
+                f"the newest stored market price is {newest:%d/%m/%Y}, "
+                f"{(now.date() - newest).days} days ago; valuation and indicators are out of date",
+            )
+        )
+
     # scanned documents nobody could read yet (OCR is only in the Docker image)
     waiting = session.scalar(
         select(func.count())

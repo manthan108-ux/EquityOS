@@ -182,3 +182,20 @@ def test_monitoring_endpoints_need_a_key_and_answer_a_reader(client):
     audit = client.get("/api/pipeline/integrity", headers=READER).json()
     assert audit["status"] in ("PASS", "WARN", "FAIL")
     assert {c["code"] for c in audit["checks"]} >= {"DUPLICATE_ACTIVE", "VALUE_MISMATCH"}
+
+
+def test_the_coverage_endpoint_lists_years_and_reasons(client, session):
+    from sqlalchemy import select as _select
+
+    from app.models import Security
+
+    symbol = session.scalar(_select(Security.symbol).limit(1))
+    assert client.get("/api/pipeline/coverage").status_code == 401
+    body = client.get(f"/api/pipeline/coverage?symbols={symbol}", headers=READER).json()
+    assert len(body["targets"]) == 4 and body["company_years_total"] == 4
+    company = body["companies"][0]
+    assert company["symbol"] == symbol and len(company["years"]) == 4
+    assert {y["status"] for y in company["years"]} <= {"HAVE", "MISSING"}
+    missing = [y for y in company["years"] if y["status"] == "MISSING"]
+    assert all(y["reason_code"] and y["reason"] and "manual" not in y for y in missing)
+    assert client.get("/api/pipeline/coverage?symbols=NOPE-XYZ", headers=READER).status_code == 404

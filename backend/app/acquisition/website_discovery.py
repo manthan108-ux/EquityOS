@@ -444,14 +444,37 @@ def check_candidate(
     return Verdict(outcome, url, final, signals, reason, home.text)
 
 
+_IR_PATH = re.compile(r"/(investor-relations|investors?|invest-relations|shareholders?)(/|$)", re.I)
+
+
+def _ir_rank(link) -> tuple[int, int] | None:
+    """How good an investor-relations page this link looks like (lower is better); None = reject.
+
+    A blog post or news item that mentions investors is not the investor page: the path must not be
+    editorial, and a short path that names investor relations beats a long one that merely mentions it.
+    """
+    from app.acquisition.annual_reports import is_noise
+
+    if link.is_document or is_noise(link.url):
+        return None
+    path = urlsplit(link.url).path
+    depth = len([p for p in path.split("/") if p])
+    if depth > 4:
+        return None
+    return (0 if _IR_PATH.search(path) else 1, depth)
+
+
 def find_ir_url(html: str, home_url: str, client: PoliteClient) -> str | None:
     """The investor-relations page linked from the home page, if it loads."""
-    links = [
-        link
-        for link in extract_ir_links(html, home_url)
-        if link.kind == "investor_relations" and not link.is_document
-    ]
-    for link in links[:3]:
+    ranked = sorted(
+        (
+            (rank, link)
+            for link in extract_ir_links(html, home_url)
+            if link.kind == "investor_relations" and (rank := _ir_rank(link)) is not None
+        ),
+        key=lambda pair: (pair[0], pair[1].url),
+    )
+    for _, link in ranked[:3]:
         res = client.fetch(link.url, source="COMPANY_IR", validate=validate_html)
         if res.ok:
             return (res.final_url or link.url).rstrip("/")

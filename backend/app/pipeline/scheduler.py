@@ -18,6 +18,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy.orm import Session
 
 from app.models import PipelineSchedule
+from app.models.pipeline import PAUSED
 from app.pipeline import runner
 from app.pipeline.state import STAGES
 
@@ -135,6 +136,31 @@ def tick(session: Session, now: datetime | None = None):
     return run
 
 
+def _requeue(session_factory: Callable[[], Session], run_id: int) -> None:
+    """A run paused because the worker is shutting down goes back in the queue."""
+    s = session_factory()
+    try:
+        runner.request_control(s, run_id, "resume")
+    except ValueError:
+        pass  # it finished or was cancelled in the meantime
+    finally:
+        s.close()
+
+
+def _deliver_alerts(session_factory: Callable[[], Session], sinks: Callable[[], list]) -> None:
+    """Send new and cleared pipeline alerts. Monitoring must never stop the worker."""
+    from app.pipeline import alerts
+
+    s = session_factory()
+    try:
+        alerts.deliver(s, sinks())
+    except Exception:  # noqa: BLE001
+        log.exception("could not deliver pipeline alerts")
+        s.rollback()
+    finally:
+        s.close()
+
+
 class WorkerBeat:
     """Records that a worker is alive, from its own thread, however long a run takes."""
 
@@ -177,18 +203,31 @@ def serve(
     stop: Callable[[], bool] = lambda: False,
     isolation: str = "thread",
     beat_seconds: float = WORKER_BEAT_SECONDS,
+    alert_sinks: Callable[[], list] | None = None,
+    alert_seconds: float = 300,
+    stop_event: threading.Event | None = None,
 ) -> int:
     """Worker loop: schedule, claim, execute. `build_context()` returns client/llm/upstox/closer.
 
     A failure in one iteration (database briefly unreachable, a context that cannot be built) is
-    logged and the loop carries on after the poll interval; only `stop` or Ctrl+C ends it.
+    logged and the loop carries on after the poll interval; only `stop`, `stop_event` or Ctrl+C
+    ends it. When `stop_event` is set (a shutdown signal) the run in hand is paused between
+    stages and put back in the queue, so the next worker continues it from its checkpoints.
     """
     executed = 0
+    last_alert = 0.0
     beat = WorkerBeat(session_factory, beat_seconds)
     beat.start()
     try:
-        while not stop():
+
+        def stopping() -> bool:
+            return stop() or (stop_event is not None and stop_event.is_set())
+
+        while not stopping():
             run_id = None
+            if alert_sinks is not None and time.monotonic() - last_alert >= alert_seconds:
+                last_alert = time.monotonic()
+                _deliver_alerts(session_factory, alert_sinks)
             try:
                 s = session_factory()
                 try:
@@ -207,7 +246,7 @@ def serve(
                 ctx: dict = {}
                 try:
                     ctx = build_context()
-                    runner.execute(
+                    result = runner.execute(
                         session_factory,
                         run_id,
                         client=ctx.get("client"),
@@ -215,8 +254,11 @@ def serve(
                         upstox=ctx.get("upstox"),
                         data_dir=ctx.get("data_dir"),
                         isolation=isolation,
+                        stop=stop_event.is_set if stop_event is not None else None,
                     )
                     executed += 1
+                    if stop_event is not None and stop_event.is_set() and result.status == PAUSED:
+                        _requeue(session_factory, run_id)
                 except Exception:  # noqa: BLE001 - a broken run must not kill the worker
                     log.exception("run %s crashed", run_id)
                 finally:
@@ -226,7 +268,10 @@ def serve(
                 continue
             if once:
                 break
-            time.sleep(poll_seconds)
+            if stop_event is not None:
+                stop_event.wait(poll_seconds)
+            else:
+                time.sleep(poll_seconds)
     finally:
         beat.stop()
     return executed

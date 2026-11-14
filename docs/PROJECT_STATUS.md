@@ -666,3 +666,111 @@ reported 44,000 false mismatches.
 other companies' changes do not re-run PEERS/SCORING); a document that always hangs the reader is only handled
 by stage back-off; the database `statement_timeout` for DB-only stages is best effort; scheduled runs have been
 exercised for about 25 minutes, not hours.
+
+### CP0: Milestone 1 closed (2026-11-14)
+
+Decision: the three-hour soak was stopped early on request; the evidence below was judged instead. Nothing
+was committed or pushed after `3b1fbff`; the work since is uncommitted.
+
+**What ran.** Soak #1 (07:52 to 08:35 UTC, 43 min, Docker worker, 5 pilot companies, all 10 stages, every
+5 minutes): 9 scheduled cycles, 450 stage results, 0 failures, 0 timeouts, 0 restarts, 0 database errors,
+43 health samples all OK. It exposed a defect (below). Soak #2 (08:37 to 08:45) on the fixed image: 2 cycles
+before the stop. A controlled follow-up on the same image: 4 consecutive cycles plus one forced due-refresh,
+then crash, clean-stop, timeout and alert checks. The earlier unattended test (4 cycles plus a hard kill and
+takeover) is also counted.
+
+| Requirement | Classification | Evidence |
+|---|---|---|
+| Unattended execution | Passed with limitations | 9 + 2 + 4 + 4 clean cycles, 0 failed stages; longest observed unattended stretch was 43 minutes, not 3 hours; memory seen once (99 MiB, 3 processes) |
+| Worker failure detection | Passed and verified | killed worker: `WORKER_DOWN` and `SCHEDULE_WITHOUT_WORKER` raised within 3 minutes, health exit code 2 |
+| Worker recovery | Passed and verified | crash of the worker process: Docker restarted it in about 1 s and it reported in; hard-killed mid-run (earlier): taken over after the 10 min heartbeat gap and finished in 29 s with no stage repeated |
+| Clean shutdown (new) | Passed and verified | SIGTERM mid-run: stop in 2 s, exit 0, run re-queued; the next worker finished it; 0 duplicate stage results |
+| Stage timeouts, isolation | Passed and verified | Linux image: stage stopped at 1.03 s, recorded `timed_out`, retried normally; Windows host earlier; helper processes stopped |
+| Checkpoint, retry, resume | Passed and verified | resume after takeover and after a clean stop; 0 stage results repeated within a run; retries by back-off covered by tests (no stage failed in the soaks, so no live retry occurred) |
+| Duplicate processing | Passed and verified | 0 overlapping executions of one company's stage, 0 overlapping runs, 0 duplicate ACTIVE evidence versions, integrity audit PASS before and after |
+| Unchanged inputs skipped | Passed and verified (after a fix) | defect found in soak #1 (below); after the fix 6 consecutive cycles skipped every `evidence`, `calculate` and `report` stage |
+| Changed inputs processed | Passed with limitations | a real change (4 new documents) flowed through extraction, evidence, calculation, readiness and a regenerated report in the earlier unattended test; no real input change occurred inside the soak windows; a forced due-refresh found identical provider data and correctly skipped downstream |
+| Report regeneration | Passed and verified | 4 saved reports regenerated live; originals byte-identical; unchanged content writes nothing |
+| Monitoring and alert delivery | Passed and verified | 51+ health samples OK with 0 false positives; alerts delivered to the log file and a webhook, de-duplicated, cleared with a RESOLVED notice (live) |
+| Stale peer calculations | Passed and verified | 26 resolved (audit PASS), sweep added so they cannot accumulate |
+| OCR and document processing | Passed with limitations | `ocr-check` passes in the Linux image; no scanned document was processed inside the soak windows (document stages were within their cool-down); earlier live OCR runs read 7 companies' scans |
+| Memory and resource stability | Not tested or insufficient evidence | one container sample only; no trend over time |
+
+**Defects found and fixed during CP0:** (1) `evidence`, `calculate` and `report` re-ran every second cycle
+because a skip set the checkpoint to SKIPPED and only SUCCEEDED counted as current (regression test added,
+confirmed to fail on the old logic); (2) the container ran Python as PID 1, so it ignored SIGTERM (a 10 s forced
+kill) and could not be restarted after a crash: the worker now runs under an init process, handles SIGTERM by
+pausing the run and re-queuing it, and a crash restarts it; (3) stale peer ranks could accumulate (sweep added).
+
+**Limitations to keep:** `docker kill` is treated by Docker as a manual stop and is not restarted (a real crash
+is); an isolated stage that only skips still starts a child process, so a cycle of five companies takes about
+40 s mostly in start-up; `website` and `enrich` report SUCCEEDED while inside their 30-day cool-down.
+
+### CP1: annual-report and document coverage (2026-11-14)
+
+Result across the 24 pilot companies: annual-report years held went from **12 to 28 of 96** (latest four fiscal
+years). Four-year coverage: Wipro, Tech Mahindra, BPCL; three years: ONGC; two: Kotak. Every unread document is now
+read (176 stored financial PDFs, 165 read, the rest are non-financial or contain no statements; 0 failed, 0 waiting
+for OCR); integrity audit PASS on 71,263 evidence rows; the peer sweep refreshed 7 companies' ranks on its own.
+
+What was built: the newest four annual reports are kept (was two); a bounded deeper search (archive and per-year
+links, sitemap) for the years the usual pages do not give; a per-company, per-year coverage record with source
+URL, hash, dates, period, extraction state and a reason code for every gap (`docs-coverage`, `/api/pipeline/coverage`,
+saved on each run and in the `documents` stage detail); large PDFs get a longer download timeout; investor-relations
+pages are chosen by path (a blog post is never taken; Axis Bank's URL was corrected); `--force` now reaches the
+fetcher's own cool-down.
+
+Remaining gaps are recorded, not worked around: 403 sites (TCS, Infosys, HUL, Nestle India, Godrej Consumer), files
+refused or failed by the server (HDFC Bank: 403 and 524), robots.txt (HCL Tech host unreachable), and reports behind
+script-loaded lists or viewers (Reliance, ITC, Maruti, Britannia, IOC, Hyundai). Per instruction, nobody is asked to
+download them by hand; they are requested from the user when a report is generated.
+
+Tests: backend 1,516 passed (was 1,494 plus 22 new); three existing assertions in `test_evidence_fetch.py` changed
+from "newest 2" to "newest 4", the intended rule change.
+
+### CP2: financial statement extraction (2026-11-14)
+
+Measured on the 24 pilot companies (same audit before and after; evidence is validated, nothing estimated):
+
+| Measure | Before | After |
+|---|---|---|
+| Detailed statement lines with 3+ annual years | 300 | 456 |
+| Detailed statement lines with 2 annual years | 200 | 389 |
+| Companies with detailed lines beyond the 12 summary lines | 11 | 14 |
+| Companies with EBITDA / ROCE / interest cover | 3 / 6 / 6 | 5 / 10 / 10 |
+| Companies with depreciation / finance cost / dividend lines | 8 / 7 / 7 | 12 / 11 / 11 |
+| Companies with receivable / inventory / payable lines | 4 / 7 / 6 | 7 / 9 / 9 |
+| Free cash flow | 1 | 2 |
+| Readiness (selected) | ONGC 40, Tech Mahindra 68, M&M 64, Tata Motors 39, Infosys 85 | 62, 82, 79, 49, 90 |
+
+Representative companies (re-read of stored annual reports): ONGC 0 to 389 promoted values (an alias fixed entity
+confirmation), Tata Motors 0 to 210, Tech Mahindra 158 to 398, Wipro 440 to 702, ICICI Bank 499 to 571, BPCL 600
+to 703; evidence integrity PASS (73,738 rows), 0 evidence conflicts, and the new document values agree with the
+independent provider data in 54 (BPCL), 47 (Wipro), 34 (ONGC), 32 (Tech Mahindra) metric-periods.
+
+Built: about 80 new line-item mappings, a document-internal basis inference (never from provider data),
+conflict-aware safe re-reading (`docintel.cli reprocess`), consolidated-to-standalone fallback with a warning on
+the report cover and in `basis_notes`, three additive name aliases, and market-price refresh as a run-level
+pipeline step (4 missing trading days, 12,348 prices, fetched live; `PRICES_STALE` alert). Backend 1,636 tests
+passed (+120).
+
+Not improved, honestly: Wipro readiness fell 67 to 63 because new document figures made the engine's identity
+checks block three periods (a restated comparative against an original in another document, and an unmapped
+cash-flow exchange-effect line); 10 companies still have only summary lines because their annual reports are
+not obtainable (CP1) or extract little; 7 quarterly results kept their previous extraction because older stored
+facts (from earlier extractor versions) cannot be reproduced today, which was confirmed identical with the
+pre-CP2 taxonomy; statements with no stated basis that no anchor can prove stay unpromoted.
+
+
+## CP3 - growth and profitability engine (2026-11-14)
+Implemented, integrated into analysis and PDF, with tests (`test_profitability.py`, `test_growth_metrics.py`,
+`test_entity_subsidiary.py`). Peer growth is labelled peer group; growth alpha is withheld until verified
+industry statistics exist. Nothing is committed or pushed.
+
+## CP4 - cash flow and earnings quality (2026-11-14)
+Implemented and integrated (analysis, PDF, calculation catalogue, tests: `test_cashflow.py`,
+`test_cash_metrics.py`). Nothing is committed or pushed.
+
+## CP5 - working capital and financial health (2026-11-14)
+Implemented and integrated (calculation catalogue, analysis, PDF "Working capital and financial health",
+tests `test_health.py`, `test_health_metrics.py`). Committed and pushed on the user's instruction.

@@ -603,7 +603,7 @@ def test_the_full_axis_pdf_has_every_section_and_no_recommendation():
     text, pages = pdf_text(data)
     flat = text.replace("\n", " ")
     for h in ("Contents", "1. Executive summary", "2. Industry overview", "3. Company and management profile",
-              "4. Financial performance", "5. Growth versus the industry", "6. Business cyclicality",
+              "4. Financial performance", "5. Growth versus the peer group", "6. Business cyclicality",
               "7. Peer benchmarking", "8. Management commentary", "9. Valuation analysis",
               "10. Investment thesis", "11. Financial scorecard", "12. Research conclusion",
               "Appendix A - Source register", "Appendix D - Analytical methodology",

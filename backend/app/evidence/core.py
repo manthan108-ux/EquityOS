@@ -14,6 +14,9 @@ from app.models.evidence import Quality, ResolutionStatus
 from app.normalization import PER_SHARE_UNITS, UNIT_TO_INR
 
 CONFLICT_TOLERANCE = Decimal("0.01")  # 1% relative difference between sources (methodology 3)
+# Amounts that differ by a factor of ten or more are not a restatement or a definition: they are a
+# wrong unit, scale or entity. No source is trusted over the other; no value is chosen.
+GROSS_DIFFERENCE = Decimal("0.9")  # |a-b| / max(|a|,|b|): one is a tenth of the other
 USER_SUPPLIED_PROVIDERS = {"MANUAL_IMPORT", "MANUAL_UPLOAD"}
 
 # Used when the `sources` table has no row for a provider (e.g. a fresh test database).
@@ -215,6 +218,26 @@ def resolve_group(facts: list[Fact]) -> Resolved:
             alternatives,
             max_pct,
             f"sources of equal authority (tier {best.tier}: {names}) {how}; no value chosen",
+        )
+    grossly = [
+        f
+        for f in disagreeing
+        if f.unit == best.unit
+        and best.unit == "inr"
+        and best.value != 0
+        and f.value != 0
+        and relative_difference(best.value, f.value) >= GROSS_DIFFERENCE
+    ]
+    if grossly:
+        names = ", ".join(sorted({best.provider, *(f.provider for f in grossly)}))
+        return Resolved(
+            key,
+            ResolutionStatus.CONFLICT,
+            None,
+            alternatives,
+            max_pct,
+            f"{names} differ by a factor of ten or more (up to {max_pct}%): a wrong unit, scale or "
+            "entity is likely; no value chosen",
         )
     weaker = ", ".join(sorted({f.provider for f in disagreeing}))
     return Resolved(

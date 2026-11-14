@@ -95,6 +95,50 @@ def _point(rec: EvidenceRecord) -> dict:
     }
 
 
+# the statement lines that decide whether a basis has usable annual statements
+BASIS_CORE = (
+    "INCOME.summary.revenue",
+    "INCOME.revenue_from_operations",
+    "INCOME.summary.total_income",
+    "INCOME.net_profit",
+    "INCOME.summary.net_profit",
+    "BALANCE_SHEET.total_assets",
+    "BALANCE_SHEET.summary.total_assets",
+)
+MIN_ANNUAL_POINTS = 2
+
+
+def resolve_basis(store: rd._Store, prefer: str = "CONSOLIDATED") -> dict:
+    """Which accounting basis the whole report is written on, and why.
+
+    The requested basis (consolidated by default) is used when it has at least two annual statement
+    years. If it does not, and the other basis does, the report falls back to the other basis and says
+    so, with a warning. The choice is made ONCE and used for every figure, comparison and chart, so the
+    two bases are never mixed. Both bases stay in the store; nothing is deleted.
+    """
+    other = "STANDALONE" if prefer == "CONSOLIDATED" else "CONSOLIDATED"
+    points = {
+        b: len({d for d, r in _records(store, BASIS_CORE, "ANNUAL", b).items() if r.basis == b})
+        for b in (prefer, other)
+    }
+    used, warning = prefer, None
+    if points[prefer] < MIN_ANNUAL_POINTS <= points[other]:
+        used = other
+        warning = (
+            f"{prefer.title()} statements were not available for this company ({points[prefer]} annual "
+            f"year(s) in the evidence store), so {other.lower()} statements are used throughout this "
+            f"report ({points[other]} annual years). No {prefer.lower()} and {other.lower()} figures "
+            "are combined."
+        )
+    return {
+        "requested": prefer,
+        "used": used,
+        "fallback": used != prefer,
+        "annual_years": points,
+        "warning": warning,
+    }
+
+
 def series_for(store: rd._Store, m: Metric, prefer: str, ptype: str, limit: int):
     """(points, basis_used, basis_note): the latest `limit` points on one basis."""
     on_pref = _records(store, m.names, ptype, prefer)

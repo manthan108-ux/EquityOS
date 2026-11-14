@@ -423,6 +423,7 @@ def _cover(report, facts, st, version, mode) -> list:
     ov = _section(report, "overview").get("company", {})
     score = _section(report, "scorecard").get("score", {})
     prefs = meta.get("preferences") or {}
+    resolution = meta.get("basis_resolution") or {}
     symbols = sorted({s for s in ov.get("symbols", []) if s})
     complete = mode == "COMPLETE" and meta.get("complete")
     sector = " / ".join(
@@ -457,7 +458,11 @@ def _cover(report, facts, st, version, mode) -> list:
     rows = [
         ["Report date", clean(meta["as_of"])],
         ["Latest reporting period", clean(prefs.get("period_label", "latest available quarter"))],
-        ["Accounting basis", clean(str(prefs.get("basis", "CONSOLIDATED")).title())],
+        [
+            "Accounting basis",
+            clean(str(resolution.get("used") or prefs.get("basis", "CONSOLIDATED")).title()),
+        ],
+        *([["Basis warning", clean(resolution["warning"])]] if resolution.get("warning") else []),
         ["Share price", price_text],
         ["Market capitalisation", _value(mcap)],
         [
@@ -1191,8 +1196,17 @@ def _full_story(report, facts, hist, st, version, mode) -> list:
     )
     # A section with nothing meaningful to say is left out entirely: no heading, no contents entry,
     # no empty page; the numbers that follow close up. Partial sections are kept.
+    if ps.profitability_has_content(a.get("profitability")):
+        story += [PageBreak(), h1("Growth and profitability")]
+        story += ps.profitability_section(report, st)
+    if ps.health_has_content(a.get("health")):
+        story += [PageBreak(), h1("Working capital and financial health")]
+        story += ps.health_section(report, st)
+    if ps.cashflow_has_content(a.get("cashflow")):
+        story += [PageBreak(), h1("Cash flow and earnings quality")]
+        story += ps.cashflow_section(report, st)
     if ps.growth_has_content(a.get("growth")):
-        story += [PageBreak(), h1("Growth versus the industry: CAGR and growth alpha")]
+        story += [PageBreak(), h1("Growth versus the peer group: CAGR")]
         story += ps.growth_section(report, st)
     if ps.cyclicality_has_content(a.get("cyclicality")):
         story += [PageBreak(), h1("Business cyclicality")] + ps.cyclicality_section(report, st)

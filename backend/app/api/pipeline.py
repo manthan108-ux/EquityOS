@@ -288,6 +288,31 @@ def pipeline_health(session: SessionDep, _: Caller) -> dict:
     return metrics.health(session)
 
 
+@router.get("/coverage")
+def annual_report_coverage(
+    session: SessionDep, _: Caller, symbols: str | None = Query(None, max_length=600)
+) -> dict:
+    """Annual reports held per target fiscal year, with the reason for each gap (read-only)."""
+    from app.acquisition import doc_coverage
+    from app.providers.cli import find_company
+    from app.seeds.sample_universe import SAMPLE
+
+    wanted = [s.strip() for s in symbols.split(",")] if symbols else [c.symbol for c in SAMPLE]
+    rows = []
+    for symbol in wanted[:60]:
+        try:
+            company = find_company(session, symbol)
+        except (SystemExit, LookupError, ValueError) as exc:
+            raise HTTPException(status_code=404, detail=f"unknown company {symbol!r}") from exc
+        rows.append(doc_coverage.company_coverage(session, company))
+    return {
+        "targets": rows[0]["targets"] if rows else [],
+        "company_years_held": sum(r["have"] for r in rows),
+        "company_years_total": sum(len(r["targets"]) for r in rows),
+        "companies": rows,
+    }
+
+
 @router.get("/integrity")
 def integrity_audit(session: SessionDep, _: Caller, company_id: uuid.UUID | None = None) -> dict:
     """Read-only evidence-integrity audit (nothing is written or repaired)."""

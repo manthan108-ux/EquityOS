@@ -15,6 +15,7 @@ were. Nothing is ever deleted or overwritten when the outcome is not a pure impr
 """
 
 from dataclasses import dataclass, field
+from datetime import date
 from decimal import Decimal
 from pathlib import Path
 
@@ -22,7 +23,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.docintel.pipeline import PROVIDER_CODE, extract_document
-from app.models import Document, FinancialFact
+from app.models import Document, ExtractedFact, FinancialFact
 
 IMPROVED = "IMPROVED"  # new facts were added, nothing lost or changed: kept
 UNCHANGED = "UNCHANGED"  # the same facts as before: kept (harmless)
@@ -30,6 +31,15 @@ KEPT_PREVIOUS = "KEPT_PREVIOUS"  # the new run would lose or change facts: rolle
 FAILED = "FAILED"  # the extraction itself failed: rolled back
 
 Key = tuple[str, str, str, str, str]
+
+# A fact the new read no longer promotes is acceptable only when it is still read and is withheld
+# for a validation reason that makes the evidence safer: the document disagrees with itself, or a
+# newer document supplies the period. Any other loss still rolls the whole re-read back.
+WITHHELD_FOR = (
+    "conflicts with another table in the same document",
+    "a more recent document supplies this period",
+    "entity not confirmed",  # a stricter attribution check: the table is someone else's
+)
 
 
 @dataclass
@@ -41,6 +51,7 @@ class ReprocessResult:
     lost: list[Key] = field(default_factory=list)
     changed: list[Key] = field(default_factory=list)
     note: str = ""
+    withheld: list[Key] = field(default_factory=list)  # lost, but withheld by a stricter check
 
 
 def document_facts(session: Session, document_id) -> dict[Key, set[Decimal | None]]:
@@ -65,6 +76,25 @@ def document_facts(session: Session, document_id) -> dict[Key, set[Decimal | Non
     return out
 
 
+def _withheld(session: Session, extraction_id: int, key: Key) -> bool:
+    """True when the new read still extracts this fact but withholds it for a validation reason."""
+    statement, item, end, _ptype, basis = key
+    rows = session.scalars(
+        select(ExtractedFact).where(
+            ExtractedFact.extraction_id == extraction_id,
+            ExtractedFact.statement == statement,
+            ExtractedFact.canonical_item == item,
+            ExtractedFact.basis == basis,
+            ExtractedFact.period_end == date.fromisoformat(end),
+        )
+    ).all()
+    return (
+        bool(rows)
+        and not any(r.promoted for r in rows)
+        and all((r.not_promoted_reason or "").startswith(WITHHELD_FOR) for r in rows)
+    )
+
+
 def reprocess_document(
     session: Session, document: Document, data_dir: Path, *, llm_router=None
 ) -> ReprocessResult:
@@ -79,7 +109,11 @@ def reprocess_document(
     gained = [k for k in after if k not in before]
     lost = [k for k in before if k not in after]
     changed = [k for k in before if k in after and before[k] != after[k]]
+    run_id = getattr(run, "id", None)  # no stored extraction, nothing can explain a loss
+    withheld = [k for k in lost if run_id is not None and _withheld(session, run_id, k)]
+    lost = [k for k in lost if k not in withheld]
     result = ReprocessResult(IMPROVED, len(before), len(after), gained, lost, changed)
+    result.withheld = withheld
     if run.status.value == "FAILED":
         savepoint.rollback()
         result.status, result.after = FAILED, len(before)
@@ -93,6 +127,11 @@ def reprocess_document(
         )
     else:
         savepoint.commit()
-        if not gained:
+        if not gained and not withheld:
             result.status = UNCHANGED
+        if withheld:
+            result.note = (
+                f"{len(withheld)} fact(s) are now withheld: the document conflicts with itself or "
+                "a newer document supplies the period"
+            )
     return result

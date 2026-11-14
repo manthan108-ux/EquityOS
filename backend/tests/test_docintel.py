@@ -957,3 +957,39 @@ def test_document_period_is_filled_from_its_own_statements_never_overwritten(
     other.financial_period = "Q1FY2027"  # set at ingestion: kept as is
     extract_document(session, other, tmp_path, content=_content(income_page()))
     assert other.financial_period == "Q1FY2027"
+
+
+def test_operating_cash_flow_is_verified_against_cash_generated_less_tax_paid():
+    from tests.docintel_pages import Page, words
+
+    rights = (460.0, 540.0)
+    page = Page()
+    page.text("Bharat Example Limited", 200)
+    page.text("Consolidated Cash Flow Statement for the year ended 31 March 2026")
+    page.text("(₹ in crore)", 540, right=True)
+    page.raw(words(0, 460, "Year ended", right=True), words(0, 540, "Year ended", right=True))
+    page.raw(words(0, 460, "31.03.2026", right=True), words(0, 540, "31.03.2025", right=True))
+    for label, *values in [
+        ("Cash generated from operations", "600.00", "500.00"),
+        ("Direct taxes paid", "(80.00)", "(70.00)"),
+        ("Net cash from operating activities (A)", "520.00", "430.00"),
+        ("Purchase of property, plant and equipment", "(200.00)", "(180.00)"),
+    ]:
+        page.row(label, *values, rights=rights)
+    (block,) = extract_page_statements(1, page.items)
+    passed = {r.name for r in validate.run_checks(block) if r.passed}
+    assert "operating cash flow = cash generated from operations - income taxes paid" in passed
+
+
+def test_cash_balance_labels_in_their_common_variants_are_recognised():
+    from app.docintel import taxonomy as t
+
+    def key(label):
+        return t.match_label(label, "CASH_FLOW", t.Context())
+
+    assert key("Opening balance of cash and cash equivalents") == "cash_at_beginning"
+    assert key("Cash and cash equivalents as at the end of the year") == "cash_at_end"
+    assert key("Closing cash and cash equivalents") == "cash_at_end"
+    assert (
+        key("Net Increase/(Decrease) in Cash and Cash Equivalents (A+B+C)") == "net_change_in_cash"
+    )

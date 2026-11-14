@@ -636,8 +636,8 @@ def growth(own_store, peer_stores, sector_code: str, prefer: str) -> dict:
         "price_return": price,
         "definitions": [
             "CAGR = (ending value / starting value) ^ (1 / years) - 1, using annual figures on one accounting basis between the same two fiscal year ends.",
-            "Peer-set CAGR: the median of the peers' own CAGRs, and the CAGR of the peers' combined values, over the same fiscal years. Peers without both end points on that basis are excluded.",
-            "Growth alpha = company CAGR minus peer-set CAGR, in percentage points. It measures relative operating growth only; it is not investment alpha.",
+            "Peer-group CAGR (not an industry CAGR): the median of the peers' own CAGRs, and the CAGR of the peers' combined values, over the same fiscal years. Peers without both end points on that basis are excluded.",
+            "Difference vs the peer group = company CAGR minus peer-group CAGR, in percentage points. It measures relative operating growth only; it is not investment alpha, and no alpha against an industry benchmark is calculated because no verified industry statistics are held.",
             "Relative price return = the company's price return minus the median price return of the same peer set over the same period. Price return only (no dividends), not risk-adjusted, and not an index alpha.",
         ],
         "limitations": [

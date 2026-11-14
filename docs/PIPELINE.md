@@ -145,6 +145,109 @@ duration and whether it timed out (`pipeline_events.duration_ms`, `timed_out`).
 The worker records itself every 30 seconds from its own thread (`pipeline_schedule.worker_seen_at`),
 and a run records its heartbeat every minute while it works, so a long stage never looks like a dead run.
 
+## Annual-report coverage (`acquisition/annual_reports.py`, `acquisition/doc_coverage.py`)
+
+The `documents` stage keeps the newest FOUR annual reports per company (it used to keep two) and, when the
+usual pages do not give four years, searches deeper: a bounded walk (at most 24 pages, 3 levels) over
+investor-relations and annual-report pages that follows "Archive" and per-year links, plus the site's
+`sitemap.xml`. Everything goes through the polite client: robots.txt is obeyed, requests are spaced, a page
+that answers 403 or is disallowed is recorded as the reason and is never retried around. Blog and news pages
+are not followed; ESG and other-entity reports are not taken.
+
+Every run saves, beside its outcome, what is held and what is missing:
+
+```
+.venv\Scripts\python -m app.pipeline.cli docs-coverage                 # matrix for the 24 pilot companies
+.venv\Scripts\python -m app.pipeline.cli docs-coverage --gaps          # plus the reason for every missing year
+.venv\Scripts\python -m app.pipeline.cli docs-coverage --symbols TCS --json
+```
+
+`GET /api/pipeline/coverage` is the same record. For each target fiscal year (the latest four: FY2026 to
+FY2023 in November 2026) a company either HAS a report, with its source URL, file hash, retrieval and
+publication dates, period and extraction state, or is MISSING one with a reason code:
+
+| Code | Meaning |
+|---|---|
+| `SITE_REFUSES` | the site answers 403 to automated access; not worked around |
+| `ROBOTS_DISALLOW` | robots.txt disallows the report files; not fetched |
+| `NOT_IN_STATIC_PAGES` | the pages list no files (probably loaded by script, or published elsewhere) |
+| `NOT_LINKED` | the site lists other reports but none for this year |
+| `SITE_UNREACHABLE`, `NO_WEBSITE`, `NOT_LOOKED_FOR` | as named |
+
+A year that cannot be collected automatically is simply skipped and recorded: nobody is asked to download
+it by hand. It is requested from the user when a report is generated (the upload step), and then shows as held.
+The `documents` stage result says "annual reports: N of 4 years" and stores the missing years with their
+reasons in its detail, so the `/pipeline` page shows them.
+
+An investor-relations page is chosen by its path (a short path naming investor relations beats a long one);
+a blog or news article that merely mentions investors is never taken.
+
+## Market prices (`pipeline/prices.py`)
+
+Prices are refreshed once at the start of every run (run-level, not per company): the days since the newest
+stored price are fetched from the exchange's official daily file through the polite client and stored by the
+existing idempotent loader (a stored price is never overwritten). A day with no file (a market holiday, or not
+published yet) is not an error; a refusing site stops the catch-up and is retried next run; at most 20 days
+are fetched in one go. The `calculate` stage's fingerprint includes the company's newest price date, so
+valuation and the technical indicators are recalculated when a new price arrives and not otherwise. Health
+raises `PRICES_STALE` when the newest price is more than 5 days old.
+
+```
+.venv\Scripts\python -m app.pipeline.cli refresh-prices        # fetch what is missing now
+```
+
+A run can opt out with the option `refresh_prices: false`.
+
+## Stopping and crashes of the worker
+
+* **Clean stop** (`docker compose stop worker`, Ctrl+C, or SIGTERM): the worker finishes the stage it is in,
+  pauses the run, puts it back in the queue and exits with code 0. The next worker continues from the
+  checkpoints; nothing finished is repeated.
+* **Crash** (the worker process dies): the container exits, Docker restarts it (`restart: unless-stopped`,
+  `init: true`), and a run left RUNNING is taken over after its heartbeat has been silent for 10 minutes.
+* **Hard kill with `docker kill`** is a manual stop to Docker and is not restarted; start it again.
+
+## Alert delivery (`pipeline/alerts.py`)
+
+The worker checks health every 5 minutes and delivers alerts, so nobody has to open the page:
+
+* a NEW alert is sent to every sink and recorded as an `ALERT` event;
+* the same alert is not sent again for 6 hours (then once more as a reminder);
+* an alert that has cleared is sent once as `RESOLVED`.
+
+Sinks: always a JSON-lines file, `data/logs/pipeline_alerts.jsonl`; and, when `PIPELINE_ALERT_WEBHOOK` is
+set to a URL you control, an HTTP POST with a JSON body (a `text` field plus `event`, `level`, `code`,
+`message`, `key`; Slack-style receivers accept it). A failing sink is recorded on the notification and never
+stops the worker, a run or the other sinks. De-duplication reads the stored events, so it survives restarts.
+
+```
+.venv\Scripts\python -m app.pipeline.cli alerts            # what is wrong now (exit code 2 when CRITICAL)
+.venv\Scripts\python -m app.pipeline.cli alerts --send     # deliver new and cleared alerts now
+.venv\Scripts\python -m app.pipeline.cli serve --no-alerts # a worker that does not deliver
+```
+
+## Peer ranks stay current (`pipeline/peers.py`)
+
+A peer rank, peer median or sector score is a calculation over other companies' evidence. When a refresh
+replaces one of those inputs the stored rank is stale until the sector analysis runs again. At the end of
+every run the pipeline finds companies with stale peer evidence and re-runs the existing sector analysis for
+them (versions are added, old ones kept; at most 10 companies per run; a failure is recorded, not fatal).
+The run's summary and events say so (`peer refresh: N of M companies refreshed`).
+
+```
+.venv\Scripts\python -m app.pipeline.cli refresh-peers --check   # how many companies are stale
+.venv\Scripts\python -m app.pipeline.cli refresh-peers           # refresh them now
+```
+
+A run can opt out with the option `refresh_peers: false`.
+
+## Skipping unchanged work
+
+`evidence`, `calculate` and `report` store a fingerprint of their inputs. When the fingerprint is
+unchanged they skip, and that skip keeps the stage current: it is skipped again on every later run until an
+input changes. (An earlier version let a skip make the next run repeat the work, so these stages ran on every
+second cycle; found by an unattended run, fixed and covered by a regression test.)
+
 ## Evidence-integrity audit (read-only)
 
 ```

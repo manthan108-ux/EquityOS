@@ -108,7 +108,7 @@ ITEMS: tuple[Item, ...] = (
     _i(
         "profit_before_exceptional_items_and_tax",
         INCOME,
-        r"profit before exceptional items and tax",
+        r"profit before exceptional items? and tax",
         r"profit before share of .* exceptional items and tax",
         r"(net )?profit from ordinary activities before exceptional items and tax",
     ),
@@ -293,14 +293,224 @@ ITEMS: tuple[Item, ...] = (
         "cash_at_beginning",
         CASH_FLOW,
         r"cash and cash equivalents? at (the )?beginning of the (period|year).*",
-        r"opening cash and cash equivalents",
+        r"(opening|beginning) (balance of )?cash and cash equivalents?.*",
+        r"cash and cash equivalents? as at (the )?beginning of the (period|year).*",
     ),
     _i(
         "cash_at_end",
         CASH_FLOW,
         r"cash and cash equivalents? at (the )?end of the (period|year).*",
-        r"closing cash and cash equivalents",
+        r"(closing|ending) (balance of )?cash and cash equivalents?.*",
+        r"cash and cash equivalents? as at (the )?end of the (period|year).*",
     ),
+    # ---------------------------------------------------------------- additions (CP2)
+    # Frequent lines of Ind AS statements that were left unmapped in real annual reports. Each is a
+    # distinct line item: nothing is folded into an existing key, so no figure changes meaning.
+    # income statement
+    _i("other_operating_revenue", INCOME, r"other operating revenues?"),
+    _i("sale_of_products", INCOME, r"sale of products"),
+    _i("sale_of_services", INCOME, r"sale of services"),
+    _i(
+        "subcontracting_expense",
+        INCOME,
+        r"cost of technical sub-?contractors",
+        r"sub-?contracting( expenses?)?",
+    ),
+    _i(
+        "oci_remeasurement_defined_benefit",
+        INCOME,
+        r"remeasurements? (gains?|losses?|of)?( and losses?)?( on| of)? (the )?defined benefit (plans?|obligations?)( \(net\))?",
+        r"remeasurements? of (the )?net defined benefit (liability|plans?)( \(asset\))?",
+    ),
+    _i(
+        "oci_equity_instruments",
+        INCOME,
+        r"equity instruments through other comprehensive income",
+        r"fair value changes? (of|on) equity instruments through other comprehensive income",
+    ),
+    _i(
+        "oci_tax_not_reclassified",
+        INCOME,
+        r"income tax(es)? relating to items that will not be reclassified to profit or loss",
+    ),
+    _i(
+        "oci_tax_reclassified",
+        INCOME,
+        r"income tax(es)? relating to items that will be reclassified to profit or loss",
+    ),
+    _i("face_value_per_share", INCOME, r"face value per (equity )?share", kind="per_share"),
+    _i("transfer_to_statutory_reserve", INCOME, r"transfer to statutory reserve"),
+    _i("transfer_to_capital_reserve", INCOME, r"transfer to capital reserve"),
+    _i("transfer_to_special_reserve", INCOME, r"transfer to special reserve"),
+    _i("transfer_to_general_reserve", INCOME, r"transfer to general reserve"),
+    _i(
+        "balance_carried_to_balance_sheet",
+        INCOME,
+        r"balance carried over to (the )?(consolidated )?balance sheet",
+    ),
+    # balance sheet
+    _i("provisions", BALANCE_SHEET, r"provisions", sectional=True),
+    _i("loans", BALANCE_SHEET, r"loans", sectional=True),
+    _i("lease_liabilities", BALANCE_SHEET, r"lease liabilit(y|ies)", sectional=True),
+    _i("other_financial_assets", BALANCE_SHEET, r"other financial assets", sectional=True),
+    _i(
+        "other_financial_liabilities", BALANCE_SHEET, r"other financial liabilities", sectional=True
+    ),
+    _i(
+        "employee_benefit_obligations",
+        BALANCE_SHEET,
+        r"employee benefit obligations",
+        sectional=True,
+    ),
+    _i("other_current_assets", BALANCE_SHEET, r"other current assets"),
+    _i("other_non_current_assets", BALANCE_SHEET, r"other non[- ]current assets"),
+    _i("other_current_liabilities", BALANCE_SHEET, r"other current liabilities"),
+    _i("other_non_current_liabilities", BALANCE_SHEET, r"other non[- ]current liabilities"),
+    _i(
+        "deferred_tax_liabilities_net",
+        BALANCE_SHEET,
+        r"deferred tax liabilit(y|ies)( \(net\))?",
+    ),
+    _i("deferred_tax_assets_net", BALANCE_SHEET, r"deferred tax assets?( \(net\))?"),
+    _i("capital_work_in_progress", BALANCE_SHEET, r"capital work[- ]in[- ]progress"),
+    _i("goodwill", BALANCE_SHEET, r"goodwill"),
+    _i("other_intangible_assets", BALANCE_SHEET, r"other intangible assets", r"intangible assets"),
+    _i(
+        "intangible_assets_under_development",
+        BALANCE_SHEET,
+        r"intangible assets under development",
+    ),
+    _i("right_of_use_assets", BALANCE_SHEET, r"right[- ]of[- ]use assets?"),
+    _i("investment_property", BALANCE_SHEET, r"investment propert(y|ies)"),
+    _i(
+        "investments_in_subsidiaries_jv_associates",
+        BALANCE_SHEET,
+        r"investments? in subsidiaries,? joint ventures,? and associates",
+        r"investments? in subsidiaries, associates and joint ventures",
+    ),
+    _i(
+        "assets_held_for_sale",
+        BALANCE_SHEET,
+        r"(non[- ]current )?assets (classified as )?held for sale( and discontinued operations)?",
+    ),
+    _i(
+        "current_tax_liabilities_net",
+        BALANCE_SHEET,
+        r"current tax liabilit(y|ies)( \(net\))?",
+    ),
+    _i("income_tax_liabilities_net", BALANCE_SHEET, r"income tax liabilit(y|ies)( \(net\))?"),
+    _i("current_tax_assets_net", BALANCE_SHEET, r"current tax assets?( \(net\))?"),
+    _i("non_current_tax_assets_net", BALANCE_SHEET, r"non[- ]current tax assets?( \(net\))?"),
+    _i("income_tax_assets_net", BALANCE_SHEET, r"income tax assets?( \(net\))?"),
+    _i(
+        "bank_balances_other_than_cash_equivalents",
+        BALANCE_SHEET,
+        r"bank balances other than cash and cash equivalents",
+        r"bank balances other than \(?(iii|ii|i)\)? above",
+        r"other bank balances",
+    ),
+    _i("cash_and_bank_balances", BALANCE_SHEET, r"cash and bank balances"),
+    _i(
+        "trade_payables_msme",
+        BALANCE_SHEET,
+        r"total outstanding dues of micro enterprises and small enterprises",
+        r"total outstanding dues of micro and small enterprises",
+    ),
+    _i(
+        "trade_payables_others",
+        BALANCE_SHEET,
+        r"total outstanding dues of creditors other than micro enterprises and small enterprises",
+        r"total outstanding dues of creditors other than micro and small enterprises",
+    ),
+    _i("contingent_liabilities", BALANCE_SHEET, r"contingent liabilities"),
+    _i("bills_for_collection", BALANCE_SHEET, r"bills for collection"),
+    # cash flow statement
+    _i("profit_before_tax", CASH_FLOW, r"(net )?profit before tax(es)?", r"profit before taxation"),
+    _i(
+        "depreciation_and_amortisation",
+        CASH_FLOW,
+        r"depreciation and amorti[sz]ation( expenses?)?",
+        r"depreciation,? amorti[sz]ation and impairment( expenses?)?",
+    ),
+    _i("finance_costs", CASH_FLOW, r"finance costs?", r"interest expenses?"),
+    _i("interest_income", CASH_FLOW, r"interest income"),
+    _i("interest_received", CASH_FLOW, r"interest received( .*)?"),
+    _i("dividend_received", CASH_FLOW, r"dividends? received( .*)?"),
+    _i("interest_paid", CASH_FLOW, r"interest paid( .*)?", r"finance costs paid"),
+    _i(
+        "operating_profit_before_working_capital_changes",
+        CASH_FLOW,
+        r"operating (profit|income) before working capital changes",
+        r"operating cash (flows?|profit) before (changes in )?working capital( changes)?",
+    ),
+    _i("change_in_inventories", CASH_FLOW, r"inventories", r"(increase|decrease) in inventories"),
+    _i(
+        "change_in_trade_receivables",
+        CASH_FLOW,
+        r"trade receivables",
+        r"(increase|decrease) in trade receivables",
+    ),
+    _i(
+        "change_in_trade_payables",
+        CASH_FLOW,
+        r"trade payables",
+        r"(increase|decrease) in trade payables",
+    ),
+    _i(
+        "proceeds_from_sale_of_fixed_assets",
+        CASH_FLOW,
+        r"proceeds from (the )?sale of (property, plant and equipment|fixed assets)( .*)?",
+        r"sale of (property, plant and equipment|fixed assets)",
+    ),
+    _i("purchase_of_investments", CASH_FLOW, r"purchases? of investments?( .*)?"),
+    _i(
+        "proceeds_from_sale_of_investments",
+        CASH_FLOW,
+        r"proceeds from (the )?sale of (investments?|mutual funds)( .*)?",
+        r"sale of investments?( .*)?",
+    ),
+    _i(
+        "proceeds_from_long_term_borrowings",
+        CASH_FLOW,
+        r"proceeds from long[- ]term borrowings( .*)?",
+    ),
+    _i(
+        "repayment_of_long_term_borrowings",
+        CASH_FLOW,
+        r"repayment of long[- ]term borrowings( .*)?",
+    ),
+    _i(
+        "proceeds_from_short_term_borrowings",
+        CASH_FLOW,
+        r"proceeds from short[- ]term borrowings( .*)?",
+    ),
+    _i(
+        "repayment_of_short_term_borrowings",
+        CASH_FLOW,
+        r"repayment of short[- ]term borrowings( .*)?",
+    ),
+    _i(
+        "proceeds_from_issue_of_share_capital",
+        CASH_FLOW,
+        r"proceeds from (the )?issue of (equity )?share capital( .*)?",
+        r"proceeds from exercise of (stock options|employee stock options)( .*)?",
+    ),
+    _i(
+        "payment_of_lease_liabilities",
+        CASH_FLOW,
+        r"payments? of lease liabilit(y|ies)( .*)?",
+        r"principal elements? of lease payments?",
+    ),
+    _i("dividends_paid", CASH_FLOW, r"payments? of dividends?( .*)?"),
+    _i("increase_in_deposits", CASH_FLOW, r"increase in deposits"),
+    _i(
+        "increase_in_other_liabilities_and_provisions",
+        CASH_FLOW,
+        r"increase in other liabilities and provisions",
+    ),
+    _i("decrease_in_other_assets", CASH_FLOW, r"decrease in other assets"),
+    _i("decrease_in_advances", CASH_FLOW, r"decrease in advances"),
+    _i("decrease_in_investments", CASH_FLOW, r"decrease in investments"),
 )
 
 # Ratios and other "additional information" lines printed under or after the results (SEBI LODR
@@ -440,7 +650,7 @@ _ANCHORS = {
 # Leading enumeration: "1.", "(a)", "iv)", "1.2", or a bare serial number "6 " before the label.
 _ENUM = re.compile(
     r"^(\(?([0-9]{1,2}|[ivx]{1,5}|[a-z])[\.\)]|\(([0-9]{1,2}|[ivx]{1,5}|[a-z])\)|[0-9]{1,2}\.[0-9]"
-    r"|[0-9]{1,2}(?=\s)|(add|less)\s*:)\s*"
+    r"|[0-9]{1,2}(?=\s)|(i{1,3}|iv|vi{0,3}|ix|xi{0,2})(?=\s)|(add|less)\s*:)\s*"
 )
 _TOKEN = r"(?:[0-9]{1,2}|[ivx]{1,5}|[a-z])"
 _FORMULA = re.compile(

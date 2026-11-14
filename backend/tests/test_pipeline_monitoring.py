@@ -338,3 +338,75 @@ def test_a_registered_website_is_not_fetched_again_every_run(session, company, m
     assert len(calls) == 1 and "not checked again" in again.steps["website"]
     runner.run_company(session, company, stages=("website",), force=True)
     assert len(calls) == 2
+
+
+# ---- a clean shutdown pauses the run in hand and the next worker continues it ----------------------
+
+
+def test_a_shutdown_request_pauses_the_run_and_the_next_worker_finishes_it(
+    session, company, monkeypatch
+):
+    import threading
+
+    from app.models import Company, PipelineStageState
+    from app.models.pipeline import PAUSED
+    from app.pipeline import stages as pst
+
+    others = list(session.scalars(select(Company).where(Company.id != company.id).limit(2)))
+    people = [company, *others]
+    run = runner.create_run(session, stages=("readiness",), batch_size=3)
+    run.companies = [str(c.id) for c in people]
+    session.commit()
+
+    stop = threading.Event()
+    seen: list = []
+
+    def readiness(ctx, prev):
+        seen.append(ctx.company.id)
+        stop.set()  # SIGTERM arrives while the first company is being worked on
+        return Outcome(SUCCEEDED, "done")
+
+    monkeypatch.setitem(pst.STAGE_FUNCS, "readiness", readiness)
+    real_close = session.close
+    session.close = lambda: None
+    try:
+        scheduler.serve(lambda: session, lambda: {}, once=True, beat_seconds=3600, stop_event=stop)
+        session.expire_all()
+        paused = session.get(PipelineRun, run.id)
+        # the first company finished its stage; the run is back in the queue, not lost or stuck
+        assert seen == [company.id]
+        assert paused.status == QUEUED, paused.status
+        assert paused.status != PAUSED
+        worked = {s.company_id for s in session.scalars(select(PipelineStageState))}
+        assert worked == {company.id}, "companies after the stop have not been touched"
+
+        # the next worker picks the run up and does only what is left
+        monkeypatch.setitem(
+            pst.STAGE_FUNCS,
+            "readiness",
+            lambda ctx, prev: (seen.append(ctx.company.id), Outcome(SUCCEEDED, "done"))[1],
+        )
+        scheduler.serve(lambda: session, lambda: {}, once=True, beat_seconds=3600)
+    finally:
+        session.close = real_close
+    session.expire_all()
+    assert session.get(PipelineRun, run.id).status == COMPLETED
+    assert seen.count(company.id) == 1, "the finished company is not repeated"
+    assert set(seen) == {c.id for c in people}
+
+
+def test_without_a_stop_request_nothing_changes(session, company, monkeypatch):
+    from app.pipeline import stages as pst
+
+    run = runner.create_run(session, stages=("readiness",), batch_size=1)
+    run.companies = [str(company.id)]
+    session.commit()
+    monkeypatch.setitem(pst.STAGE_FUNCS, "readiness", lambda ctx, prev: Outcome(SUCCEEDED, "ok"))
+    real_close = session.close
+    session.close = lambda: None
+    try:
+        scheduler.serve(lambda: session, lambda: {}, once=True, beat_seconds=3600)
+    finally:
+        session.close = real_close
+    session.expire_all()
+    assert session.get(PipelineRun, run.id).status == COMPLETED

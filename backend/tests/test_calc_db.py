@@ -190,7 +190,9 @@ def test_every_result_records_formula_inputs_definition_and_caveat(session, co, 
 def test_missing_inputs_become_gaps_with_the_reason(session, co, two_years):
     report = run(session, co)
     dte = gaps(session, report, "LEVERAGE.debt_to_equity")
-    assert dte and "BALANCE_SHEET.borrowings" in dte[0].reason
+    assert dte and "LEVERAGE.total_borrowings" in dte[0].reason
+    debt = gaps(session, report, "LEVERAGE.total_borrowings")
+    assert debt and "BALANCE_SHEET.borrowings" in debt[0].reason
     assert {g.metric for g in report.gaps} >= {"CASH.free_cash_flow", "LIQUIDITY.current_ratio"}
     stored = session.scalars(
         select(CalculationGap).where(CalculationGap.run_id == report.run.id)

@@ -305,7 +305,7 @@ def growth_section(report: dict, st) -> list:
         Paragraph(
             clean(
                 "The first benchmark is the company's stored peer group (same-industry listed "
-                "companies closest in size), called the peer-set CAGR. A second, broader comparison "
+                "companies closest in size), called the peer-group CAGR; it is not an industry CAGR. A second, broader comparison "
                 "uses the companies the data provider files under the same sector label, shown "
                 "below when enough of them have stored filings. EquityOS has no official industry "
                 "statistics."
@@ -319,7 +319,7 @@ def growth_section(report: dict, st) -> list:
         "Company CAGR",
         "Peer median",
         "Peer combined",
-        "Growth alpha vs median",
+        "Difference vs peer median",
         "vs combined",
     )
     rows = [_hdr(st, *heads)]
@@ -509,7 +509,7 @@ def growth_section(report: dict, st) -> list:
         )
     out.append(Paragraph("Relative price return (defined separately)", st["h2"]))
     if g["price_return"]:
-        rows = [_hdr(st, "Period", "Company", "Peer-set median", "Difference", "As of")]
+        rows = [_hdr(st, "Period", "Company", "Peer-group median", "Difference", "As of")]
         for r in g["price_return"]:
             rows.append(
                 [
@@ -741,3 +741,545 @@ def cyclicality_has_content(cyc: dict | None) -> bool:
         or obs.get("profit")
         or cyc.get("sensitivities")
     )
+
+
+# ---------------------------------------------------------------- growth and profitability
+
+
+def profitability_has_content(p: dict | None) -> bool:
+    """True if at least one growth or margin figure is available."""
+    return bool(p and p.get("available"))
+
+
+def _g(x, nd: str = "0.1") -> str:
+    return str(Decimal(x).quantize(Decimal(nd)))
+
+
+def profitability_section(report: dict, st) -> list:
+    a = _analysis(report)
+    p = a.get("profitability") if a else None
+    if not profitability_has_content(p):
+        return []
+    bench = p["benchmark"]
+    out = [
+        Paragraph(
+            clean(
+                f"All figures are on the {p['basis'].lower()} basis. Comparisons are with the "
+                f"{bench['label']}: {bench['description']}. {bench['industry_reason'].capitalize()}."
+            ),
+            st["body"],
+        )
+    ]
+    rows = [
+        _hdr(st, "Measure", "Years", "Latest year-on-year", "CAGR", "3-year CAGR", right_from=1)
+    ]
+    gaps = []
+    for g in p["growth"].values():
+        if not g.get("available") or not g.get("series"):
+            gaps.append(f"{g['label']}: {g['reason']}.")
+            continue
+        last = g["series"][-1]
+        cg, c3 = g.get("cagr"), g.get("cagr_3y")
+        yoy = last.get("yoy_pct")
+        rows.append(
+            [
+                Paragraph(clean(g["label"]), st["cellb"]),
+                Paragraph(f"{g['series'][0]['fy']} to {last['fy']}", st["cellr"]),
+                Paragraph(f"{_g(yoy)}%" if yoy is not None else "n/a", st["cellr"]),
+                Paragraph(f"{_g(cg['pct'])}%" if cg else "n/a", st["cellr"]),
+                Paragraph(f"{_g(c3['pct'])}%" if c3 else "n/a", st["cellr"]),
+            ]
+        )
+        if not cg and g.get("reason"):
+            gaps.append(f"{g['label']}: {g['reason']}.")
+    if len(rows) > 1:
+        out += [
+            Paragraph("Growth", st["h2"]),
+            _table(rows, [W - 120 * mm, 34 * mm, 30 * mm, 28 * mm, 28 * mm]),
+        ]
+    mrows = [_hdr(st, "Margin", "Latest", "Change", "Direction", "Years up / down", right_from=1)]
+    for m in p["margins"].values():
+        if not m.get("available") or not m.get("series"):
+            gaps.append(f"{m['label']}: {m['reason']}.")
+            continue
+        latest = m["series"][-1]
+        mrows.append(
+            [
+                Paragraph(clean(m["label"]), st["cellb"]),
+                Paragraph(f"{_g(latest['value'])}% ({latest['fy']})", st["cellr"]),
+                Paragraph(f"{_pp(m['change_pp'])} pp" if "change_pp" in m else "n/a", st["cellr"]),
+                Paragraph((m.get("direction") or "n/a").lower(), st["cellr"]),
+                Paragraph(
+                    f"{m['years_up']} / {m['years_down']}" if "years_up" in m else "n/a",
+                    st["cellr"],
+                ),
+            ]
+        )
+    if len(mrows) > 1:
+        out += [
+            Spacer(1, 6),
+            Paragraph("Margins", st["h2"]),
+            _table(mrows, [W - 120 * mm, 40 * mm, 24 * mm, 28 * mm, 28 * mm]),
+        ]
+    out += [Paragraph(clean(o["text"]), st["body"]) for o in p["observations"]]
+    d = p.get("drivers")
+    if d and d.get("available"):
+        drows = [
+            _hdr(
+                st,
+                "Line (share of revenue)",
+                d["start_fy"],
+                d["end_fy"],
+                "Effect on margin",
+                right_from=1,
+            )
+        ]
+        for i in d["items"]:
+            drows.append(
+                [
+                    Paragraph(clean(i["line"]), st["cell"]),
+                    Paragraph(f"{_g(i['pct_of_revenue_start'])}%", st["cellr"]),
+                    Paragraph(f"{_g(i['pct_of_revenue_end'])}%", st["cellr"]),
+                    Paragraph(f"{_pp(i['contribution_pp'])} pp", st["cellr"]),
+                ]
+            )
+        drows.append(
+            [
+                Paragraph("Not itemised", st["cell"]),
+                "",
+                "",
+                Paragraph(f"{_pp(d['not_itemised_pp'])} pp", st["cellr"]),
+            ]
+        )
+        out += [
+            Spacer(1, 6),
+            Paragraph(
+                f"What moved the net margin ({_g(d['net_margin_start'])}% to {_g(d['net_margin_end'])}%)",
+                st["h2"],
+            ),
+            _table(drows, [W - 90 * mm, 30 * mm, 30 * mm, 30 * mm]),
+            Paragraph(clean(d["note"]), st["small"]),
+        ]
+    prows = [
+        _hdr(
+            st,
+            "Versus the peer group",
+            "Company",
+            "Peer-group median",
+            "Difference",
+            "Peers",
+            right_from=1,
+        )
+    ]
+    for key, b in p["peer_growth"].items():
+        if b.get("peer_benchmark"):
+            c = b["company"]
+            prows.append(
+                [
+                    Paragraph(clean(p["growth"][key]["label"] + " CAGR"), st["cell"]),
+                    Paragraph(f"{_g(c['cagr'])}%", st["cellr"]),
+                    Paragraph(f"{_g(b['peer_group_median_cagr'])}%", st["cellr"]),
+                    Paragraph(f"{_pp(b['difference_vs_peer_median_pp'])} pp", st["cellr"]),
+                    Paragraph(str(b["peer_count"]), st["cellr"]),
+                ]
+            )
+        elif b.get("reason"):
+            gaps.append(
+                f"Peer comparison, {p['growth'][key]['label'].lower()} CAGR: {b['reason']}."
+            )
+    for key, b in p["peer_margins"].items():
+        if b.get("available"):
+            prows.append(
+                [
+                    Paragraph(clean(p["margins"][key]["label"] + f" ({b['fy']})"), st["cell"]),
+                    Paragraph(f"{_g(b['company'])}%", st["cellr"]),
+                    Paragraph(f"{_g(b['peer_group_median'])}%", st["cellr"]),
+                    Paragraph(f"{_pp(b['difference_pp'])} pp", st["cellr"]),
+                    Paragraph(str(b["peer_count"]), st["cellr"]),
+                ]
+            )
+        elif b.get("reason"):
+            gaps.append(f"Peer comparison, {p['margins'][key]['label'].lower()}: {b['reason']}.")
+    if len(prows) > 1:
+        out += [Spacer(1, 6), _table(prows, [W - 120 * mm, 26 * mm, 36 * mm, 30 * mm, 28 * mm])]
+    if gaps:
+        out += [Spacer(1, 4), Paragraph("Not available", st["h2"])]
+        out += _bullets(gaps, st)
+    out += [Spacer(1, 4)] + _bullets(p["definitions"], st)
+    return out
+
+
+# ---------------------------------------------------------------- cash flow and earnings quality
+
+
+def cashflow_has_content(c: dict | None) -> bool:
+    return bool(c and c.get("available"))
+
+
+def _crore(x) -> str:
+    return f"{(Decimal(x) / Decimal(10_000_000)):,.0f}"
+
+
+def _ratio_cell(m: dict, last: bool = True) -> tuple[str, str]:
+    row = m["series"][-1]
+    v = Decimal(row["value"])
+    return (f"{v}x" if m["kind"] == "x" else f"{v}%"), row["fy"]
+
+
+def cashflow_section(report: dict, st) -> list:
+    a = _analysis(report)
+    c = a.get("cashflow") if a else None
+    if not cashflow_has_content(c):
+        return []
+    gaps: list[str] = []
+    out = [
+        Paragraph(
+            clean(
+                f"All figures are on the {c['basis'].lower()} basis, in INR crore. Comparisons are with "
+                f"the {c['benchmark']['label']}: {c['benchmark']['description']}. Readings are rules "
+                "of thumb with stated thresholds; they describe the evidence and are not conclusions "
+                "about the company's accounting."
+            ),
+            st["body"],
+        )
+    ]
+    # cash and profit by year
+    conv = c["conversion"]
+    fcf = c["free_cash_flow"]
+    capex = c["capital_expenditure"]
+    fcf_by = {r["fy"]: r for r in fcf.get("series", [])} if fcf["available"] else {}
+    capex_by = {r["fy"]: r for r in capex.get("series", [])} if capex["available"] else {}
+    cfo_by = {r["fy"]: r for r in c["operating_cash_flow"].get("series", [])}
+    pat_by = {r["fy"]: r for r in conv.get("years", [])}
+    years = sorted(set(cfo_by) | set(fcf_by) | set(capex_by) | set(pat_by))
+    if years:
+        rows = [
+            _hdr(
+                st,
+                "INR crore",
+                "Net profit",
+                "Operating cash flow",
+                "CFO / PAT",
+                "Capital expenditure",
+                "Free cash flow",
+                right_from=1,
+            )
+        ]
+        for fy in years:
+            p, o = pat_by.get(fy), cfo_by.get(fy)
+            rows.append(
+                [
+                    Paragraph(fy, st["cellb"]),
+                    Paragraph(_crore(p["pat"]) if p else "n/a", st["cellr"]),
+                    Paragraph(_crore(o["value"]) if o else "n/a", st["cellr"]),
+                    Paragraph(f"{p['ratio']}x" if p and p.get("ratio") else "n/a", st["cellr"]),
+                    Paragraph(
+                        _crore(capex_by[fy]["value"]) if fy in capex_by else "n/a", st["cellr"]
+                    ),
+                    Paragraph(_crore(fcf_by[fy]["value"]) if fy in fcf_by else "n/a", st["cellr"]),
+                ]
+            )
+        out += [
+            Paragraph("Profit and cash by year", st["h2"]),
+            _table(rows, [W - 130 * mm, 26 * mm, 28 * mm, 24 * mm, 26 * mm, 26 * mm]),
+        ]
+    cfo = c["operating_cash_flow"]
+    if cfo.get("cagr"):
+        out.append(
+            Paragraph(
+                clean(
+                    f"Operating cash flow grew at {_g(cfo['cagr']['pct'])}% a year ({cfo['cagr']['start_fy']} to {cfo['cagr']['end_fy']})."
+                ),
+                st["body"],
+            )
+        )
+    elif not cfo["available"]:
+        gaps.append(f"Operating cash flow: {cfo['reason']}.")
+    if not fcf["available"]:
+        gaps.append(f"Free cash flow: {fcf['reason']}.")
+    if not capex["available"]:
+        gaps.append(f"Capital expenditure: {capex['reason']}.")
+    # ratios
+    rrows = [_hdr(st, "Ratio", "Latest", "Year", right_from=1)]
+    for key in (
+        "cfo_to_net_profit",
+        "cfo_to_ebitda",
+        "cfo_margin",
+        "fcf_margin",
+        "fcf_to_net_profit",
+        "capex_to_revenue",
+        "capex_to_cfo",
+        "capex_to_depreciation",
+        "accrual_ratio",
+    ):
+        m = c["ratios"][key]
+        if not m.get("available"):
+            gaps.append(f"{m['label']}: {m['reason']}.")
+            continue
+        value, fy = _ratio_cell(m)
+        rrows.append(
+            [
+                Paragraph(clean(m["label"]), st["cell"]),
+                Paragraph(value, st["cellr"]),
+                Paragraph(fy, st["cellr"]),
+            ]
+        )
+    if len(rrows) > 1:
+        out += [
+            Spacer(1, 6),
+            Paragraph("Cash conversion, capital expenditure and accruals", st["h2"]),
+            _table(rrows, [W - 60 * mm, 30 * mm, 30 * mm]),
+        ]
+    out += [Paragraph(clean(o["text"]), st["body"]) for o in c["observations"]]
+    if c.get("other_basis"):
+        out.append(_note_box(c["other_basis"]["note"], st))
+    if c["divergences"]:
+        out += [Spacer(1, 4), Paragraph("Where profit and cash moved apart", st["h2"])]
+        out += _bullets([d["text"] for d in c["divergences"]], st)
+    elif conv.get("available"):
+        out.append(
+            Paragraph(
+                "No year shows profit and cash moving apart under the rules used.", st["body"]
+            )
+        )
+    wc = c.get("working_capital")
+    if wc:
+        wrows = [_hdr(st, f"Cash flow statement lines, {wc['fy']}", "INR crore", right_from=1)]
+        wrows += [
+            [Paragraph(clean(i["line"]), st["cell"]), Paragraph(_crore(i["value"]), st["cellr"])]
+            for i in wc["items"]
+        ]
+        out += [
+            Spacer(1, 4),
+            _table(wrows, [W - 40 * mm, 40 * mm]),
+            Paragraph(clean(wc["note"]), st["small"]),
+        ]
+    prows = [
+        _hdr(
+            st,
+            "Versus the peer group",
+            "Company",
+            "Peer-group median",
+            "Difference",
+            "Peers",
+            right_from=1,
+        )
+    ]
+    for key, b in c["peers"].items():
+        label = c["ratios"][key]["label"]
+        if b.get("available"):
+            unit = "x" if b["kind"] == "x" else "%"
+            diff = f"{_pp(b['difference_pp'])} pp" if unit == "%" else f"{_pp(b['difference_pp'])}x"
+            prows.append(
+                [
+                    Paragraph(clean(f"{label} ({b['fy']})"), st["cell"]),
+                    Paragraph(f"{_g(b['company'], '0.01')}{unit}", st["cellr"]),
+                    Paragraph(f"{_g(b['peer_group_median'], '0.01')}{unit}", st["cellr"]),
+                    Paragraph(diff, st["cellr"]),
+                    Paragraph(str(b["peer_count"]), st["cellr"]),
+                ]
+            )
+        elif b.get("reason"):
+            gaps.append(f"Peer comparison, {label.lower()}: {b['reason']}.")
+    if len(prows) > 1:
+        out += [Spacer(1, 6), _table(prows, [W - 120 * mm, 26 * mm, 36 * mm, 30 * mm, 28 * mm])]
+    if gaps:
+        out += [Spacer(1, 4), Paragraph("Not available", st["h2"])]
+        out += _bullets(gaps, st)
+    out += [Spacer(1, 4)] + _bullets(c["definitions"], st)
+    return out
+
+
+# ---------------------------------------------------------------- working capital and financial health
+
+
+def health_has_content(h: dict | None) -> bool:
+    return bool(h and h.get("available"))
+
+
+def _val(m: dict, row: dict) -> str:
+    v = Decimal(row["value"])
+    if m["kind"] == "days":
+        return f"{v.quantize(Decimal('1'))}"
+    return f"{v}x" if m["kind"] == "x" else f"{v}%"
+
+
+def _series_table(st, metrics: dict, keys, first_col: str, gaps: list) -> list:
+    """A year-by-year table of the available ratio series (one row per metric)."""
+    avail = [(k, metrics[k]) for k in keys if metrics[k].get("available")]
+    for k in keys:
+        if not metrics[k].get("available"):
+            gaps.append(f"{metrics[k]['label']}: {metrics[k]['reason']}.")
+    if not avail:
+        return []
+    fys = sorted({r["fy"] for _, m in avail for r in m["series"]})[-5:]
+    rows = [_hdr(st, first_col, *fys, right_from=1)]
+    for _, m in avail:
+        by = {r["fy"]: r for r in m["series"]}
+        rows.append(
+            [Paragraph(clean(m["label"]), st["cell"])]
+            + [Paragraph(_val(m, by[f]) if f in by else "n/a", st["cellr"]) for f in fys]
+        )
+    n = len(fys)
+    return [_table(rows, [W - 22 * mm * n] + [22 * mm] * n)]
+
+
+def health_section(report: dict, st) -> list:
+    a = _analysis(report)
+    h = a.get("health") if a else None
+    if not health_has_content(h):
+        return []
+    gaps: list[str] = []
+    out = [
+        Paragraph(
+            clean(
+                f"All figures are on the {h['basis'].lower()} basis. Comparisons are with the "
+                f"{h['benchmark']['label']}: {h['benchmark']['description']}. Readings are rules of "
+                "thumb with stated thresholds; they describe the evidence and are not conclusions "
+                "about the company."
+            ),
+            st["body"],
+        )
+    ]
+    if h["kind"] == "NON_FINANCIAL":
+        wc = h["working_capital"]
+        if wc["available"]:
+            out += [Paragraph("Working capital (days)", st["h2"])]
+            out += _series_table(
+                st,
+                wc["days"],
+                list(wc["days"]),
+                "Days",
+                gaps,
+            )
+            out += [Paragraph(clean(o["text"]), st["body"]) for o in wc["observations"]]
+            out.append(Paragraph(clean(wc["convention"]), st["small"]))
+        else:
+            gaps.append(f"Working capital: {wc['reason']}.")
+        lev = h["leverage_liquidity"]
+        if lev["available"]:
+            out += [Spacer(1, 6), Paragraph("Leverage, liquidity and coverage", st["h2"])]
+            keys = [
+                "debt_to_equity", "net_debt_to_equity", "net_debt_to_ebitda", "interest_cover",
+                "ebitda_interest_cover", "current_ratio", "quick_ratio",
+            ]  # fmt: skip
+            out += _series_table(st, lev["ratios"], keys, "Ratio", gaps)
+            nd = lev["net_debt"]
+            if nd.get("available"):
+                last = nd["series"][-1]
+                word = "net cash" if last["position"] == "NET_CASH" else "net debt"
+                out.append(
+                    Paragraph(
+                        clean(
+                            f"{last['fy']} {word}: INR {_crore(abs(Decimal(last['value'])))} crore."
+                        ),
+                        st["body"],
+                    )
+                )
+            out += [Paragraph(clean(o["text"]), st["body"]) for o in lev["observations"]]
+        else:
+            gaps.append(f"Leverage and liquidity: {lev['reason']}.")
+        rep = h["repayment"]
+        if rep["available"]:
+            out += [Spacer(1, 6), Paragraph("Repayment capacity", st["h2"])]
+            out += [Paragraph(clean(o["text"]), st["body"]) for o in rep["observations"]]
+            out.append(Paragraph(clean(rep["rules"]), st["small"]))
+        else:
+            gaps.append(f"Repayment capacity: {rep['reason']}.")
+    else:
+        out.append(_note_box(h["note"], st))
+    ret = h["returns"]
+    if ret["available"]:
+        out += [Spacer(1, 6), Paragraph("Returns", st["h2"])]
+        keys = ["roe", "roe_closing", "roce", "roa", "roa_closing"]
+        out += _series_table(st, ret["metrics"], [k for k in keys if h["kind"] == "NON_FINANCIAL" or k != "roce"], "Return", gaps)  # fmt: skip
+    dp = h["dupont"]
+    if dp["available"]:
+        out += [Spacer(1, 6), Paragraph("DuPont analysis of return on equity", st["h2"])]
+        rows = [
+            _hdr(
+                st, "Year", "Net margin", "Asset turnover", "Equity multiplier", "ROE", right_from=1
+            )
+        ]
+        for r in dp["years"]:
+            rows.append(
+                [
+                    Paragraph(r["fy"], st["cellb"]),
+                    Paragraph(f"{_g(r['net_margin'], '0.01')}%", st["cellr"]),
+                    Paragraph(f"{_g(r['asset_turnover'], '0.01')}x", st["cellr"]),
+                    Paragraph(f"{_g(r['equity_multiplier'], '0.01')}x", st["cellr"]),
+                    Paragraph(f"{_g(r['roe'], '0.1')}%", st["cellr"]),
+                ]
+            )
+        out.append(_table(rows, [W - 120 * mm, 28 * mm, 30 * mm, 32 * mm, 30 * mm]))
+        d = dp["driver"]
+        if d:
+            shares = ", ".join(f"{k.lower()} {v}%" for k, v in d["shares_pct"].items())
+            out.append(
+                Paragraph(
+                    clean(
+                        f"ROE changed by {_pp(d['roe_change_pp'])} percentage points between "
+                        f"{d['from_fy']} and {d['to_fy']}; {d['leading'].lower()} was the largest "
+                        f"driver (shares of the change: {shares})."
+                    ),
+                    st["body"],
+                )
+            )
+        five = [r for r in dp["years"] if r.get("five_step")]
+        if five:
+            r = five[-1]
+            f = r["five_step"]
+            out.append(
+                Paragraph(
+                    clean(
+                        f"Five-step, {r['fy']}: tax burden {_g(f['tax_burden'], '0.01')} x interest "
+                        f"burden {_g(f['interest_burden'], '0.01')} x EBIT margin "
+                        f"{_g(f['ebit_margin'], '0.1')}% x asset turnover "
+                        f"{_g(f['asset_turnover'], '0.01')}x x equity multiplier "
+                        f"{_g(f['equity_multiplier'], '0.01')}x."
+                    ),
+                    st["body"],
+                )
+            )
+        out.append(Paragraph(clean(dp["convention"]), st["small"]))
+    else:
+        gaps.append(f"DuPont analysis: {dp['reason']}.")
+    prows = [
+        _hdr(
+            st,
+            "Versus the peer group",
+            "Company",
+            "Peer-group median",
+            "Difference",
+            "Peers",
+            right_from=1,
+        )
+    ]
+    labels = {}
+    for grp in (h.get("working_capital", {}).get("days", {}), h.get("leverage_liquidity", {}).get("ratios", {}), h["returns"]["metrics"]):  # fmt: skip
+        labels.update({k: v["label"] for k, v in grp.items()})
+    for key, b in h["peers"].items():
+        label = labels.get(key, key)
+        if b.get("available"):
+            unit = {"days": " days", "x": "x", "pct": "%"}.get(b["kind"], "")
+            prows.append(
+                [
+                    Paragraph(clean(f"{label} ({b['fy']})"), st["cell"]),
+                    Paragraph(f"{_g(b['company'], '0.1')}{unit}", st["cellr"]),
+                    Paragraph(f"{_g(b['peer_group_median'], '0.1')}{unit}", st["cellr"]),
+                    Paragraph(
+                        f"{_pp(b['difference_pp'])}{' pp' if b['kind'] == 'pct' else unit}",
+                        st["cellr"],
+                    ),
+                    Paragraph(str(b["peer_count"]), st["cellr"]),
+                ]
+            )
+        elif b.get("reason"):
+            gaps.append(f"Peer comparison, {label.lower()}: {b['reason']}.")
+    if len(prows) > 1:
+        out += [Spacer(1, 6), _table(prows, [W - 120 * mm, 26 * mm, 36 * mm, 30 * mm, 28 * mm])]
+    if gaps:
+        out += [Spacer(1, 4), Paragraph("Not available", st["h2"])]
+        out += _bullets(gaps, st)
+    out += [Spacer(1, 4)] + _bullets(h["definitions"], st)
+    return out

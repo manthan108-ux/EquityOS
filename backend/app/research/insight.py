@@ -6,14 +6,28 @@ report, so the caller records the failure and the report says the analysis is un
 
 from __future__ import annotations
 
+import logging
+
 from sqlalchemy.orm import Session
 
 from app.models import Company
 from app.research import analysis as an
-from app.research import cyclicality, industry, mgmt, profile, thesis, valuation, verdict
+from app.research import (
+    cashflow,
+    cyclicality,
+    health,
+    industry,
+    mgmt,
+    profile,
+    profitability,
+    thesis,
+    valuation,
+    verdict,
+)
 from app.research import readiness as rd
 from app.research.sectors import sector_for
 
+log = logging.getLogger("equityos.research")
 VERSION = "1.0"
 VALUATION_NAMES = {
     "PRICE.close",
@@ -47,13 +61,19 @@ def build(
 ) -> dict:
     sector = sector_for(ready.profile)
     prefer = ready.preferences.basis
+    requested = prefer
     names = (
         {n for m in (*sector.trend, *sector.quarterly, *sector.peer) for n in m.names}
         | VALUATION_NAMES
         | GROWTH_NAMES
         | profile.SEGMENT_NAMES
+        | profitability.NAMES
+        | cashflow.NAMES
+        | health.NAMES
     )
     own_store = rd.load_store(session, company.id, names)
+    resolution = an.resolve_basis(own_store, requested)
+    prefer = resolution["used"]  # one basis for every figure and comparison
 
     def store_for(cid, wanted):
         # peers are loaded with every name the analysis needs (growth comparison included)
@@ -80,6 +100,7 @@ def build(
             "cash_flow_meaningful": sector.cash_flow_meaningful,
         },
         "basis": prefer,
+        "basis_resolution": resolution,
         "trend": trend,
         "peers": peers,
         "valuation": val,
@@ -88,6 +109,33 @@ def build(
         "industry": ind["overview"],
         "growth": ind["growth"],
     }
+    try:
+        result["profitability"] = profitability.build(own_store, peer_stores, sector.code, prefer)
+    except Exception as exc:  # noqa: BLE001 - one section must never take the whole analysis down
+        log.exception("profitability analysis failed for %s", company.id)
+        result["profitability"] = {
+            "available": False,
+            "reason": "the growth and profitability analysis could not be built "
+            f"({type(exc).__name__})",
+        }
+    try:
+        result["cashflow"] = cashflow.build(own_store, peer_stores, sector.code, prefer)
+    except Exception as exc:  # noqa: BLE001 - one section must never take the whole analysis down
+        log.exception("cash flow analysis failed for %s", company.id)
+        result["cashflow"] = {
+            "available": False,
+            "reason": "the cash flow and earnings-quality analysis could not be built "
+            f"({type(exc).__name__})",
+        }
+    try:
+        result["health"] = health.build(own_store, peer_stores, sector.code, prefer)
+    except Exception as exc:  # noqa: BLE001 - one section must never take the whole analysis down
+        log.exception("financial health analysis failed for %s", company.id)
+        result["health"] = {
+            "available": False,
+            "reason": "the working-capital and financial-health analysis could not be built "
+            f"({type(exc).__name__})",
+        }
     monitoring = []  # filled once the thesis exists; cyclicality quotes the stored indicators
     result["thesis"] = thesis.build(
         result,

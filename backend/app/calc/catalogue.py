@@ -58,6 +58,9 @@ class Metric:
     profile: str = "ANY"
     spans: bool = False
     requires: tuple[tuple[str, str, int], ...] = ()  # (input name, operator, number)
+    # minimum (materials + purchases + inventories) / revenue: below it the goods lines are
+    # incidental (a services company's small stock in trade) and the figure describes nothing
+    goods_share_min: float | None = None
     anchor: tuple[str, ...] = ()  # metrics whose periods decide which periods are attempted
     period_label: str | None = None  # name the result's period type (e.g. "TTM")
 
@@ -78,6 +81,17 @@ TA = "BALANCE_SHEET.total_assets"
 EBIT = "INCOME.ebit"
 EBITDA = "INCOME.ebitda"
 FIN = "INCOME.finance_costs"
+GROSS = "INCOME.gross_profit"
+# below this share of revenue, goods are incidental (a services company's small stock in trade):
+# gross profit, inventory days and payable days would describe nothing
+GOODS_SHARE_MIN = 0.1
+RECEIVABLES = "BALANCE_SHEET.current_trade_receivables"
+INVENTORIES = "BALANCE_SHEET.inventories"
+PAYABLES = "BALANCE_SHEET.current_trade_payables"
+DEBT = "LEVERAGE.total_borrowings"
+CASH_BS = "BALANCE_SHEET.cash_and_cash_equivalents"
+CFO_REF = ref("CASH_FLOW.net_cash_from_operating_activities")
+CAPEX_REF = ref("CASH_FLOW.capital_expenditure")
 
 
 def _growth(code, label, metric, *, profile="ANY", positive=False, types=ALL_TYPES, shift=12):
@@ -303,6 +317,66 @@ CATALOGUE: tuple[Metric, ...] = (
     # EBIT = profit before tax + finance costs; EBITDA = EBIT + depreciation and amortisation. Both
     # include other income and any exceptional items, because the statements are not split further
     # here. A company that prints no finance-cost or depreciation line simply has no value.
+    # Gross profit = revenue from operations less the cost of goods: raw materials consumed,
+    # purchases of stock in trade and the change in inventories, as printed. Only companies that
+    # print those lines have it (manufacturers and traders); a services company, which has no cost
+    # of goods line, has none, rather than a figure invented from "other expenses".
+    Metric(
+        GROSS,
+        "Revenue from operations less cost of goods (gross profit)",
+        "DERIVED",
+        (
+            one(
+                "revenue - materials - purchases - inventories",
+                {
+                    "revenue": ref(REV),
+                    "materials": ref("INCOME.cost_of_materials_consumed"),
+                    "purchases": ref("INCOME.purchases_of_stock_in_trade"),
+                    "inventories": ref("INCOME.changes_in_inventories"),
+                },
+                note="cost of goods = materials consumed + purchases of stock in trade + change in "
+                "inventories, each as printed",
+            ),
+            one(
+                "revenue - materials - inventories",
+                {
+                    "revenue": ref(REV),
+                    "materials": ref("INCOME.cost_of_materials_consumed"),
+                    "inventories": ref("INCOME.changes_in_inventories"),
+                },
+                note="manufacturer: materials consumed + change in inventories (no stock in trade)",
+            ),
+            one(
+                "revenue - purchases - inventories",
+                {
+                    "revenue": ref(REV),
+                    "purchases": ref("INCOME.purchases_of_stock_in_trade"),
+                    "inventories": ref("INCOME.changes_in_inventories"),
+                },
+                note="trader: purchases of stock in trade + change in inventories",
+            ),
+            one(
+                "revenue - materials",
+                {"revenue": ref(REV), "materials": ref("INCOME.cost_of_materials_consumed")},
+                note="materials consumed only: no inventory line is printed",
+            ),
+        ),
+        "inr",
+        ALL_TYPES,
+        profile="NONFIN",
+        goods_share_min=GOODS_SHARE_MIN,
+        anchor=("INCOME.cost_of_materials_consumed", "INCOME.purchases_of_stock_in_trade"),
+    ),
+    Metric(
+        "MARGIN.gross_margin",
+        "Gross margin (on revenue from operations)",
+        "MARGIN",
+        (one("gross / revenue * 100", {"gross": ref(GROSS), "revenue": ref(REV)}),),
+        "percent",
+        ALL_TYPES,
+        profile="NONFIN",
+        anchor=(GROSS,),
+    ),
     Metric(
         EBIT,
         "Profit before tax plus finance costs (EBIT)",
@@ -436,6 +510,24 @@ CATALOGUE: tuple[Metric, ...] = (
     ),
     _cagr("GROWTH.total_income_cagr_3y", "Total income CAGR, 3 years", TOT),
     _cagr("GROWTH.net_profit_cagr_3y", "Net profit CAGR, 3 years", "INCOME.net_profit"),
+    _growth(
+        "GROWTH.ebitda_yoy",
+        "EBITDA growth, year on year",
+        EBITDA,
+        profile="NONFIN",
+        positive=True,
+    ),
+    _growth("GROWTH.ebit_yoy", "EBIT growth, year on year", EBIT, profile="NONFIN", positive=True),
+    _growth(
+        "GROWTH.gross_profit_yoy",
+        "Gross profit growth, year on year",
+        GROSS,
+        profile="NONFIN",
+        positive=True,
+    ),
+    _cagr("GROWTH.revenue_cagr_3y", "Revenue from operations CAGR, 3 years", REV),
+    _cagr("GROWTH.ebitda_cagr_3y", "EBITDA CAGR, 3 years", EBITDA),
+    _cagr("GROWTH.gross_profit_cagr_3y", "Gross profit CAGR, 3 years", GROSS),
     # ---- margins and shares -----------------------------------------------------------------
     Metric(
         "MARGIN.net_margin",
@@ -619,14 +711,38 @@ CATALOGUE: tuple[Metric, ...] = (
         POSITION_TYPES,
     ),
     Metric(
+        DEBT,
+        "Total borrowings (non-current + current)",
+        "LEVERAGE",
+        (
+            one(
+                "debt",
+                {"debt": ref("BALANCE_SHEET.borrowings")},
+                note="borrowings as one printed line; lease liabilities are not included",
+            ),
+            one(
+                "non_current + current",
+                {
+                    "non_current": ref("BALANCE_SHEET.non_current_borrowings"),
+                    "current": ref("BALANCE_SHEET.current_borrowings"),
+                },
+                note="non-current + current borrowings as printed; no lease liabilities",
+            ),
+        ),
+        "inr",
+        POSITION_TYPES,
+        profile="NONFIN",
+        anchor=("BALANCE_SHEET.borrowings", "BALANCE_SHEET.non_current_borrowings"),
+    ),
+    Metric(
         "LEVERAGE.debt_to_equity",
         "Borrowings / owners' equity",
         "LEVERAGE",
-        (one("debt / equity", {"debt": ref("BALANCE_SHEET.borrowings"), "equity": ref(EQ)}),),
+        (one("debt / equity", {"debt": ref(DEBT), "equity": ref(EQ)}),),
         "x",
         POSITION_TYPES,
         profile="NONFIN",
-        anchor=(EQ,),
+        anchor=(DEBT,),
     ),
     Metric(
         "LIQUIDITY.current_ratio",
@@ -645,6 +761,250 @@ CATALOGUE: tuple[Metric, ...] = (
         POSITION_TYPES,
         profile="NONFIN",
         anchor=(EQ,),
+    ),
+    # ---- working capital (annual: days are measured on a year's revenue or cost of goods) -------
+    Metric(
+        "WORKING_CAPITAL.receivable_days",
+        "Receivable days (closing trade receivables / revenue x 365)",
+        "WORKING_CAPITAL",
+        (
+            one(
+                "receivables / revenue * 365",
+                {"receivables": ref(RECEIVABLES), "revenue": ref(REV)},
+                note="current trade receivables",
+            ),
+        ),
+        "days",
+        YEARLY,
+        profile="NONFIN",
+        requires=(("revenue", ">", 0),),
+        anchor=(RECEIVABLES,),
+    ),
+    Metric(
+        "WORKING_CAPITAL.inventory_days",
+        "Inventory days (closing inventories / cost of goods x 365)",
+        "WORKING_CAPITAL",
+        (
+            one(
+                "inventories / (revenue - gross) * 365",
+                {"inventories": ref(INVENTORIES), "revenue": ref(REV), "gross": ref(GROSS)},
+                note="cost of goods = revenue from operations - gross profit, as printed",
+            ),
+        ),
+        "days",
+        YEARLY,
+        profile="NONFIN",
+        requires=(("revenue", ">", 0),),
+        anchor=(INVENTORIES,),
+    ),
+    Metric(
+        "WORKING_CAPITAL.payable_days",
+        "Payable days (closing trade payables / cost of goods x 365)",
+        "WORKING_CAPITAL",
+        (
+            one(
+                "payables / (revenue - gross) * 365",
+                {"payables": ref(PAYABLES), "revenue": ref(REV), "gross": ref(GROSS)},
+                note="trade payables as one line; cost of goods = revenue - gross profit",
+            ),
+            one(
+                "(msme + others) / (revenue - gross) * 365",
+                {
+                    "msme": ref("BALANCE_SHEET.trade_payables_msme"),
+                    "others": ref("BALANCE_SHEET.trade_payables_others"),
+                    "revenue": ref(REV),
+                    "gross": ref(GROSS),
+                },
+                note="trade payables = micro/small enterprises + others, as printed separately",
+            ),
+        ),
+        "days",
+        YEARLY,
+        profile="NONFIN",
+        requires=(("revenue", ">", 0),),
+        anchor=(PAYABLES, "BALANCE_SHEET.trade_payables_others"),
+    ),
+    Metric(
+        "WORKING_CAPITAL.operating_cycle_days",
+        "Working capital (operating) cycle: inventory days + receivable days",
+        "WORKING_CAPITAL",
+        (
+            one(
+                "inventory + receivable",
+                {
+                    "inventory": ref("WORKING_CAPITAL.inventory_days"),
+                    "receivable": ref("WORKING_CAPITAL.receivable_days"),
+                },
+            ),
+        ),
+        "days",
+        YEARLY,
+        profile="NONFIN",
+        anchor=("WORKING_CAPITAL.inventory_days",),
+    ),
+    Metric(
+        "WORKING_CAPITAL.cash_conversion_cycle_days",
+        "Cash conversion cycle: inventory days + receivable days - payable days",
+        "WORKING_CAPITAL",
+        (
+            one(
+                "inventory + receivable - payable",
+                {
+                    "inventory": ref("WORKING_CAPITAL.inventory_days"),
+                    "receivable": ref("WORKING_CAPITAL.receivable_days"),
+                    "payable": ref("WORKING_CAPITAL.payable_days"),
+                },
+            ),
+        ),
+        "days",
+        YEARLY,
+        profile="NONFIN",
+        anchor=("WORKING_CAPITAL.inventory_days",),
+    ),
+    # ---- financial health --------------------------------------------------------------------
+    Metric(
+        "LIQUIDITY.quick_ratio",
+        "(Current assets - inventories) / current liabilities",
+        "LIQUIDITY",
+        (
+            one(
+                "(assets - inventories) / liabilities",
+                {
+                    "assets": ref("BALANCE_SHEET.total_current_assets"),
+                    "inventories": ref(INVENTORIES),
+                    "liabilities": ref("BALANCE_SHEET.total_current_liabilities"),
+                },
+            ),
+        ),
+        "x",
+        POSITION_TYPES,
+        profile="NONFIN",
+        requires=(("liabilities", ">", 0),),
+        anchor=(INVENTORIES,),
+    ),
+    Metric(
+        "LEVERAGE.net_debt",
+        "Net debt: borrowings - cash and liquid investments",
+        "LEVERAGE",
+        (
+            one(
+                "debt - cash - bank - investments",
+                {
+                    "debt": ref(DEBT),
+                    "cash": ref(CASH_BS),
+                    "bank": ref("BALANCE_SHEET.bank_balances_other_than_cash_equivalents"),
+                    "investments": ref("BALANCE_SHEET.current_investments"),
+                },
+                note="cash, other bank balances and current investments deducted",
+            ),
+            one(
+                "debt - cash - investments",
+                {
+                    "debt": ref(DEBT),
+                    "cash": ref(CASH_BS),
+                    "investments": ref("BALANCE_SHEET.current_investments"),
+                },
+                note="cash and current investments deducted (no other bank balances printed)",
+            ),
+            one(
+                "debt - cash - bank",
+                {
+                    "debt": ref(DEBT),
+                    "cash": ref(CASH_BS),
+                    "bank": ref("BALANCE_SHEET.bank_balances_other_than_cash_equivalents"),
+                },
+                note="cash and other bank balances deducted (no current investments printed)",
+            ),
+            one(
+                "debt - cash",
+                {"debt": ref(DEBT), "cash": ref(CASH_BS)},
+                note="cash and cash equivalents deducted only",
+            ),
+        ),
+        "inr",
+        POSITION_TYPES,
+        profile="NONFIN",
+        anchor=(DEBT,),
+    ),
+    Metric(
+        "LEVERAGE.net_debt_to_equity",
+        "Net debt / owners' equity",
+        "LEVERAGE",
+        (one("net_debt / equity", {"net_debt": ref("LEVERAGE.net_debt"), "equity": ref(EQ)}),),
+        "x",
+        POSITION_TYPES,
+        profile="NONFIN",
+        requires=(("equity", ">", 0),),
+        anchor=("LEVERAGE.net_debt",),
+    ),
+    Metric(
+        "LEVERAGE.net_debt_to_ebitda",
+        "Net debt / EBITDA",
+        "LEVERAGE",
+        (one("net_debt / ebitda", {"net_debt": ref("LEVERAGE.net_debt"), "ebitda": ref(EBITDA)}),),
+        "x",
+        YEARLY,
+        profile="NONFIN",
+        requires=(("ebitda", ">", 0),),
+        anchor=("LEVERAGE.net_debt",),
+    ),
+    Metric(
+        "LEVERAGE.debt_to_ebitda",
+        "Borrowings / EBITDA",
+        "LEVERAGE",
+        (one("debt / ebitda", {"debt": ref(DEBT), "ebitda": ref(EBITDA)}),),
+        "x",
+        YEARLY,
+        profile="NONFIN",
+        requires=(("ebitda", ">", 0),),
+        anchor=(EBITDA,),
+    ),
+    Metric(
+        "RATIO.ebitda_interest_cover",
+        "EBITDA / finance costs",
+        "LEVERAGE",
+        (one("ebitda / finance", {"ebitda": ref(EBITDA), "finance": ref(FIN)}),),
+        "x",
+        ALL_TYPES,
+        profile="NONFIN",
+        requires=(("finance", ">", 0),),
+        anchor=(EBITDA,),
+    ),
+    Metric(
+        "LIQUIDITY.cash_to_short_term_debt",
+        "Cash and liquid investments / current borrowings",
+        "LIQUIDITY",
+        (
+            one(
+                "(cash + investments) / current_debt",
+                {
+                    "cash": ref(CASH_BS),
+                    "investments": ref("BALANCE_SHEET.current_investments"),
+                    "current_debt": ref("BALANCE_SHEET.current_borrowings"),
+                },
+            ),
+            one(
+                "cash / current_debt",
+                {"cash": ref(CASH_BS), "current_debt": ref("BALANCE_SHEET.current_borrowings")},
+                note="no current investments printed",
+            ),
+        ),
+        "x",
+        POSITION_TYPES,
+        profile="NONFIN",
+        requires=(("current_debt", ">", 0),),
+        anchor=("BALANCE_SHEET.current_borrowings",),
+    ),
+    Metric(
+        "LIQUIDITY.cfo_to_debt",
+        "Operating cash flow / borrowings",
+        "LIQUIDITY",
+        (one("cfo / debt", {"cfo": CFO_REF, "debt": ref(DEBT)}),),
+        "x",
+        YEARLY,
+        profile="NONFIN",
+        requires=(("debt", ">", 0),),
+        anchor=(DEBT,),
     ),
     # ---- cash flow (non-financial companies) -----------------------------------------------
     Metric(
@@ -680,6 +1040,146 @@ CATALOGUE: tuple[Metric, ...] = (
         FLOW_TYPES,
         profile="NONFIN",
         requires=(("profit", ">", 0),),
+        anchor=("INCOME.net_profit",),
+    ),
+    # ---- cash conversion, capital expenditure and earnings quality (non-financial companies) ---
+    Metric(
+        "CASH.cfo_margin",
+        "Operating cash flow / revenue from operations",
+        "CASH",
+        (one("cfo / revenue * 100", {"cfo": CFO_REF, "revenue": ref(REV)}),),
+        "percent",
+        FLOW_TYPES,
+        profile="NONFIN",
+        requires=(("revenue", ">", 0),),
+        anchor=("INCOME.net_profit",),
+    ),
+    Metric(
+        "CASH.cfo_to_ebitda",
+        "Operating cash flow / EBITDA (cash conversion)",
+        "CASH",
+        (one("cfo / ebitda", {"cfo": CFO_REF, "ebitda": ref(EBITDA)}),),
+        "x",
+        FLOW_TYPES,
+        profile="NONFIN",
+        requires=(("ebitda", ">", 0),),
+        anchor=(EBITDA,),
+    ),
+    Metric(
+        "CASH.fcf_margin",
+        "Free cash flow / revenue from operations",
+        "CASH",
+        (
+            one(
+                "(cfo + capex) / revenue * 100",
+                {"cfo": CFO_REF, "capex": CAPEX_REF, "revenue": ref(REV)},
+            ),
+        ),
+        "percent",
+        FLOW_TYPES,
+        profile="NONFIN",
+        requires=(("capex", "<=", 0), ("revenue", ">", 0)),
+        anchor=("CASH_FLOW.capital_expenditure",),
+    ),
+    Metric(
+        "CASH.fcf_to_net_profit",
+        "Free cash flow / net profit",
+        "CASH",
+        (
+            one(
+                "(cfo + capex) / profit",
+                {"cfo": CFO_REF, "capex": CAPEX_REF, "profit": ref(ATTR)},
+            ),
+        ),
+        "x",
+        FLOW_TYPES,
+        profile="NONFIN",
+        requires=(("capex", "<=", 0), ("profit", ">", 0)),
+        anchor=("CASH_FLOW.capital_expenditure",),
+    ),
+    Metric(
+        "CASH.capex_to_revenue",
+        "Capital expenditure / revenue from operations",
+        "CASH",
+        (one("-capex / revenue * 100", {"capex": CAPEX_REF, "revenue": ref(REV)}),),
+        "percent",
+        FLOW_TYPES,
+        profile="NONFIN",
+        requires=(("capex", "<=", 0), ("revenue", ">", 0)),
+        anchor=("CASH_FLOW.capital_expenditure",),
+    ),
+    Metric(
+        "CASH.capex_to_cfo",
+        "Capital expenditure / operating cash flow",
+        "CASH",
+        (one("-capex / cfo * 100", {"capex": CAPEX_REF, "cfo": CFO_REF}),),
+        "percent",
+        FLOW_TYPES,
+        profile="NONFIN",
+        requires=(("capex", "<=", 0), ("cfo", ">", 0)),
+        anchor=("CASH_FLOW.capital_expenditure",),
+    ),
+    Metric(
+        "CASH.capex_to_depreciation",
+        "Capital expenditure / depreciation and amortisation",
+        "CASH",
+        (
+            one(
+                "-capex / depreciation",
+                {"capex": CAPEX_REF, "depreciation": ref("INCOME.depreciation_and_amortisation")},
+                note="depreciation from the income statement",
+            ),
+            one(
+                "-capex / depreciation",
+                {
+                    "capex": CAPEX_REF,
+                    "depreciation": ref("CASH_FLOW.depreciation_and_amortisation"),
+                },
+                note="depreciation added back in the cash flow statement",
+            ),
+        ),
+        "x",
+        FLOW_TYPES,
+        profile="NONFIN",
+        requires=(("capex", "<=", 0), ("depreciation", ">", 0)),
+        anchor=("CASH_FLOW.capital_expenditure",),
+    ),
+    Metric(
+        "ACCRUAL.accruals",
+        "Accruals: net profit less operating cash flow",
+        "ACCRUAL",
+        (one("profit - cfo", {"profit": ref(ATTR), "cfo": CFO_REF}),),
+        "inr",
+        FLOW_TYPES,
+        profile="NONFIN",
+        anchor=("INCOME.net_profit",),
+    ),
+    Metric(
+        "ACCRUAL.accrual_ratio",
+        "Accrual ratio: (net profit - operating cash flow) / average total assets",
+        "ACCRUAL",
+        (
+            one(
+                "(profit - cfo) / ((assets + opening) / 2) * 100",
+                {
+                    "profit": ref(ATTR),
+                    "cfo": CFO_REF,
+                    "assets": ref(TA),
+                    "opening": ref(TA, shift=12),
+                },
+                note="average of opening and closing total assets",
+            ),
+            one(
+                "(profit - cfo) / assets * 100",
+                {"profit": ref(ATTR), "cfo": CFO_REF, "assets": ref(TA)},
+                note="closing total assets: no opening balance sheet is stored",
+            ),
+        ),
+        "percent",
+        ("ANNUAL",),
+        profile="NONFIN",
+        spans=True,
+        requires=(("assets", ">", 0),),
         anchor=("INCOME.net_profit",),
     ),
     # ---- trailing four quarters -----------------------------------------------------------

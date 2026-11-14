@@ -156,14 +156,37 @@ def upstox(ctx: Ctx, prev: PipelineStageState | None) -> Outcome:
 # ---- documents -------------------------------------------------------------------------------
 
 
+def _coverage_summary(ctx: Ctx, ef) -> dict | None:
+    """How many of the target years' annual reports are held, and why the rest are missing."""
+    from app.acquisition import doc_coverage
+
+    try:
+        c = doc_coverage.company_coverage(ctx.session, ctx.company)
+    except Exception:  # noqa: BLE001 - a summary must never fail the stage
+        log.exception("could not summarise annual-report coverage")
+        return None
+    missing = [y for y in c["years"] if y["status"] == "MISSING"]
+    return {
+        "have": c["have"],
+        "of": len(c["targets"]),
+        "missing": {y["fy"]: y["reason_code"] for y in missing},
+    }
+
+
 def documents(ctx: Ctx, prev: PipelineStageState | None) -> Outcome:
     from app.acquisition import evidence_fetch as ef
 
     if not ctx.company.website:
         return Outcome(SKIPPED, "skipped (no verified website)")
-    rep = ef.fetch_evidence(ctx.session, ctx.company, ctx.client, data_dir=ctx.data_dir)
+    rep = ef.fetch_evidence(
+        ctx.session, ctx.company, ctx.client, data_dir=ctx.data_dir, force=ctx.force
+    )
     message = f"{rep.status} (candidates {rep.candidates}, downloaded {rep.downloaded})"
     detail = {"status": rep.status, "candidates": rep.candidates, "downloaded": rep.downloaded}
+    cov = _coverage_summary(ctx, ef)
+    if cov:
+        message += f"; annual reports: {cov['have']} of {cov['of']} years"
+        detail["annual_reports"] = cov
     if rep.status == ef.RECENT:  # inside the cool-down: nothing was attempted now; say why
         note = rep.notes[0] if rep.notes else "looked for recently"
         return Outcome(SKIPPED, f"{message} - {note}", detail)
@@ -314,7 +337,7 @@ def evidence(ctx: Ctx, prev: PipelineStageState | None) -> Outcome:
     # unchanged inputs AND the evidence is actually there: nothing to do
     if (
         prev is not None
-        and prev.status == SUCCEEDED
+        and prev.status in (SUCCEEDED, SKIPPED)  # a skip for unchanged inputs keeps it current
         and prev.input_fingerprint == fingerprint
         and not ctx.force
         and (have > 0 or inputs["financial_facts"] == 0)
@@ -351,10 +374,24 @@ def calculate(ctx: Ctx, prev: PipelineStageState | None) -> Outcome:
     if have == 0:
         return Outcome(SKIPPED, "no validated statement evidence to calculate from")
     ev = ctx.session.get(PipelineStageState, (ctx.company.id, "evidence"))
-    fingerprint = _hash(ev.input_fingerprint if ev else None, have, date.today().isocalendar()[:2])
+    from app.pipeline.prices import latest_price_date
+
+    # a new end-of-day price changes valuation and the technical indicators
+    price_date = latest_price_date(ctx.session, ctx.company.id)
+    from app.calc.catalogue import CATALOGUE
+
+    # a changed catalogue (new metrics or formulas) must reach companies whose inputs are unchanged
+    catalogue = _hash([repr(m) for m in CATALOGUE])
+    fingerprint = _hash(
+        ev.input_fingerprint if ev else None,
+        have,
+        date.today().isocalendar()[:2],
+        price_date,
+        catalogue,
+    )
     if (
         prev is not None
-        and prev.status == SUCCEEDED
+        and prev.status in (SUCCEEDED, SKIPPED)  # a skip for unchanged inputs keeps it current
         and prev.input_fingerprint == fingerprint
         and not ctx.force
     ):
@@ -464,7 +501,7 @@ def report(ctx: Ctx, prev: PipelineStageState | None) -> Outcome:
     fingerprint = ready_state.input_fingerprint if ready_state else None
     if (
         prev is not None
-        and prev.status == SUCCEEDED
+        and prev.status in (SUCCEEDED, SKIPPED)  # a skip for unchanged inputs keeps it current
         and fingerprint is not None
         and prev.input_fingerprint == fingerprint
         and not ctx.force
