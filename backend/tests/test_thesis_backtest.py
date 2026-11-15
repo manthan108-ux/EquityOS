@@ -15,7 +15,9 @@ def test_a_fair_price_with_enough_evidence_is_a_hold(monkeypatch):
     out = run(monkeypatch, analysis(score=50, traj="mixed", better=1, worse=1, base=105))
     assert out["verdict"] == "HOLD"
     assert out["levels"]["target_price"]["kind"] == "base-case value"
-    assert out["levels"]["target_price"]["value"] == "102"  # one method: half of the gap to 105 counts
+    assert (
+        out["levels"]["target_price"]["value"] == "102"
+    )  # one method: half of the gap to 105 counts
     assert out["levels"]["target_price"]["single_method"] is True
     assert out["confidence"]["band"] in ("HIGH", "MEDIUM", "LOW")
 
@@ -30,7 +32,12 @@ def test_no_valuation_is_a_watch_not_a_hold(monkeypatch):
 
 def test_a_valuation_gap_the_other_evidence_does_not_confirm_is_a_watch(monkeypatch):
     flat = {"available": True, "last_close": "100", "sma200": "100", "atr14": "2"}
-    out = run(monkeypatch, analysis(score=50, traj="mixed", better=1, worse=1, base=130), score(50), ctx=flat)
+    out = run(
+        monkeypatch,
+        analysis(score=50, traj="mixed", better=1, worse=1, base=130),
+        score(50),
+        ctx=flat,
+    )
     assert out["verdict"] == "WATCH"
     assert any("not confirmed by the other evidence" in r for r in out["reasons"])
 
@@ -121,7 +128,9 @@ def test_trajectory_uses_only_results_published_by_the_as_of_date():
     # 2024-04-30 is before March 2024 results are public (31 Mar + 90 days): only one year known
     assert bt.trajectory_points([prof, eps, rev], date(2024, 4, 30)) is None
     assert bt.trajectory_points([prof, eps, rev], date(2024, 9, 30)) == 1  # +30% on all three
-    assert bt.trajectory_points([prof, eps, rev], date(2025, 9, 30)) == -1  # the 2025 fall is public
+    assert (
+        bt.trajectory_points([prof, eps, rev], date(2025, 9, 30)) == -1
+    )  # the 2025 fall is public
 
 
 def test_valuation_proxy_compares_the_current_pe_with_its_own_history():
@@ -185,9 +194,46 @@ def test_the_risk_register_has_the_four_families_and_labels_sector_context():
     sector = sector_for("BANK") if callable(sector_for) else None
     a = {
         "valuation": {"intrinsic": {"completed": False}, "relative": {"completed": False}},
-        "governance": {"available": True, "checklist": {"items": [{"key": "independence", "label": "Independent directors", "status": "FLAG", "detail": "only 20% are independent"}, {"key": "auditor", "label": "Auditor's report", "status": "UNKNOWN", "detail": "n/a"}]}},  # fmt: skip
-        "business": {"weaknesses": {"evidence": [{"text": "Net margin contracted.", "evidence_ids": [7]}]}},
-        "industry_view": {"environment": {"regulation": ["RBI capital rules apply."]}, "opportunities_threats": {"checked_against_company": [{"kind": "THREAT", "theme": "credit quality", "company_evidence": {"label": "Gross NPA", "direction": "UNFAVOURABLE", "change_from": "2", "change_to": "3", "evidence_ids": [9]}}]}},  # fmt: skip
+        "governance": {
+            "available": True,
+            "checklist": {
+                "items": [
+                    {
+                        "key": "independence",
+                        "label": "Independent directors",
+                        "status": "FLAG",
+                        "detail": "only 20% are independent",
+                    },
+                    {
+                        "key": "auditor",
+                        "label": "Auditor's report",
+                        "status": "UNKNOWN",
+                        "detail": "n/a",
+                    },
+                ]
+            },
+        },  # fmt: skip
+        "business": {
+            "weaknesses": {"evidence": [{"text": "Net margin contracted.", "evidence_ids": [7]}]}
+        },
+        "industry_view": {
+            "environment": {"regulation": ["RBI capital rules apply."]},
+            "opportunities_threats": {
+                "checked_against_company": [
+                    {
+                        "kind": "THREAT",
+                        "theme": "credit quality",
+                        "company_evidence": {
+                            "label": "Gross NPA",
+                            "direction": "UNFAVOURABLE",
+                            "change_from": "2",
+                            "change_to": "3",
+                            "evidence_ids": [9],
+                        },
+                    }
+                ]
+            },
+        },  # fmt: skip
     }
     risks = {"company": [], "sector": [{"title": "Rates", "text": "Margins move with rates.", "kind": "SECTOR TEMPLATE (not evidence about this company)"}], "valuation": [], "data": [], "governance": []}  # fmt: skip
     reg = th._risk_register(a, sector, risks, {"available": False})

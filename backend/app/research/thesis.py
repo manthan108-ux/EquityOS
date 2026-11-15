@@ -318,7 +318,9 @@ def _monitoring(analysis: dict, sector: Sector) -> list[dict]:
 
 def _evidence_points(analysis: dict, side: str) -> list[dict]:
     """Strengths or weaknesses already derived from the company's own figures (business analysis)."""
-    blk = (analysis.get("business") or {}).get("strengths" if side == "bull" else "weaknesses") or {}
+    blk = (analysis.get("business") or {}).get(
+        "strengths" if side == "bull" else "weaknesses"
+    ) or {}
     return [
         _p(side, i["text"], i.get("evidence_ids") or [], "business analysis (company figures)")
         for i in blk.get("evidence", [])
@@ -351,7 +353,12 @@ def _risk_register(analysis: dict, sector: Sector, risks: dict, score: dict) -> 
     business = [
         *risks["company"],
         *[
-            _p("risk", i["text"], i.get("evidence_ids") or [], "business analysis (company figures)")
+            _p(
+                "risk",
+                i["text"],
+                i.get("evidence_ids") or [],
+                "business analysis (company figures)",
+            )
             for i in ((analysis.get("business") or {}).get("weaknesses") or {}).get("evidence", [])
         ],
     ]
@@ -360,18 +367,38 @@ def _risk_register(analysis: dict, sector: Sector, risks: dict, score: dict) -> 
         for o in (blk.get("observations") or []) if blk.get("available") else []:
             low = o["text"].lower()
             if any(w in low for w in ("negative", "cannot be repaid", "weak", "below")):
-                business.append(_p("risk", o["text"], o.get("evidence_ids") or [], f"{key} analysis"))
-    gov = (analysis.get("governance") or {})
+                business.append(
+                    _p("risk", o["text"], o.get("evidence_ids") or [], f"{key} analysis")
+                )
+    gov = analysis.get("governance") or {}
     governance = []
     if gov.get("available"):
         for i in (gov.get("checklist") or {}).get("items", []):
             if i["status"] == "FLAG":
-                governance.append(_p("risk", f"{i['label']}: {i['detail']}", i.get("evidence_ids") or [], "governance checklist"))
-        unknown = [i["label"] for i in (gov.get("checklist") or {}).get("items", []) if i["status"] == "UNKNOWN"]
+                governance.append(
+                    _p(
+                        "risk",
+                        f"{i['label']}: {i['detail']}",
+                        i.get("evidence_ids") or [],
+                        "governance checklist",
+                    )
+                )
+        unknown = [
+            i["label"]
+            for i in (gov.get("checklist") or {}).get("items", [])
+            if i["status"] == "UNKNOWN"
+        ]
         if unknown:
-            governance.append(_p("risk", "Not assessed for lack of stored evidence: " + ", ".join(unknown) + ".", [], "governance checklist"))
+            governance.append(
+                _p(
+                    "risk",
+                    "Not assessed for lack of stored evidence: " + ", ".join(unknown) + ".",
+                    [],
+                    "governance checklist",
+                )
+            )
     governance += risks["governance"]
-    env = (analysis.get("industry_view") or {})
+    env = analysis.get("industry_view") or {}
     industry = []
     reg = (env.get("environment") or {}).get("regulation")
     if reg:
@@ -387,15 +414,44 @@ def _risk_register(analysis: dict, sector: Sector, risks: dict, score: dict) -> 
     for name in ("dcf", "sotp", "relative_ev_ebitda", "relative_pb"):
         blk = val.get(name) or {}
         for sc in (blk.get("scenarios") or {}).values():
-            for f in (sc.get("flags") or []) if isinstance(sc, dict) and sc.get("completed") else []:
-                valuation.append(_p("risk", f"{name.replace('_', ' ')}: {f}.", sc.get("evidence_ids") or [], "valuation flag"))
+            for f in (
+                (sc.get("flags") or []) if isinstance(sc, dict) and sc.get("completed") else []
+            ):
+                valuation.append(
+                    _p(
+                        "risk",
+                        f"{name.replace('_', ' ')}: {f}.",
+                        sc.get("evidence_ids") or [],
+                        "valuation flag",
+                    )
+                )
             break
-    kinds = [b for b in (val.get("dcf"), val.get("relative"), val.get("intrinsic")) if b and b.get("completed")]
+    kinds = [
+        b
+        for b in (val.get("dcf"), val.get("relative"), val.get("intrinsic"))
+        if b and b.get("completed")
+    ]
     if not kinds:
-        valuation.append(_p("risk", "No valuation method is completed, so the price cannot be tested against a value.", [], "valuation coverage"))
+        valuation.append(
+            _p(
+                "risk",
+                "No valuation method is completed, so the price cannot be tested against a value.",
+                [],
+                "valuation coverage",
+            )
+        )
     ledger = val.get("input_ledger") or {}
     for f in (ledger.get("flags") or [])[:3]:
-        valuation.append(_p("risk", f"Valuation input: {f}" if isinstance(f, str) else f"Valuation input: {f.get('text', f)}", [], "assumption ledger"))
+        valuation.append(
+            _p(
+                "risk",
+                f"Valuation input: {f}"
+                if isinstance(f, str)
+                else f"Valuation input: {f.get('text', f)}",
+                [],
+                "assumption ledger",
+            )
+        )
     seen, uniq = set(), []
     for pt in valuation:
         if pt["text"] not in seen:

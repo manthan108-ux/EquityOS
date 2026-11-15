@@ -32,7 +32,9 @@ def upgrade() -> None:
         sa.Column("companies", postgresql.JSONB(), nullable=True),
         sa.Column("summary", postgresql.JSONB(), nullable=True),
         sa.Column("created_by", sa.String(length=60), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
         sa.Column("started_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("finished_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("heartbeat_at", sa.DateTime(timezone=True), nullable=True),
@@ -83,7 +85,9 @@ def upgrade() -> None:
         sa.Column("concurrency", sa.Integer(), nullable=False),
         sa.Column("stages", postgresql.JSONB(), nullable=True),
         sa.Column("last_triggered_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column(
+            "updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
         sa.PrimaryKeyConstraint("id"),
     )
 

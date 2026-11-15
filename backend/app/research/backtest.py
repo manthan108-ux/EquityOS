@@ -103,7 +103,9 @@ def trajectory_points(series_list: list[dict], as_of: date) -> int | None:
     return 1 if ups >= 2 and downs == 0 else -1 if downs >= 2 and ups == 0 else 0
 
 
-def valuation_proxy(history: list[tuple[date, Decimal]], upside: Decimal) -> tuple[int | None, Decimal | None]:
+def valuation_proxy(
+    history: list[tuple[date, Decimal]], upside: Decimal
+) -> tuple[int | None, Decimal | None]:
     """history: monthly (date, P/E) up to and including the as-of date; returns (points, implied upside %)."""
     if len(history) < MIN_PE_HISTORY + 1:
         return None, None
@@ -156,7 +158,9 @@ def _price_series(session: Session, company_id: uuid.UUID):
     return None
 
 
-def company_observations(session: Session, company_id: uuid.UUID, prefer: str, symbol: str, horizons=HORIZONS) -> tuple[list[dict], list[str]]:
+def company_observations(
+    session: Session, company_id: uuid.UUID, prefer: str, symbol: str, horizons=HORIZONS
+) -> tuple[list[dict], list[str]]:
     """One observation per month-end as-of date: component points and forward returns."""
     notes: list[str] = []
     ps = _price_series(session, company_id)
@@ -172,7 +176,9 @@ def company_observations(session: Session, company_id: uuid.UUID, prefer: str, s
     if len(series["eps"]) < 2:
         return [], [f"{symbol}: fewer than two annual EPS values"]
     # last trading day of every month
-    month_ends = [d for i, d in enumerate(dates) if i + 1 == len(dates) or dates[i + 1].month != d.month]
+    month_ends = [
+        d for i, d in enumerate(dates) if i + 1 == len(dates) or dates[i + 1].month != d.month
+    ]
     pe_hist: list[tuple[date, Decimal]] = []
     out = []
     for d in month_ends:
@@ -182,7 +188,9 @@ def company_observations(session: Session, company_id: uuid.UUID, prefer: str, s
         if eps is not None and eps > 0:
             pe_hist.append((d, closes[i] / eps))
         elif pe_hist:
-            pe_hist.append((d, Decimal(0)))  # keeps the monthly spacing; a non-positive P/E is excluded below
+            pe_hist.append(
+                (d, Decimal(0))
+            )  # keeps the monthly spacing; a non-positive P/E is excluded below
         window_start = dates[max(0, i - SMA_DAYS + 1)]
         usable_pe = [(x, p) for x, p in pe_hist if p > 0]
         obs = {"symbol": symbol, "date": d}
@@ -193,13 +201,17 @@ def company_observations(session: Session, company_id: uuid.UUID, prefer: str, s
             if any(window_start <= a <= end for a in adj):
                 continue
             obs[f"fwd{h}"] = closes[i + h] / closes[i] - 1
-            obs[f"dd{h}"] = min(closes[i : i + h + 1]) / closes[i] - 1  # worst point from entry (<= 0)
+            obs[f"dd{h}"] = (
+                min(closes[i : i + h + 1]) / closes[i] - 1
+            )  # worst point from entry (<= 0)
         if not any(k.startswith("fwd") for k in obs):
             continue
         if any(window_start <= a <= d for a in adj):
             continue
         obs["trend"] = trend_points(closes[: i + 1])
-        obs["trajectory"] = trajectory_points([series["profit"], series["eps"], series["revenue"]], d)
+        obs["trajectory"] = trajectory_points(
+            [series["profit"], series["eps"], series["revenue"]], d
+        )
         out.append((obs, usable_pe))
     final = []
     for obs, usable in out:
@@ -210,7 +222,12 @@ def company_observations(session: Session, company_id: uuid.UUID, prefer: str, s
 def _score(obs: dict, upside: Decimal) -> dict:
     pe = obs["_pe"]
     val, up = valuation_proxy(pe, upside) if pe and pe[-1][0] == obs["date"] else (None, None)
-    return {"trajectory": obs["trajectory"], "valuation": val, "trend": obs["trend"], "implied_upside": up}
+    return {
+        "trajectory": obs["trajectory"],
+        "valuation": val,
+        "trend": obs["trend"],
+        "implied_upside": up,
+    }
 
 
 # ---------------------------------------------------------------- statistics
@@ -230,9 +247,15 @@ def add_excess(rows: list[dict], horizon: int) -> None:
 
 def bucket_stats(items: list[dict], horizon: int) -> dict:
     ex = [r[f"ex{horizon}"] for r in items if r.get(f"ex{horizon}") is not None]
-    months = len({(r["date"].year, r["date"].month) for r in items if r.get(f"ex{horizon}") is not None})
+    months = len(
+        {(r["date"].year, r["date"].month) for r in items if r.get(f"ex{horizon}") is not None}
+    )
     n = len(ex)
-    out = {"n": n, "months": months, "companies": len({r["symbol"] for r in items if r.get(f"ex{horizon}") is not None})}
+    out = {
+        "n": n,
+        "months": months,
+        "companies": len({r["symbol"] for r in items if r.get(f"ex{horizon}") is not None}),
+    }
     if n:
         out["mean_excess_pct"] = round(mean(ex) * 100, 2)
         out["median_excess_pct"] = round(median(ex) * 100, 2)
@@ -243,11 +266,15 @@ def bucket_stats(items: list[dict], horizon: int) -> dict:
             out["mean_worst_drawdown_pct"] = round(float(mean(dd)) * 100, 1)
             out["worst_drawdown_pct"] = round(float(min(dd)) * 100, 1)
         sd = pstdev(ex) if n > 1 else 0
-        out["excess_per_risk"] = round(mean(ex) / sd, 2) if sd else None  # mean excess / its standard deviation, per observation
+        out["excess_per_risk"] = (
+            round(mean(ex) / sd, 2) if sd else None
+        )  # mean excess / its standard deviation, per observation
         # the round-trip cost (percent of position) that would remove the average excess return; a measured cost
         # below this leaves the mean positive. No cost is assumed: the data holds none.
         out["breakeven_round_trip_cost_pct"] = round(mean(ex) * 100, 2) if mean(ex) > 0 else 0.0
-        out["independent_observations"] = max(1, round(months / max(1, round(horizon / 21))))  # non-overlapping windows
+        out["independent_observations"] = max(
+            1, round(months / max(1, round(horizon / 21)))
+        )  # non-overlapping windows
     out["sufficient"] = n >= MIN_BUCKET and months >= MIN_MONTHS
     return out
 
@@ -289,18 +316,42 @@ def validate_thresholds() -> dict:
     def add(name, ok, detail):
         checks.append({"check": name, "ok": bool(ok), "detail": detail})
 
-    add("symmetric thresholds", v.NET_BUY == -v.NET_SELL, f"BUY at +{v.NET_BUY}, SELL at {v.NET_SELL}")
-    add("a verdict is reachable", v.NET_BUY <= maxpts - 1, f"the maximum is {maxpts} points; BUY needs {v.NET_BUY} with at least {v.MIN_COMPONENTS} of 5 components")
-    add("valuation alone cannot decide", 2 < v.NET_BUY, f"valuation counts at most 2 points; BUY needs {v.NET_BUY}, so at least one other component must agree")
-    add("score thresholds bracket neutral", v.SCORE_SELL < v.SCORE_BUY, f"score +1 at {v.SCORE_BUY}, -1 at {v.SCORE_SELL}")
+    add(
+        "symmetric thresholds",
+        v.NET_BUY == -v.NET_SELL,
+        f"BUY at +{v.NET_BUY}, SELL at {v.NET_SELL}",
+    )
+    add(
+        "a verdict is reachable",
+        v.NET_BUY <= maxpts - 1,
+        f"the maximum is {maxpts} points; BUY needs {v.NET_BUY} with at least {v.MIN_COMPONENTS} of 5 components",
+    )
+    add(
+        "valuation alone cannot decide",
+        2 < v.NET_BUY,
+        f"valuation counts at most 2 points; BUY needs {v.NET_BUY}, so at least one other component must agree",
+    )
+    add(
+        "score thresholds bracket neutral",
+        v.SCORE_SELL < v.SCORE_BUY,
+        f"score +1 at {v.SCORE_BUY}, -1 at {v.SCORE_SELL}",
+    )
     min_target = v.MIN_REWARD_RISK * v.STOP_MAX * 100
     add(
         "valuation threshold reachable at the widest stop",
         v.UPSIDE >= min_target,
         f"a stop at the {int(v.STOP_MAX * 100)}% cap needs a target {min_target}% away for reward-to-risk {v.MIN_REWARD_RISK}; a valuation gap of exactly {v.UPSIDE}% passes only when the stop is {(v.UPSIDE / v.MIN_REWARD_RISK).quantize(Decimal('0.1'))}% or less",
     )
-    add("trend band below the stop floor", v.TREND_BAND <= v.STOP_MIN * 100, f"trend band {v.TREND_BAND}% against stop floor {int(v.STOP_MIN * 100)}%")
-    return {"checks": checks, "all_ok": all(c["ok"] for c in checks), "note": "internal consistency of the rule, independent of any market data; a check that is not OK is a design finding, not a failure of the program"}
+    add(
+        "trend band below the stop floor",
+        v.TREND_BAND <= v.STOP_MIN * 100,
+        f"trend band {v.TREND_BAND}% against stop floor {int(v.STOP_MIN * 100)}%",
+    )
+    return {
+        "checks": checks,
+        "all_ok": all(c["ok"] for c in checks),
+        "note": "internal consistency of the rule, independent of any market data; a check that is not OK is a design finding, not a failure of the program",
+    }
 
 
 # ---------------------------------------------------------------- run
@@ -319,7 +370,9 @@ LIMITATIONS = [
 ]
 
 
-def run(session: Session, companies: list[tuple[uuid.UUID, str]], prefer: str = "CONSOLIDATED") -> dict:
+def run(
+    session: Session, companies: list[tuple[uuid.UUID, str]], prefer: str = "CONSOLIDATED"
+) -> dict:
     rows: list[dict] = []
     notes: list[str] = []
     for cid, sym in companies:
@@ -351,7 +404,9 @@ def run(session: Session, companies: list[tuple[uuid.UUID, str]], prefer: str = 
                 p = _score(r, Decimal(15))[comp]
                 if p is not None:
                     groups[p].append(r)
-            diag[str(h)][comp] = {("+1" if k == 1 else str(k)): bucket_stats(v, h) for k, v in groups.items()}
+            diag[str(h)][comp] = {
+                ("+1" if k == 1 else str(k)): bucket_stats(v, h) for k, v in groups.items()
+            }
     dates = sorted({r["date"] for r in rows})
     return {
         "version": VERSION,
@@ -386,7 +441,11 @@ def summary() -> dict:
     """What the report says about the back-test: the 12-month default-rule reading and the sample behind it."""
     r = load()
     if not r:
-        return {"available": False, "reason": "the back-test has not been run (python -m app.research.backtest_cli run)", "limitations": LIMITATIONS}
+        return {
+            "available": False,
+            "reason": "the back-test has not been run (python -m app.research.backtest_cli run)",
+            "limitations": LIMITATIONS,
+        }
     h = r["results"].get("252") or next(iter(r["results"].values()))
     d = h["default_rule"]
     return {

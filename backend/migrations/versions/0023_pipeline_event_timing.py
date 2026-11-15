@@ -24,9 +24,7 @@ def upgrade() -> None:
         sa.Column("timed_out", sa.Boolean(), server_default=sa.false(), nullable=False),
     )
     op.create_index("ix_pipeline_events_stage_at", "pipeline_events", ["stage", "at"])
-    op.add_column(
-        "pipeline_schedule", sa.Column("symbols", postgresql.JSONB(), nullable=True)
-    )
+    op.add_column("pipeline_schedule", sa.Column("symbols", postgresql.JSONB(), nullable=True))
     op.add_column(
         "pipeline_schedule",
         sa.Column("worker_seen_at", sa.DateTime(timezone=True), nullable=True),

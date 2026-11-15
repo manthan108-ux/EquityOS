@@ -39,7 +39,9 @@ def main(argv: list[str] | None = None) -> int:
             companies.append((cid, sym))
         res = backtest.run(s, companies, args.basis)
     path = backtest.save(res)
-    print(f"{res['observations']} observations, {res['first_as_of']} to {res['last_as_of']} -> {path}")
+    print(
+        f"{res['observations']} observations, {res['first_as_of']} to {res['last_as_of']} -> {path}"
+    )
     for h, block in res["results"].items():
         d = block["default_rule"]
         print(f"horizon {h}d default rule: {d['reading']}")

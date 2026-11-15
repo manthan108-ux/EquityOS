@@ -244,7 +244,9 @@ def _thousand_crore(value) -> float:
 
 
 _EMPTY = {"", "n/a", "-", "—", "not available", "not computed"}
-PRUNED: list[str] = []  # labels of rows and columns left out of tables because every value was missing
+PRUNED: list[
+    str
+] = []  # labels of rows and columns left out of tables because every value was missing
 
 
 def _txt(cell) -> str:
@@ -296,7 +298,9 @@ class _SafeTable(Table):
         for c in cmds:
             try:
                 idx = [c[1], c[2]]
-                if any(i[0] >= nc or i[1] >= nr for i in [idx[0], idx[1]] if i[0] >= 0 and i[1] >= 0):
+                if any(
+                    i[0] >= nc or i[1] >= nr for i in [idx[0], idx[1]] if i[0] >= 0 and i[1] >= 0
+                ):
                     continue
             except (IndexError, TypeError):
                 pass
@@ -1288,16 +1292,22 @@ def _full_story(report, facts, hist, st, version, mode) -> list:
         story += [CondPageBreak(100 * mm), h1("Growth versus the peer group: CAGR")]
         story += ps.growth_section(report, st)
     if ps.cyclicality_has_content(a.get("cyclicality")):
-        story += [CondPageBreak(100 * mm), h1("Business cyclicality")] + ps.cyclicality_section(report, st)
+        story += [CondPageBreak(100 * mm), h1("Business cyclicality")] + ps.cyclicality_section(
+            report, st
+        )
     peers = a["peers"]["peers"]
     if peers:
         story += _peer_pages(report, st, name, peers, h1)
     if a["management"].get("available"):
-        story += [CondPageBreak(100 * mm), h1("Management commentary")] + pa.management_section(report, st)
+        story += [CondPageBreak(100 * mm), h1("Management commentary")] + pa.management_section(
+            report, st
+        )
     story += [PageBreak()]
     story += _valuation(report, facts, st, title=head("Valuation analysis"), note=False)
     story += pa.valuation_section(report, st)
-    story += [CondPageBreak(100 * mm), h1("Investment thesis and verdict")] + pa.thesis_section(report, st)
+    story += [CondPageBreak(100 * mm), h1("Investment thesis and verdict")] + pa.thesis_section(
+        report, st
+    )
     story += [PageBreak()] + _scorecard(report, st, title=head("Financial scorecard"))
     story += [CondPageBreak(80 * mm), h1("Research conclusion")] + pa.conclusion_section(report, st)
     from app.research import pdf_gaps

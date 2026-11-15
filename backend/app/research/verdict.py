@@ -43,7 +43,9 @@ from app.research.analysis import _s, dec
 from app.research.valuation import _material
 
 VERSION = "2.0"
-HORIZON_MONTHS = 12  # review horizon: a convention for stating the target, not a prediction of timing
+HORIZON_MONTHS = (
+    12  # review horizon: a convention for stating the target, not a prediction of timing
+)
 SCORE_BUY, SCORE_SELL = Decimal("60"), Decimal("40")
 PEER_SHARE = Decimal("0.3334")
 UPSIDE = Decimal("15")
@@ -331,7 +333,10 @@ def _backtest() -> dict:
 def _target_price(verdict, levels, price, base, bear, bull, single) -> dict:
     """The valuation-linked price: the trade target for BUY / SELL, the fair value (base case) otherwise."""
     if base is None or price is None:
-        return {"available": False, "reason": "no completed valuation method gives a scenario value, so no valuation-linked target price can be stated"}
+        return {
+            "available": False,
+            "reason": "no completed valuation method gives a scenario value, so no valuation-linked target price can be stated",
+        }
     if verdict == "SELL":
         value, kind = (bear if bear is not None else base), "downside value (mean bear case)"
     else:
@@ -363,7 +368,9 @@ def _scenarios(valuation: dict, price) -> dict:
             {
                 "case": case,
                 "value_per_share": _s(m.quantize(Decimal("1"))) if m is not None else None,
-                "vs_price_pct": _s(((m / price - 1) * 100).quantize(Decimal("0.1"))) if m is not None and price else None,
+                "vs_price_pct": _s(((m / price - 1) * 100).quantize(Decimal("0.1")))
+                if m is not None and price
+                else None,
                 "methods": len(vals),
                 "low": _s(min(vals).quantize(Decimal("1"))) if vals else None,
                 "high": _s(max(vals).quantize(Decimal("1"))) if vals else None,
@@ -381,11 +388,19 @@ def _scenarios(valuation: dict, price) -> dict:
 def _horizon(valuation: dict) -> dict:
     parts = []
     if (valuation.get("dcf") or {}).get("completed"):
-        parts.append("the DCF explicit forecast spans 5 years, so its value is a medium- to long-term (3 to 5 year) view")
+        parts.append(
+            "the DCF explicit forecast spans 5 years, so its value is a medium- to long-term (3 to 5 year) view"
+        )
     if (valuation.get("intrinsic") or {}).get("completed"):
-        parts.append("the residual-income value rests on a long-run ROE, growth and cost of equity, a multi-year view")
-    if (valuation.get("relative") or {}).get("completed") or (valuation.get("relative_ev_ebitda") or {}).get("completed"):
-        parts.append("relative values apply today's peer multiples to the latest reported figures and carry no horizon of their own")
+        parts.append(
+            "the residual-income value rests on a long-run ROE, growth and cost of equity, a multi-year view"
+        )
+    if (valuation.get("relative") or {}).get("completed") or (
+        valuation.get("relative_ev_ebitda") or {}
+    ).get("completed"):
+        parts.append(
+            "relative values apply today's peer multiples to the latest reported figures and carry no horizon of their own"
+        )
     return {
         "review_months": HORIZON_MONTHS,
         "kind": "CONVENTION",
@@ -425,36 +440,94 @@ def _risk(levels, ctx, price, analysis, score, scen) -> dict:
     factors = []
 
     def add(key, label, pts, reading, available=True):
-        factors.append({"key": key, "label": label, "points": pts, "available": available, "reading": reading})
+        factors.append(
+            {"key": key, "label": label, "points": pts, "available": available, "reading": reading}
+        )
 
     bear = next((r for r in scen["rows"] if r["case"] == "bear"), None)
     if bear and bear["vs_price_pct"] is not None:
         d = Decimal(bear["vs_price_pct"])
-        add("downside", "Downside to the bear-case value", 2 if d <= -30 else 1 if d <= -15 else 0, f"bear-case value is {d}% from the price; 2 points at -30% or worse, 1 at -15% or worse")
+        add(
+            "downside",
+            "Downside to the bear-case value",
+            2 if d <= -30 else 1 if d <= -15 else 0,
+            f"bear-case value is {d}% from the price; 2 points at -30% or worse, 1 at -15% or worse",
+        )
     else:
         add("downside", "Downside to the bear-case value", None, "no bear-case value", False)
     rows = {r["case"]: r for r in scen["rows"]}
     if scen["complete"] and rows["base"]["value_per_share"]:
-        spread = (Decimal(rows["bull"]["value_per_share"]) - Decimal(rows["bear"]["value_per_share"])) / Decimal(rows["base"]["value_per_share"]) * 100
-        add("dispersion", "Dispersion of scenario values", 1 if spread > 60 else 0, f"bull minus bear is {spread.quantize(Decimal('1'))}% of the base value; 1 point above 60%")
+        spread = (
+            (Decimal(rows["bull"]["value_per_share"]) - Decimal(rows["bear"]["value_per_share"]))
+            / Decimal(rows["base"]["value_per_share"])
+            * 100
+        )
+        add(
+            "dispersion",
+            "Dispersion of scenario values",
+            1 if spread > 60 else 0,
+            f"bull minus bear is {spread.quantize(Decimal('1'))}% of the base value; 1 point above 60%",
+        )
     else:
-        add("dispersion", "Dispersion of scenario values", None, "scenario values are incomplete", False)
+        add(
+            "dispersion",
+            "Dispersion of scenario values",
+            None,
+            "scenario values are incomplete",
+            False,
+        )
     atr = dec(ctx.get("atr14")) if ctx.get("available") else None
     if atr is not None and price:
         f = atr / price * 100
-        add("volatility", "Price volatility (14-day average true range)", 2 if f >= 3 else 1 if f >= 1.5 else 0, f"average daily range is {f.quantize(Decimal('0.1'))}% of the price; 2 points at 3% or more, 1 at 1.5% or more")
+        add(
+            "volatility",
+            "Price volatility (14-day average true range)",
+            2 if f >= 3 else 1 if f >= 1.5 else 0,
+            f"average daily range is {f.quantize(Decimal('0.1'))}% of the price; 2 points at 3% or more, 1 at 1.5% or more",
+        )
     else:
-        add("volatility", "Price volatility (14-day average true range)", None, ctx.get("reason") or "no price range is stored", False)
+        add(
+            "volatility",
+            "Price volatility (14-day average true range)",
+            None,
+            ctx.get("reason") or "no price range is stored",
+            False,
+        )
     bear_pts = len((analysis.get("thesis") or {}).get("bear") or [])
-    add("adverse", "Adverse evidence-based points", 1 if bear_pts >= 4 else 0, f"{bear_pts} adverse evidence-based point(s) in the bear case; 1 point at four or more")
+    add(
+        "adverse",
+        "Adverse evidence-based points",
+        1 if bear_pts >= 4 else 0,
+        f"{bear_pts} adverse evidence-based point(s) in the bear case; 1 point at four or more",
+    )
     gov_block = analysis.get("governance") or {}
     if gov_block.get("available"):
-        gov = [i for i in (gov_block.get("checklist") or {}).get("items", []) if i["status"] == "FLAG"]
-        add("governance", "Governance checklist flags", 1 if gov else 0, f"{len(gov)} flagged item(s)" + (": " + ", ".join(i["label"] for i in gov) if gov else "") + "; 1 point for any flag")
+        gov = [
+            i for i in (gov_block.get("checklist") or {}).get("items", []) if i["status"] == "FLAG"
+        ]
+        add(
+            "governance",
+            "Governance checklist flags",
+            1 if gov else 0,
+            f"{len(gov)} flagged item(s)"
+            + (": " + ", ".join(i["label"] for i in gov) if gov else "")
+            + "; 1 point for any flag",
+        )
     else:
-        add("governance", "Governance checklist flags", None, "governance analysis is not available", False)
+        add(
+            "governance",
+            "Governance checklist flags",
+            None,
+            "governance analysis is not available",
+            False,
+        )
     low_conf = bool(score.get("available") and str(score.get("confidence")).upper() == "LOW")
-    add("evidence", "Evidence confidence of the financial score", 1 if low_conf else 0, "the financial score has LOW confidence" if low_conf else "no low-confidence flag")
+    add(
+        "evidence",
+        "Evidence confidence of the financial score",
+        1 if low_conf else 0,
+        "the financial score has LOW confidence" if low_conf else "no low-confidence flag",
+    )
     avail = [f for f in factors if f["available"]]
     pts = sum(f["points"] for f in avail)
     if len(avail) < 4 or not factors[0]["available"]:
@@ -470,7 +543,6 @@ def _risk(levels, ctx, price, analysis, score, scen) -> dict:
     }
 
 
-
 def _price_freshness(price_date: str | None, today: date | None = None) -> dict:
     """How many trading days the reference price lags the latest expected close (0 = current)."""
     from app.pipeline import prices
@@ -480,7 +552,11 @@ def _price_freshness(price_date: str | None, today: date | None = None) -> dict:
     today = today or date.today()
     expected = prices.last_expected_trading_day(today)
     lag = len(prices.weekdays_between(date.fromisoformat(price_date), expected)) if date.fromisoformat(price_date) < expected else 0  # fmt: skip
-    return {"price_stale": lag > 0, "price_lag_days": lag, "price_expected_date": expected.isoformat()}
+    return {
+        "price_stale": lag > 0,
+        "price_lag_days": lag,
+        "price_expected_date": expected.isoformat(),
+    }
 
 
 def build(
@@ -571,17 +647,27 @@ def build(
     if verdict == "WATCH" and raw == "WATCH":
         if n_avail >= MIN_COMPONENTS and val_comp["available"] and val_comp["points"] == 0:
             verdict = "HOLD"
-            reasons.append(f"net points {net} lie between {NET_SELL} and {NET_BUY} and the price is within {UPSIDE}% of the base-case value, so there is no case to add or to exit")
+            reasons.append(
+                f"net points {net} lie between {NET_SELL} and {NET_BUY} and the price is within {UPSIDE}% of the base-case value, so there is no case to add or to exit"
+            )
         else:
             if not val_comp["available"]:
-                reasons.append("no valuation could be computed, so the evidence cannot say whether the price is fair")
+                reasons.append(
+                    "no valuation could be computed, so the evidence cannot say whether the price is fair"
+                )
             elif val_comp["points"] != 0:
-                reasons.append("the valuation gap is not confirmed by the other evidence (net points inside the thresholds)")
+                reasons.append(
+                    "the valuation gap is not confirmed by the other evidence (net points inside the thresholds)"
+                )
             if n_avail < MIN_COMPONENTS:
-                reasons.append(f"only {n_avail} of 5 components are computable; {MIN_COMPONENTS} are needed for a HOLD")
+                reasons.append(
+                    f"only {n_avail} of 5 components are computable; {MIN_COMPONENTS} are needed for a HOLD"
+                )
             reasons.append(f"net points {net} lie between {NET_SELL} and {NET_BUY}")
     elif verdict == "WATCH" and raw != "WATCH":
-        reasons.append("a BUY or SELL case was found but did not pass its guards, so the evidence is conflicting")
+        reasons.append(
+            "a BUY or SELL case was found but did not pass its guards, so the evidence is conflicting"
+        )
     if stop is not None:
         levels |= {
             "target": _s(target.quantize(Decimal("1"))),

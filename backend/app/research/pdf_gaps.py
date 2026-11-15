@@ -58,8 +58,10 @@ def consolidate(story: list, st, pruned: list[str] | None = None) -> list:
     for i, f in enumerate(out):
         if isinstance(f, Paragraph) and f.style.name == "h2":
             nxt = next((g for g in out[i + 1 :] if not isinstance(g, Spacer)), None)
-            if nxt is None or isinstance(nxt, PageBreak | CondPageBreak) or (
-                isinstance(nxt, Paragraph) and nxt.style.name in HEADINGS
+            if (
+                nxt is None
+                or isinstance(nxt, PageBreak | CondPageBreak)
+                or (isinstance(nxt, Paragraph) and nxt.style.name in HEADINGS)
             ):
                 continue
         cleaned.append(f)

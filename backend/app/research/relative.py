@@ -215,7 +215,10 @@ def historical_scenarios(price, own, hist: dict | None) -> dict:
     multiple is assumed; shown for context and not counted in the verdict (it assumes the past range still applies)."""
     rows = (hist or {}).get("rows") or []
     pseudo = {
-        "peers": [{"value": r["pe"], "comparable": True, "evidence_id": r.get("eps_evidence_id")} for r in rows]
+        "peers": [
+            {"value": r["pe"], "comparable": True, "evidence_id": r.get("eps_evidence_id")}
+            for r in rows
+        ]
     }
     out = relative_on_price(price, own, pseudo, "P/E", "EPS")
     if not out.get("completed"):
@@ -227,14 +230,20 @@ def historical_scenarios(price, own, hist: dict | None) -> dict:
             else why
         )
         return out
-    ids = sorted({price.id, own.id} | {r["eps_evidence_id"] for r in rows if r.get("eps_evidence_id")})
+    ids = sorted(
+        {price.id, own.id} | {r["eps_evidence_id"] for r in rows if r.get("eps_evidence_id")}
+    )
     for sc in out["scenarios"].values():
         sc["peer_multiple"] = sc["peer_multiple"]
         sc["evidence_ids"] = ids
     out.update(
         {
             "method": "historical: value per share = the company's current EPS x its own year-end P/E (price at each fiscal year end / that year's basic EPS)",
-            "spread": out["spread"].replace("of the peers", "of the company's own year-end P/E").replace("of fewer than 4 peers", "of its own year-end P/E (fewer than 4 years)"),  # fmt: skip
+            "spread": out["spread"]
+            .replace("of the peers", "of the company's own year-end P/E")
+            .replace(
+                "of fewer than 4 peers", "of its own year-end P/E (fewer than 4 years)"
+            ),  # fmt: skip
             "assumption": "that the company's own past P/E range is a fair guide to its present multiple; changes in growth, returns and risk since then are not adjusted for",
             "multiple_label": "Own historical P/E",
             "count_label": "year-end observations",

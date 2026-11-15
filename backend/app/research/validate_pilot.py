@@ -43,8 +43,18 @@ def _annual(s: Session, cid, metric: str, basis: str):
 
 def statement_checks(s: Session, cid, basis: str) -> tuple[list[str], list[str]]:
     fails, notes = [], []
-    pbt, tax, np_ = (_annual(s, cid, m, basis) for m in ("INCOME.profit_before_tax", "INCOME.tax_expense", "INCOME.net_profit"))
-    ta, te, tl = (_annual(s, cid, m, basis) for m in ("BALANCE_SHEET.total_assets", "BALANCE_SHEET.total_equity", "BALANCE_SHEET.summary.total_liabilities"))
+    pbt, tax, np_ = (
+        _annual(s, cid, m, basis)
+        for m in ("INCOME.profit_before_tax", "INCOME.tax_expense", "INCOME.net_profit")
+    )
+    ta, te, tl = (
+        _annual(s, cid, m, basis)
+        for m in (
+            "BALANCE_SHEET.total_assets",
+            "BALANCE_SHEET.total_equity",
+            "BALANCE_SHEET.summary.total_liabilities",
+        )
+    )
     checked = 0
     for d in sorted(set(pbt) & set(tax) & set(np_)):
         checked += 1
@@ -56,7 +66,9 @@ def statement_checks(s: Session, cid, basis: str) -> tuple[list[str], list[str]]
         checked += 1
         gap = ta[d] - te[d] - tl[d]
         if abs(gap) > abs(ta[d]) * TOL:
-            fails.append(f"{d}: total assets {ta[d] / 10**7:,.0f} cr != equity + liabilities {(te[d] + tl[d]) / 10**7:,.0f} cr")
+            fails.append(
+                f"{d}: total assets {ta[d] / 10**7:,.0f} cr != equity + liabilities {(te[d] + tl[d]) / 10**7:,.0f} cr"
+            )
     if not checked:
         notes.append("no annual statement has the figures needed for the identity checks")
     return fails, notes
@@ -64,8 +76,18 @@ def statement_checks(s: Session, cid, basis: str) -> tuple[list[str], list[str]]
 
 def market_checks(s: Session, cid) -> list[str]:
     out = []
-    price = s.execute(text("select value from evidence_records where company_id=:c and metric='MARKET.close_price' and status='ACTIVE' order by period_end desc limit 1"), {"c": cid}).scalar()
-    cap = s.execute(text("select value, details from evidence_records where company_id=:c and metric='VALUATION.market_cap' and status='ACTIVE' order by period_end desc limit 1"), {"c": cid}).first()
+    price = s.execute(
+        text(
+            "select value from evidence_records where company_id=:c and metric='MARKET.close_price' and status='ACTIVE' order by period_end desc limit 1"
+        ),
+        {"c": cid},
+    ).scalar()
+    cap = s.execute(
+        text(
+            "select value, details from evidence_records where company_id=:c and metric='VALUATION.market_cap' and status='ACTIVE' order by period_end desc limit 1"
+        ),
+        {"c": cid},
+    ).first()
     if price is not None and cap is not None and cap[0] is not None and cap[0] <= 0:
         out.append("market capitalisation is not positive")
     return out
@@ -74,13 +96,19 @@ def market_checks(s: Session, cid) -> list[str]:
 def peer_checks(a: dict) -> list[str]:
     out = []
     for r in a["peers"]["rows"]:
-        vals = [Decimal(str(p["value"])) for p in r["peers"] if p.get("comparable") and p.get("value") is not None]
+        vals = [
+            Decimal(str(p["value"]))
+            for p in r["peers"]
+            if p.get("comparable") and p.get("value") is not None
+        ]
         if r.get("median") is not None:
             if len(vals) < 3:
                 out.append(f"{r['label']}: a median is shown from {len(vals)} comparable peer(s)")
             else:
                 m = Decimal(str(median(vals)))
-                if abs(m - Decimal(str(r["median"]))) > abs(m) * Decimal("0.001") + Decimal("0.0001"):
+                if abs(m - Decimal(str(r["median"]))) > abs(m) * Decimal("0.001") + Decimal(
+                    "0.0001"
+                ):
                     out.append(f"{r['label']}: shown median {r['median']} != recomputed {m}")
         if r.get("rank") and r.get("of", 0) < 4:
             out.append(f"{r['label']}: a rank is shown from fewer than 4 comparable peers")
@@ -90,7 +118,15 @@ def peer_checks(a: dict) -> list[str]:
 def valuation_checks(a: dict) -> list[str]:
     out = []
     v = a["valuation"]
-    for name in ("intrinsic", "relative", "dcf", "relative_pb", "relative_ev_ebitda", "relative_hist_pe", "sotp"):
+    for name in (
+        "intrinsic",
+        "relative",
+        "dcf",
+        "relative_pb",
+        "relative_ev_ebitda",
+        "relative_hist_pe",
+        "sotp",
+    ):
         b = v.get(name) or {}
         if not b.get("completed"):
             continue
@@ -100,7 +136,9 @@ def valuation_checks(a: dict) -> list[str]:
             x = sc.get(case) or {}
             if x.get("value_per_share") is not None:
                 vals.append(Decimal(str(x["value_per_share"])))
-            if x.get("completed", True) and not (x.get("evidence_ids") or x.get("inputs") or x.get("sources")):
+            if x.get("completed", True) and not (
+                x.get("evidence_ids") or x.get("inputs") or x.get("sources")
+            ):
                 out.append(f"{name}/{case}: completed scenario without evidence ids")
         for case in ("bear", "base", "bull"):  # a perpetuity needs growth below the discount rate
             asm = (sc.get(case) or {}).get("assumptions") or {}
@@ -121,12 +159,20 @@ def conclusion_checks(a: dict) -> list[str]:
         out.append("a BUY/SELL without a target")
     if vd["verdict"] in ("HOLD", "WATCH") and vd["levels"].get("target"):
         out.append("a trade target on a non-trade verdict")
-    if vd["verdict"] in ("BUY", "SELL", "HOLD") and sum(c["available"] for c in vd["components"]) < 4:
+    if (
+        vd["verdict"] in ("BUY", "SELL", "HOLD")
+        and sum(c["available"] for c in vd["components"]) < 4
+    ):
         out.append("a verdict that needs four components was given with fewer")
     t = a["thesis"]
     for side in ("bull", "bear", "catalysts"):
         for p in t[side]:
-            ok = p["evidence_ids"] or "HYPOTHESIS" in p["kind"] or "MANAGEMENT" in p["kind"] or "VERIFIED" in p["kind"]
+            ok = (
+                p["evidence_ids"]
+                or "HYPOTHESIS" in p["kind"]
+                or "MANAGEMENT" in p["kind"]
+                or "VERIFIED" in p["kind"]
+            )
             if not ok:
                 out.append(f"{side}: untraceable point: {p['text'][:70]}")
     for fam, pts in t["risk_register"].items():
@@ -142,7 +188,12 @@ def main(argv: list[str] | None = None) -> int:
     total_fail = 0
     with Session(get_engine()) as s:
         for sym in symbols:
-            cid = s.execute(text("select company_id from securities where symbol=:s and security_code is null limit 1"), {"s": sym}).scalar()
+            cid = s.execute(
+                text(
+                    "select company_id from securities where symbol=:s and security_code is null limit 1"
+                ),
+                {"s": sym},
+            ).scalar()
             c = s.get(Company, cid)
             ready = rd.evaluate(s, c)
             content = rp.build_content(s, c, ready, "AVAILABLE_EVIDENCE", date.today())
@@ -153,10 +204,18 @@ def main(argv: list[str] | None = None) -> int:
                 continue
             basis = a["basis"]
             f1, n1 = statement_checks(s, cid, basis)
-            fails = f1 + market_checks(s, cid) + peer_checks(a) + valuation_checks(a) + conclusion_checks(a)
+            fails = (
+                f1
+                + market_checks(s, cid)
+                + peer_checks(a)
+                + valuation_checks(a)
+                + conclusion_checks(a)
+            )
             total_fail += len(fails)
             v = a["verdict"]
-            print(f"{sym:11} {'PASS' if not fails else 'FAIL'}  verdict={v['verdict']:5} notes={len(n1)}")
+            print(
+                f"{sym:11} {'PASS' if not fails else 'FAIL'}  verdict={v['verdict']:5} notes={len(n1)}"
+            )
             for x in fails:
                 print("     FAIL", x)
             for x in n1[:3]:

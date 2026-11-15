@@ -84,7 +84,9 @@ def test_a_weak_set_is_a_sell_with_a_downside_target_and_a_stop_above_the_price(
     assert D(lv["stop_pct"]) == D("15.0") and D(lv["reward_to_risk"]) > D("1.5")
 
 
-def test_the_middle_with_a_fair_valuation_is_a_hold_with_trigger_prices_and_no_trade_levels(monkeypatch):
+def test_the_middle_with_a_fair_valuation_is_a_hold_with_trigger_prices_and_no_trade_levels(
+    monkeypatch,
+):
     out = run(monkeypatch, analysis(score=50, traj="mixed", better=1, worse=1, base=108))
     assert (
         out["verdict"] == "HOLD"

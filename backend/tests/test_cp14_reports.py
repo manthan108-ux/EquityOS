@@ -26,7 +26,9 @@ def test_gap_sentences_move_to_one_appendix_under_their_section():
         Paragraph("Operating cash flow was 100.", ST["body"]),
         Paragraph("Free cash flow is not stored for this company.", ST["small"]),
         Paragraph("Valuation", ST["h1"]),
-        Paragraph("Free cash flow is not stored for this company.", ST["small"]),  # repeated: stated once
+        Paragraph(
+            "Free cash flow is not stored for this company.", ST["small"]
+        ),  # repeated: stated once
         Paragraph("Price is 10.", ST["body"]),
     ]
     out = pdf_gaps.consolidate(story, ST)
@@ -83,8 +85,20 @@ def test_a_style_command_past_a_pruned_table_does_not_break_it():
 
 def test_needs_line_says_each_missing_input_once_without_the_scenario_name():
     sc = {
-        "bear": {"completed": False, "missing": ["long-run growth for the bear scenario", "cost of equity for the bear scenario (or an entered discount rate)"]},  # fmt: skip
-        "base": {"completed": False, "missing": ["long-run growth for the base scenario", "cost of equity for the base scenario (or an entered discount rate)"]},  # fmt: skip
+        "bear": {
+            "completed": False,
+            "missing": [
+                "long-run growth for the bear scenario",
+                "cost of equity for the bear scenario (or an entered discount rate)",
+            ],
+        },  # fmt: skip
+        "base": {
+            "completed": False,
+            "missing": [
+                "long-run growth for the base scenario",
+                "cost of equity for the base scenario (or an entered discount rate)",
+            ],
+        },  # fmt: skip
     }
     n = _needs(sc)
     assert n.count("long-run growth") == 1 and "scenario" not in n and "entered discount" not in n
@@ -142,7 +156,9 @@ def test_validation_flags_unordered_scenarios_and_untraceable_points():
 
 
 def test_the_gap_spacer_flowable_is_not_mistaken_for_content():
-    out = pdf_gaps.consolidate([Paragraph("H", ST["h1"]), Paragraph("Sub", ST["h2"]), Spacer(1, 4)], ST)
+    out = pdf_gaps.consolidate(
+        [Paragraph("H", ST["h1"]), Paragraph("Sub", ST["h2"]), Spacer(1, 4)], ST
+    )
     assert "Sub" not in text_of(out)
 
 

@@ -116,7 +116,9 @@ def test_the_contents_page_lists_every_section_with_page_numbers():
     heading_page = next(
         i + 1
         for i, p in enumerate(doc)
-        if i > 1 and "6. Business cyclicality" in p.get_text()  # a section may now start part-way down a page
+        if i > 1
+        and "6. Business cyclicality"
+        in p.get_text()  # a section may now start part-way down a page
     )
     # (the text extractor lists a right-aligned page number just before its title)
     assert re.search(rf"\b{heading_page}\s+6\. Business cyclicality", toc.replace("\n", " "))

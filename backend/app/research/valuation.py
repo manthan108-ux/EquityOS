@@ -369,7 +369,11 @@ def relative_scenarios(price, own_pe, peer_pe_row: dict | None) -> dict:
     out = {}
     ids = sorted(
         {price.id, own_pe.id}
-        | {p["evidence_id"] for p in peer_pe_row["peers"] if p.get("comparable") and p.get("evidence_id")}
+        | {
+            p["evidence_id"]
+            for p in peer_pe_row["peers"]
+            if p.get("comparable") and p.get("evidence_id")
+        }
     )
     for name, pe in (("bear", low), ("base", mid), ("bull", high)):
         value = px * pe / own
