@@ -102,6 +102,10 @@ def valuation_checks(a: dict) -> list[str]:
                 vals.append(Decimal(str(x["value_per_share"])))
             if x.get("completed", True) and not (x.get("evidence_ids") or x.get("inputs") or x.get("sources")):
                 out.append(f"{name}/{case}: completed scenario without evidence ids")
+        for case in ("bear", "base", "bull"):  # a perpetuity needs growth below the discount rate
+            asm = (sc.get(case) or {}).get("assumptions") or {}
+            if asm.get("growth") is not None and asm.get("cost_of_equity") is not None and Decimal(str(asm["growth"])) >= Decimal(str(asm["cost_of_equity"])):  # fmt: skip
+                out.append(f"{name}/{case}: long-run growth {asm['growth']}% is not below the cost of equity {asm['cost_of_equity']}%")  # fmt: skip
         if len(vals) == 3 and not (vals[0] <= vals[1] <= vals[2]):
             out.append(f"{name}: scenario values are not ordered bear <= base <= bull ({vals})")
     return out

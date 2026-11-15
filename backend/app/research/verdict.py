@@ -32,6 +32,7 @@ the probability that the trade works. The rule is back-tested only as a three-co
 from __future__ import annotations
 
 import uuid
+from datetime import date
 from decimal import Decimal
 
 from sqlalchemy import select
@@ -469,6 +470,19 @@ def _risk(levels, ctx, price, analysis, score, scen) -> dict:
     }
 
 
+
+def _price_freshness(price_date: str | None, today: date | None = None) -> dict:
+    """How many trading days the reference price lags the latest expected close (0 = current)."""
+    from app.pipeline import prices
+
+    if not price_date:
+        return {"price_stale": None, "price_lag_days": None}
+    today = today or date.today()
+    expected = prices.last_expected_trading_day(today)
+    lag = len(prices.weekdays_between(date.fromisoformat(price_date), expected)) if date.fromisoformat(price_date) < expected else 0  # fmt: skip
+    return {"price_stale": lag > 0, "price_lag_days": lag, "price_expected_date": expected.isoformat()}
+
+
 def build(
     session: Session,
     company_id: uuid.UUID,
@@ -504,6 +518,7 @@ def build(
         "price": _s(price) if price else None,
         "price_date": snap["price"]["period_end"] if snap.get("price") else None,
     }
+    levels |= _price_freshness(levels["price_date"])
     levels |= {
         "base_value": _s(base.quantize(Decimal("1"))) if base is not None else None,
         "bear_value": _s(bear.quantize(Decimal("1"))) if bear is not None else None,

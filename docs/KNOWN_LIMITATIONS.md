@@ -488,9 +488,87 @@ Still limited:
   attributable; Infosys 26,750 against about 26,713). The calculation engine records this in its note and labels such figures
   accordingly, but ratios built on it (and the "attributable" labels in the governance and health sections) are slightly
   overstated for companies with material minorities until the attributable line is read from filings.
-- 19 of 24 pilot verdicts are WATCH and risk is "not established" for the same companies: no valuation method completes without
-  entered assumptions and thin peer coverage. This is a data state, not a defect; entering sourced assumptions (assumption_cli)
-  completes DCF/SOTP and moves them.
+- 19 of 24 pilot verdicts are WATCH and risk is "not established" for the same companies. After the closure programme the cause is
+  known precisely (see "Post-acceptance closure" below): market inputs are now entered, but for 14 companies no valuation method
+  can complete because of STORED-DATA gaps (peers with data, net debt, share counts, three or more years of EBIT, capex and
+  depreciation), which assumptions cannot supply. This is a data state, not a defect.
 - Single-method verdicts (SBIN, INFY, HCLTECH rest on relative P/E alone) are marked "one method only", halve the gap to the
   target and carry lower confidence; they should be read with that in mind.
 - Net debt, share counts and segment results are missing for most non-financials, so EV/EBITDA, SOTP and DCF stay empty for them.
+
+
+## Post-acceptance closure (2026-11-15)
+
+- **Valuation inputs.** Dated, named market inputs are entered for all 24 companies through the assumption ledger
+  (`python -m app.research.setup_cli market`): risk-free rate 5.44% (the 7.31% 10-year yield of 13 Nov 2026, Trading Economics, corroborated by Kotak Neo, less Damodaran's 1.87% India default spread, so country risk is not counted twice; the earlier 7.31% record is kept as superseded),
+  India equity risk premium 7.08% (Damodaran, Jan 2026), industry betas (Damodaran India, Jan 2026; industries with fewer than 10
+  firms fall back to the all-market beta), and the statutory 25.17% tax rate for non-financials. Betas are industry averages, not
+  company regressions. Company-level inputs (growth, margin, capex, depreciation, working capital) are rule-derived from each
+  company's own stored years (`setup_cli history`), labelled "EquityOS history rule v1", never as analyst judgement; an input is
+  produced only with at least three stored years. Long-run growth and the shift in return on equity cannot be derived from history; for
+  ICICIBANK and AXISBANK they were entered by the user (growth 4/6/8%, ROE shift -2/0/+2 percentage points, absolute, bear/base/bull)
+  and the bear and bull cost of equity was set equal to the base CAPM value (13.99%), also by the user. All are USER_ASSUMPTION
+  records, editable and traceable per company. Every other company has none.
+- **DCF cannot complete for any of the 24 on today's stored data.** Closest is BPCL (missing depreciation history and long-run
+  growth). Net debt, borrowings or share counts are absent for 19 companies; EBIT, capex or depreciation have fewer than three
+  stored years for most. Nothing is assumed in their place. Residual income now completes for ICICIBANK and AXISBANK
+  (bear/base/bull justified P/B 0.91/1.13/1.51 and 0.64/0.80/1.07); HDFCBANK and SBIN now have a verified share count and P/B (see the DCF data-coverage section below); KOTAKBANK's P/B is withheld.
+- **Verdict distribution explained.** Ten banks and IT companies have a valuation (relative P/E): 2 BUY, 2 HOLD, 1 SELL, 5 WATCH
+  (the valuation gap is not confirmed by the other evidence). The 14 others have no valuation: no peer with data (peer sets exist
+  but, checked for ITC, none of the peers has ingested statements, and the pilot's FMCG names sit in different industry groups) and
+  no completable intrinsic method. No threshold was changed.
+- **Back-test.** Still INSUFFICIENT. Prices and statements both start in late 2023, so a bucket holds 1 to 4 independent
+  (non-overlapping) observations. Each bucket now also reports worst drawdown, excess return per unit of risk and the round-trip
+  cost that would remove its average excess return. No transaction cost is assumed (the data holds none); there is no index
+  history, so the benchmark remains the pilot mean. Extending prices alone was not done: the stored statements are no deeper.
+- **Upstox.** Authenticated and verified live for eight datasets (balance sheet, cash flow, profile, corporate actions, annual and
+  quarterly income, key ratios, shareholding). COMPETITORS fails with UDAPI100011 (a client error, not authentication) and stays
+  unverified. Found and fixed: `verify` was answered from a 6-hour URL-keyed cache and could report VERIFIED with an invalid
+  token; it now bypasses the cache (an invalid token reports ACCESS_DENIED).
+- **LLM.** Groq (openai/gpt-oss-120b) and Gemini (gemini-3.5-flash) both authenticate and answer. A live header-interpretation run
+  over four TECHM annual reports recorded the LLM step, promoted nothing and left the evidence store byte-identical. The table-reading
+  stage was not separately exercised live. Rate-limit, timeout and fallback
+  behaviour are covered by unit tests with fakes, not by live fault injection.
+- **OCR.** Real scanned filings are held (337 OCR'd pages, mean confidence 73.7). Re-running an 8-page scanned results filing in
+  the Docker image gave page confidence 74-93%, kept page numbers, flagged a 34%-confidence value and promoted nothing (basis not
+  stated). Across all 595 OCR-extracted facts, 71 are flagged for review and none is promoted. Only filings already in the store
+  were used; no new scanned filings were obtained.
+- **Stale prices.** The pipeline already refreshed stale prices; the verdict now also reports how many trading days the reference
+  price lags the latest expected close and the report says so on the trade-level table.
+- **Not verified.** Gemini and Groq rate-limit behaviour live; Upstox COMPETITORS; any company outside the pilot.
+- **Residual-income results sit far below market prices.** For both banks even the bull value (ICICIBANK Rs 818, AXISBANK Rs 789)
+  is 40-48% below the price, and the base values are 56-61% below. Under book-value-based residual income with a 14% cost of
+  equity (industry beta 1.207), growth of at most 8% and ROE of 12-17%, an Indian bank trading well above book cannot be
+  justified; that is the method's answer to these inputs, not a calibration. It drives AXISBANK to SELL (net -3, downside target
+  Rs 787, blended with the peer P/E value) and leaves ICICIBANK at WATCH. Read both with the inputs in view; no threshold was changed.
+
+## DCF data coverage and share counts (2026-11-15)
+
+- **New reader: paid-up share counts from the share-capital note** (`docintel/share_counts.py`, run inside document
+  extraction and applied to stored annual reports with `docintel reprocess`, which keeps a result only if it loses or changes
+  nothing already promoted). A count is accepted only when `count x face value` equals the printed paid-up amount in the
+  statement's unit (rounding only), on a page whose issuer is confirmed, on a line that says "paid-up" and is not the authorised
+  capital. It is stored as `SHAREHOLDING.total.shares`, as printed at the balance-sheet date; a later split or bonus is applied by
+  the corporate-action adjustment, never by the reader. Verified counts: HDFCBANK 15,39,33,68,328 (31 Mar 2026, post the
+  1:1 bonus), SBIN 923,06,17,586 (31 Mar 2026), HINDUNILVR 2,349,591,262 and TCS 3,618,087,518 (31 Mar 2026), KOTAKBANK
+  1,986,556,582 (31 Mar 2023). HDFCBANK and SBIN now have market cap and P/B. Nothing was estimated.
+- **KOTAKBANK's P/B is withheld on purpose.** The only verified count is from March 2023 (face value Rs 5); Kotak split 1:5 on
+  14 Jan 2026. The adjustment engine does not apply a bare "1:5" (ambiguous) and holds the price break as REPORTED_ONLY, so the
+  old count beside today's price gave a P/B of 0.72, which is wrong. `calc/market.py` now withholds market cap and P/B, and
+  withdraws any value stored earlier, whenever a split or bonus after the count's date is not applied. The same open item means
+  Kotak's price history is not split-adjusted. A FY2026 annual report for Kotak (not stored) would resolve it.
+- **Counts are still missing for 11 pilot companies** (HCLTECH, MARUTI, NESTLEIND, BRITANNIA, GODREJCP, HYUNDAI, TVSMOTOR, IOC and
+  others): the stored documents are scanned or are results releases without a share-capital note. The market feed carries EPS but
+  no share count; PAT/EPS would be a weighted-average count, a different definition, and was not substituted.
+- **DCF inputs from the feed are not available.** The Upstox statements carry revenue, profit, total assets, net worth, EPS and
+  cash-flow totals only: no borrowings, depreciation, capital expenditure or finance cost. Those come only from filings.
+  Complete stored actuals (revenue, net debt, borrowings, shares) now exist for WIPRO, ITC, TMPV and BPCL; ONGC lacks net debt.
+- **DCF still completes for none of the 24.** Even for those, the scenario inputs that remain are analyst-owned or need history that
+  is not stored: long-run growth, bear and bull cost of equity, the pre-tax cost of debt, and for most the depreciation, capex
+  and EBIT history (fewer than three stored years). No NBFC is in the pilot; lenders use residual income, not FCFF.
+- **HDFCBANK and SBIN residual income (entered 2026-11-16)**: user-provided growth 4/6/8 %, ROE shift -2/0/+2 pp, bear and bull
+  cost of equity equal to each company's base CAPM (13.99 %). Justified P/B 0.73/0.91/1.21 (HDFCBANK, value Rs 266/333/444 against
+  Rs 804) and 0.87/1.09/1.45 (SBIN, Rs 514/643/857 against Rs 1,080). Standalone book value per share reconciles to stored equity
+  / stored share count. The residual-income value is far below price for both; the report's value blends it with the peer-P/E
+  value, so the verdicts are HDFCBANK SELL and SBIN HOLD. The two methods disagree widely, which the report should be read with.
+

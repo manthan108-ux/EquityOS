@@ -101,6 +101,8 @@ def cmd_verify(args, providers, router) -> int:
             f"(set {', '.join(provider.spec.env_vars)} in .env)."
         )
         return 2
+    if hasattr(provider, "bypass_cache"):
+        provider.bypass_cache = True  # prove the credential now, not from a cached answer
     datasets = parse_datasets(args.datasets, provider)
     exit_code = 0
     with Session(get_engine()) as session:

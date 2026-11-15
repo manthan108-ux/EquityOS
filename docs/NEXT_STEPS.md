@@ -5,6 +5,17 @@ Documents are *optional accelerators*: if one ever arrives, save it in `data\inb
 run `python -m app.docintel.cli xbrl --symbol <SYMBOL> --file <file.xml>` (XBRL), then press
 **Resume research**. Companies lacking evidence are shown as *awaiting evidence*, not blocked.
 
+
+## Open items after the closure programme (2026-11-15)
+
+1. **Long-run growth and ROE shift: done for ICICIBANK and AXISBANK** (user-provided). Other banks and non-financials have none;
+   enter `terminal_growth`, `roe_shift` and (bear/bull) `cost_of_equity` per company with `assumption_cli set` if wanted.
+2. **Deeper statement history** is the binding constraint for DCF, EV/EBITDA, SOTP and the verdict back-test. It arrives through
+   Upstox fundamentals or XBRL; nothing is assumed in its place.
+3. Market inputs expire (risk-free rate after 45 days, premium and beta after 400): refresh `market_assumptions.json` and run
+   `python -m app.research.setup_cli market`.
+4. Take a backup before upgrades: `./scripts/backup.sh`; restore to a scratch database with `./scripts/restore.sh <file>`.
+
 ## Continuing the full-universe processing (exact commands)
 
 One pipeline does everything now (see [PIPELINE.md](PIPELINE.md)). Run from `backend/` with the
@@ -99,8 +110,9 @@ verification and raw prices stay untouched.
 2. **NSE terms** for automated retrieval (written reply) - blocks any downloader.
 3. **PyMuPDF licence** before any public release.
 4. **Reliance 28 Oct 2024** price gap: needs a stored official announcement to verify.
-5. **SBI/HDFC statements** are scans; interest earned/expended, shares outstanding and P/B stay
-   missing until a text/XBRL filing exists.
+5. **SBI/HDFC**: shares outstanding and P/B are now stored (share-capital note reader, 2026-11-15); interest earned/expended
+   still need a text/XBRL filing. Open: a FY2026 Kotak annual report (its count predates the 2026 split), and share counts for the 11 companies whose documents carry no
+   share-capital note.
 6. Upstox-only companies lack D&A, finance costs and borrowings (operating margin, debt/equity).
 
 ## Engineering backlog (no new data needed)

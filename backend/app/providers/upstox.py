@@ -263,6 +263,9 @@ class UpstoxFundamentalsProvider:
     def __init__(self, client: PoliteClient, token: str | None = None) -> None:
         self._client = client
         self._token_override = token
+        # `verify` must prove the credential works NOW: a cached response (keyed by URL only) would
+        # answer even with an expired or invalid token. Everything else may use the 6-hour cache.
+        self.bypass_cache = False
 
     # ---- configuration ---------------------------------------------------------------------
 
@@ -287,7 +290,7 @@ class UpstoxFundamentalsProvider:
         result = self._client.fetch(
             url,
             source=SOURCE_CODE,
-            ttl=CACHE_TTL,
+            ttl=None if self.bypass_cache else CACHE_TTL,
             headers={"Accept": "application/json", "Authorization": f"Bearer {self._token()}"},
             documented_api=True,
         )

@@ -1,0 +1,107 @@
+{
+  "version": "1",
+  "note": "Dated, named sources only. Values are entered into each company's assumption ledger by `python -m app.research.setup_cli market`. Edit a value here (or enter one with assumption_cli) and re-apply: the old record is superseded, never overwritten.",
+  "risk_free_rate": {
+    "value": "5.44",
+    "as_of": "2026-11-13",
+    "source": "Trading Economics: India 10-year government bond yield 7.312% (13 Nov 2026) less Damodaran's India default spread 1.87% (Baa3, January 2026 update)",
+    "source_url": "https://tradingeconomics.com/india/government-bond-yield",
+    "rationale": "Rupee risk-free rate = benchmark 10-year government yield 7.31% minus the sovereign default spread 1.87%, because the government yield is not default-free and the 7.08% equity risk premium already includes India's country risk premium (otherwise country risk is counted twice). The 1.87% spread is Damodaran's published figure; subtracting it is the standard adjustment but is not stated on his page. 7.31% corroborated by Kotak Neo (7.39% on 29 Oct 2026).",
+    "max_age_days": 45
+  },
+  "equity_risk_premium": {
+    "value": "7.08",
+    "as_of": "2026-01-05",
+    "source": "Damodaran (NYU Stern), Country default spreads and risk premiums, January 2026 update: India total equity risk premium (Moody's Baa3)",
+    "source_url": "https://pages.stern.nyu.edu/~adamodar/New_Home_Page/datafile/ctryprem.html",
+    "rationale": "Total equity risk premium for India = mature-market premium 4.23% + country risk premium 2.85%, as published in the January 2026 update.",
+    "max_age_days": 400
+  },
+  "tax_rate": {
+    "value": "25.17",
+    "as_of": "2025-04-01",
+    "source": "Income-tax Act 1961, section 115BAA (domestic company, concessional regime): 22% basic rate + 10% surcharge + 4% health and education cess",
+    "source_url": "https://incometaxindia.gov.in/",
+    "rationale": "Statutory tax rate on a domestic company under section 115BAA: 22% x 1.10 x 1.04 = 25.168%, applied to operating profit in the forecast. Statutory, so it does not carry a loss-year or one-off effective rate into the forecast.",
+    "applies_to": "non-financial companies"
+  },
+  "beta": {
+    "source": "Damodaran (NYU Stern), Betas by sector - India (betaIndia.xls), data as of January 2026",
+    "source_url": "https://pages.stern.nyu.edu/~adamodar/pc/datasets/betaIndia.xls",
+    "as_of": "2026-01-05",
+    "min_firms": 10,
+    "fallback": "Total Market (without financials)",
+    "industries": {
+      "Bank (Money Center)": {
+        "firms": 35,
+        "beta": "1.207"
+      },
+      "Banks (Regional)": {
+        "firms": 6,
+        "beta": "0.741"
+      },
+      "Software (System & Application)": {
+        "firms": 82,
+        "beta": "0.864"
+      },
+      "Household Products": {
+        "firms": 43,
+        "beta": "0.509"
+      },
+      "Food Processing": {
+        "firms": 220,
+        "beta": "0.804"
+      },
+      "Tobacco": {
+        "firms": 7,
+        "beta": "0.158"
+      },
+      "Auto & Truck": {
+        "firms": 19,
+        "beta": "1.349"
+      },
+      "Oil/Gas Distribution": {
+        "firms": 12,
+        "beta": "1.101"
+      },
+      "Oil/Gas (Production and Exploration)": {
+        "firms": 7,
+        "beta": "0.655"
+      },
+      "Oil/Gas (Integrated)": {
+        "firms": 1,
+        "beta": "0.763"
+      },
+      "Total Market (without financials)": {
+        "firms": 4523,
+        "beta": "0.785"
+      }
+    },
+    "mapping": {
+      "ICICIBANK": "Bank (Money Center)",
+      "HDFCBANK": "Bank (Money Center)",
+      "KOTAKBANK": "Bank (Money Center)",
+      "AXISBANK": "Bank (Money Center)",
+      "SBIN": "Bank (Money Center)",
+      "TCS": "Software (System & Application)",
+      "INFY": "Software (System & Application)",
+      "WIPRO": "Software (System & Application)",
+      "TECHM": "Software (System & Application)",
+      "HCLTECH": "Software (System & Application)",
+      "HINDUNILVR": "Household Products",
+      "GODREJCP": "Household Products",
+      "NESTLEIND": "Food Processing",
+      "BRITANNIA": "Food Processing",
+      "ITC": "Tobacco",
+      "M&M": "Auto & Truck",
+      "MARUTI": "Auto & Truck",
+      "TMPV": "Auto & Truck",
+      "HYUNDAI": "Auto & Truck",
+      "TVSMOTOR": "Auto & Truck",
+      "IOC": "Oil/Gas Distribution",
+      "BPCL": "Oil/Gas Distribution",
+      "ONGC": "Oil/Gas (Production and Exploration)",
+      "RELIANCE": "Oil/Gas (Integrated)"
+    }
+  }
+}

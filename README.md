@@ -98,6 +98,21 @@ npm run lint
 npm run build      # also type-checks
 ```
 
+## Operations
+
+```bash
+# create a research API client (random key written to the git-ignored .env; add --show to print it once)
+python -m app.research.keys_cli add ops --admin          # from ./backend, then restart the backend
+# database backup and restore (restore targets a scratch database unless --replace is given)
+./scripts/backup.sh && ./scripts/restore.sh backups/<file>.dump
+# unattended pipeline worker (waits for the backend, restarts on failure)
+docker compose --profile worker up -d
+# live browser journey against the running stack
+cd frontend && E2E_LIVE_URL=http://localhost:3000 E2E_API_KEY=<admin key> npm run e2e:live
+```
+
+If port 3000 or 8000 is taken set `FRONTEND_PORT` / `BACKEND_PORT` (and `NEXT_PUBLIC_API_URL` for the backend port).
+
 ## Configuration
 
 All configuration is environment-based; see [.env.example](.env.example). Never commit `.env`.

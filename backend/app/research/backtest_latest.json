@@ -47,6 +47,11 @@
       "mean_excess_pct": 1.3,
       "median_excess_pct": 1.08,
       "hit_rate_pct": 53.6,
+      "mean_worst_drawdown_pct": -17.2,
+      "worst_drawdown_pct": -38.2,
+      "excess_per_risk": 0.08,
+      "breakeven_round_trip_cost_pct": 1.3,
+      "independent_observations": 2,
       "sufficient": false
      },
      "WATCH": {
@@ -56,6 +61,11 @@
       "mean_excess_pct": -0.2,
       "median_excess_pct": -1.45,
       "hit_rate_pct": 45.9,
+      "mean_worst_drawdown_pct": -13.1,
+      "worst_drawdown_pct": -55.8,
+      "excess_per_risk": -0.01,
+      "breakeven_round_trip_cost_pct": 0.0,
+      "independent_observations": 4,
       "sufficient": true
      },
      "SELL": {
@@ -65,6 +75,11 @@
       "mean_excess_pct": 5.5,
       "median_excess_pct": 8.73,
       "hit_rate_pct": 66.7,
+      "mean_worst_drawdown_pct": -9.1,
+      "worst_drawdown_pct": -23.0,
+      "excess_per_risk": 0.46,
+      "breakeven_round_trip_cost_pct": 5.5,
+      "independent_observations": 1,
       "sufficient": false
      }
     },
@@ -82,6 +97,11 @@
        "mean_excess_pct": 0.42,
        "median_excess_pct": -0.17,
        "hit_rate_pct": 49.8,
+       "mean_worst_drawdown_pct": -12.3,
+       "worst_drawdown_pct": -54.5,
+       "excess_per_risk": 0.03,
+       "breakeven_round_trip_cost_pct": 0.42,
+       "independent_observations": 4,
        "sufficient": true
       },
       "WATCH": {
@@ -91,6 +111,11 @@
        "mean_excess_pct": 1.31,
        "median_excess_pct": -0.72,
        "hit_rate_pct": 47.6,
+       "mean_worst_drawdown_pct": -13.6,
+       "worst_drawdown_pct": -28.3,
+       "excess_per_risk": 0.11,
+       "breakeven_round_trip_cost_pct": 1.31,
+       "independent_observations": 3,
        "sufficient": true
       },
       "SELL": {
@@ -100,6 +125,11 @@
        "mean_excess_pct": -3.24,
        "median_excess_pct": -4.7,
        "hit_rate_pct": 34.3,
+       "mean_worst_drawdown_pct": -17.1,
+       "worst_drawdown_pct": -55.8,
+       "excess_per_risk": -0.22,
+       "breakeven_round_trip_cost_pct": 0.0,
+       "independent_observations": 4,
        "sufficient": true
       }
      },
@@ -116,6 +146,11 @@
        "mean_excess_pct": 0.94,
        "median_excess_pct": 0.35,
        "hit_rate_pct": 51.1,
+       "mean_worst_drawdown_pct": -12.2,
+       "worst_drawdown_pct": -40.0,
+       "excess_per_risk": 0.06,
+       "breakeven_round_trip_cost_pct": 0.94,
+       "independent_observations": 4,
        "sufficient": true
       },
       "WATCH": {
@@ -125,6 +160,11 @@
        "mean_excess_pct": -0.06,
        "median_excess_pct": -1.44,
        "hit_rate_pct": 45.5,
+       "mean_worst_drawdown_pct": -13.5,
+       "worst_drawdown_pct": -54.5,
+       "excess_per_risk": -0.0,
+       "breakeven_round_trip_cost_pct": 0.0,
+       "independent_observations": 4,
        "sufficient": true
       },
       "SELL": {
@@ -134,6 +174,11 @@
        "mean_excess_pct": -3.87,
        "median_excess_pct": -4.98,
        "hit_rate_pct": 33.3,
+       "mean_worst_drawdown_pct": -17.5,
+       "worst_drawdown_pct": -55.8,
+       "excess_per_risk": -0.27,
+       "breakeven_round_trip_cost_pct": 0.0,
+       "independent_observations": 3,
        "sufficient": true
       }
      },
@@ -150,6 +195,11 @@
        "mean_excess_pct": 4.59,
        "median_excess_pct": 3.16,
        "hit_rate_pct": 63.9,
+       "mean_worst_drawdown_pct": -13.4,
+       "worst_drawdown_pct": -38.2,
+       "excess_per_risk": 0.29,
+       "breakeven_round_trip_cost_pct": 4.59,
+       "independent_observations": 3,
        "sufficient": true
       },
       "WATCH": {
@@ -159,6 +209,11 @@
        "mean_excess_pct": -0.98,
        "median_excess_pct": -2.56,
        "hit_rate_pct": 42.6,
+       "mean_worst_drawdown_pct": -13.3,
+       "worst_drawdown_pct": -55.8,
+       "excess_per_risk": -0.07,
+       "breakeven_round_trip_cost_pct": 0.0,
+       "independent_observations": 4,
        "sufficient": true
       },
       "SELL": {
@@ -168,6 +223,11 @@
        "mean_excess_pct": -2.01,
        "median_excess_pct": 2.66,
        "hit_rate_pct": 54.5,
+       "mean_worst_drawdown_pct": -14.3,
+       "worst_drawdown_pct": -51.5,
+       "excess_per_risk": -0.11,
+       "breakeven_round_trip_cost_pct": 0.0,
+       "independent_observations": 2,
        "sufficient": false
       }
      },
@@ -184,6 +244,11 @@
        "mean_excess_pct": 10.41,
        "median_excess_pct": 9.47,
        "hit_rate_pct": 100.0,
+       "mean_worst_drawdown_pct": -9.5,
+       "worst_drawdown_pct": -23.1,
+       "excess_per_risk": 1.19,
+       "breakeven_round_trip_cost_pct": 10.41,
+       "independent_observations": 1,
        "sufficient": false
       },
       "WATCH": {
@@ -193,6 +258,11 @@
        "mean_excess_pct": -0.26,
        "median_excess_pct": -1.49,
        "hit_rate_pct": 45.5,
+       "mean_worst_drawdown_pct": -13.5,
+       "worst_drawdown_pct": -55.8,
+       "excess_per_risk": -0.02,
+       "breakeven_round_trip_cost_pct": 0.0,
+       "independent_observations": 4,
        "sufficient": true
       },
       "SELL": {
@@ -202,6 +272,11 @@
        "mean_excess_pct": -10.12,
        "median_excess_pct": -10.22,
        "hit_rate_pct": 0.0,
+       "mean_worst_drawdown_pct": -10.5,
+       "worst_drawdown_pct": -14.5,
+       "excess_per_risk": -5.72,
+       "breakeven_round_trip_cost_pct": 0.0,
+       "independent_observations": 1,
        "sufficient": false
       }
      },
@@ -218,6 +293,11 @@
        "mean_excess_pct": 0.65,
        "median_excess_pct": 0.2,
        "hit_rate_pct": 50.7,
+       "mean_worst_drawdown_pct": -12.8,
+       "worst_drawdown_pct": -54.5,
+       "excess_per_risk": 0.04,
+       "breakeven_round_trip_cost_pct": 0.65,
+       "independent_observations": 4,
        "sufficient": true
       },
       "WATCH": {
@@ -227,6 +307,11 @@
        "mean_excess_pct": 0.46,
        "median_excess_pct": -1.24,
        "hit_rate_pct": 43.8,
+       "mean_worst_drawdown_pct": -12.6,
+       "worst_drawdown_pct": -28.3,
+       "excess_per_risk": 0.04,
+       "breakeven_round_trip_cost_pct": 0.46,
+       "independent_observations": 4,
        "sufficient": true
       },
       "SELL": {
@@ -236,6 +321,11 @@
        "mean_excess_pct": -3.75,
        "median_excess_pct": -5.53,
        "hit_rate_pct": 31.6,
+       "mean_worst_drawdown_pct": -16.9,
+       "worst_drawdown_pct": -55.8,
+       "excess_per_risk": -0.28,
+       "breakeven_round_trip_cost_pct": 0.0,
+       "independent_observations": 4,
        "sufficient": true
       }
      },
@@ -252,6 +342,11 @@
        "mean_excess_pct": 1.03,
        "median_excess_pct": 0.84,
        "hit_rate_pct": 51.4,
+       "mean_worst_drawdown_pct": -12.7,
+       "worst_drawdown_pct": -40.0,
+       "excess_per_risk": 0.07,
+       "breakeven_round_trip_cost_pct": 1.03,
+       "independent_observations": 4,
        "sufficient": true
       },
       "WATCH": {
@@ -261,6 +356,11 @@
        "mean_excess_pct": 0.02,
        "median_excess_pct": -1.34,
        "hit_rate_pct": 45.7,
+       "mean_worst_drawdown_pct": -13.0,
+       "worst_drawdown_pct": -54.5,
+       "excess_per_risk": 0.0,
+       "breakeven_round_trip_cost_pct": 0.02,
+       "independent_observations": 4,
        "sufficient": true
       },
       "SELL": {
@@ -270,6 +370,11 @@
        "mean_excess_pct": -4.65,
        "median_excess_pct": -5.53,
        "hit_rate_pct": 31.7,
+       "mean_worst_drawdown_pct": -18.0,
+       "worst_drawdown_pct": -55.8,
+       "excess_per_risk": -0.33,
+       "breakeven_round_trip_cost_pct": 0.0,
+       "independent_observations": 4,
        "sufficient": true
       }
      },
@@ -286,6 +391,11 @@
        "mean_excess_pct": 4.45,
        "median_excess_pct": 2.17,
        "hit_rate_pct": 62.8,
+       "mean_worst_drawdown_pct": -14.9,
+       "worst_drawdown_pct": -38.2,
+       "excess_per_risk": 0.25,
+       "breakeven_round_trip_cost_pct": 4.45,
+       "independent_observations": 3,
        "sufficient": true
       },
       "WATCH": {
@@ -295,6 +405,11 @@
        "mean_excess_pct": -0.54,
        "median_excess_pct": -2.09,
        "hit_rate_pct": 44.4,
+       "mean_worst_drawdown_pct": -13.1,
+       "worst_drawdown_pct": -55.8,
+       "excess_per_risk": -0.04,
+       "breakeven_round_trip_cost_pct": 0.0,
+       "independent_observations": 4,
        "sufficient": true
       },
       "SELL": {
@@ -304,6 +419,11 @@
        "mean_excess_pct": -0.76,
        "median_excess_pct": 8.18,
        "hit_rate_pct": 62.5,
+       "mean_worst_drawdown_pct": -16.0,
+       "worst_drawdown_pct": -51.5,
+       "excess_per_risk": -0.04,
+       "breakeven_round_trip_cost_pct": 0.0,
+       "independent_observations": 1,
        "sufficient": false
       }
      },
@@ -320,6 +440,11 @@
        "mean_excess_pct": 11.41,
        "median_excess_pct": 10.53,
        "hit_rate_pct": 100.0,
+       "mean_worst_drawdown_pct": -11.3,
+       "worst_drawdown_pct": -23.1,
+       "excess_per_risk": 1.13,
+       "breakeven_round_trip_cost_pct": 11.41,
+       "independent_observations": 1,
        "sufficient": false
       },
       "WATCH": {
@@ -329,6 +454,11 @@
        "mean_excess_pct": -0.16,
        "median_excess_pct": -1.44,
        "hit_rate_pct": 46.1,
+       "mean_worst_drawdown_pct": -13.4,
+       "worst_drawdown_pct": -55.8,
+       "excess_per_risk": -0.01,
+       "breakeven_round_trip_cost_pct": 0.0,
+       "independent_observations": 4,
        "sufficient": true
       },
       "SELL": {
@@ -338,6 +468,11 @@
        "mean_excess_pct": -10.06,
        "median_excess_pct": -10.06,
        "hit_rate_pct": 0.0,
+       "mean_worst_drawdown_pct": -12.4,
+       "worst_drawdown_pct": -14.5,
+       "excess_per_risk": -4.65,
+       "breakeven_round_trip_cost_pct": 0.0,
+       "independent_observations": 1,
        "sufficient": false
       }
      },
@@ -354,6 +489,11 @@
        "mean_excess_pct": 0.41,
        "median_excess_pct": -0.33,
        "hit_rate_pct": 49.1,
+       "mean_worst_drawdown_pct": -13.4,
+       "worst_drawdown_pct": -54.5,
+       "excess_per_risk": 0.03,
+       "breakeven_round_trip_cost_pct": 0.41,
+       "independent_observations": 4,
        "sufficient": true
       },
       "WATCH": {
@@ -363,6 +503,11 @@
        "mean_excess_pct": 1.03,
        "median_excess_pct": -2.36,
        "hit_rate_pct": 43.5,
+       "mean_worst_drawdown_pct": -11.1,
+       "worst_drawdown_pct": -29.6,
+       "excess_per_risk": 0.08,
+       "breakeven_round_trip_cost_pct": 1.03,
+       "independent_observations": 3,
        "sufficient": true
       },
       "SELL": {
@@ -372,6 +517,11 @@
        "mean_excess_pct": -3.83,
        "median_excess_pct": -5.53,
        "hit_rate_pct": 36.7,
+       "mean_worst_drawdown_pct": -15.9,
+       "worst_drawdown_pct": -55.8,
+       "excess_per_risk": -0.26,
+       "breakeven_round_trip_cost_pct": 0.0,
+       "independent_observations": 4,
        "sufficient": true
       }
      },
@@ -388,6 +538,11 @@
        "mean_excess_pct": -0.18,
        "median_excess_pct": -1.17,
        "hit_rate_pct": 46.7,
+       "mean_worst_drawdown_pct": -13.6,
+       "worst_drawdown_pct": -40.0,
+       "excess_per_risk": -0.01,
+       "breakeven_round_trip_cost_pct": 0.0,
+       "independent_observations": 4,
        "sufficient": true
       },
       "WATCH": {
@@ -397,6 +552,11 @@
        "mean_excess_pct": 0.72,
        "median_excess_pct": -0.57,
        "hit_rate_pct": 47.9,
+       "mean_worst_drawdown_pct": -12.6,
+       "worst_drawdown_pct": -54.5,
+       "excess_per_risk": 0.05,
+       "breakeven_round_trip_cost_pct": 0.72,
+       "independent_observations": 4,
        "sufficient": true
       },
       "SELL": {
@@ -406,6 +566,11 @@
        "mean_excess_pct": -3.57,
        "median_excess_pct": -4.07,
        "hit_rate_pct": 40.0,
+       "mean_worst_drawdown_pct": -16.4,
+       "worst_drawdown_pct": -55.8,
+       "excess_per_risk": -0.25,
+       "breakeven_round_trip_cost_pct": 0.0,
+       "independent_observations": 3,
        "sufficient": true
       }
      },
@@ -422,6 +587,11 @@
        "mean_excess_pct": 1.3,
        "median_excess_pct": 1.08,
        "hit_rate_pct": 53.6,
+       "mean_worst_drawdown_pct": -17.2,
+       "worst_drawdown_pct": -38.2,
+       "excess_per_risk": 0.08,
+       "breakeven_round_trip_cost_pct": 1.3,
+       "independent_observations": 2,
        "sufficient": false
       },
       "WATCH": {
@@ -431,6 +601,11 @@
        "mean_excess_pct": -0.2,
        "median_excess_pct": -1.45,
        "hit_rate_pct": 45.9,
+       "mean_worst_drawdown_pct": -13.1,
+       "worst_drawdown_pct": -55.8,
+       "excess_per_risk": -0.01,
+       "breakeven_round_trip_cost_pct": 0.0,
+       "independent_observations": 4,
        "sufficient": true
       },
       "SELL": {
@@ -440,6 +615,11 @@
        "mean_excess_pct": 5.5,
        "median_excess_pct": 8.73,
        "hit_rate_pct": 66.7,
+       "mean_worst_drawdown_pct": -9.1,
+       "worst_drawdown_pct": -23.0,
+       "excess_per_risk": 0.46,
+       "breakeven_round_trip_cost_pct": 5.5,
+       "independent_observations": 1,
        "sufficient": false
       }
      },
@@ -456,6 +636,11 @@
        "mean_excess_pct": 13.06,
        "median_excess_pct": 10.53,
        "hit_rate_pct": 100.0,
+       "mean_worst_drawdown_pct": -12.2,
+       "worst_drawdown_pct": -23.1,
+       "excess_per_risk": 1.21,
+       "breakeven_round_trip_cost_pct": 13.06,
+       "independent_observations": 1,
        "sufficient": false
       },
       "WATCH": {
@@ -465,6 +650,11 @@
        "mean_excess_pct": -0.13,
        "median_excess_pct": -1.24,
        "hit_rate_pct": 46.3,
+       "mean_worst_drawdown_pct": -13.4,
+       "worst_drawdown_pct": -55.8,
+       "excess_per_risk": -0.01,
+       "breakeven_round_trip_cost_pct": 0.0,
+       "independent_observations": 4,
        "sufficient": true
       },
       "SELL": {
@@ -474,6 +664,11 @@
        "mean_excess_pct": -10.06,
        "median_excess_pct": -10.06,
        "hit_rate_pct": 0.0,
+       "mean_worst_drawdown_pct": -12.4,
+       "worst_drawdown_pct": -14.5,
+       "excess_per_risk": -4.65,
+       "breakeven_round_trip_cost_pct": 0.0,
+       "independent_observations": 1,
        "sufficient": false
       }
      },
@@ -490,6 +685,11 @@
        "mean_excess_pct": 0.23,
        "median_excess_pct": -0.34,
        "hit_rate_pct": 48.8,
+       "mean_worst_drawdown_pct": -13.8,
+       "worst_drawdown_pct": -54.5,
+       "excess_per_risk": 0.02,
+       "breakeven_round_trip_cost_pct": 0.23,
+       "independent_observations": 4,
        "sufficient": true
       },
       "WATCH": {
@@ -499,6 +699,11 @@
        "mean_excess_pct": 0.87,
        "median_excess_pct": -2.56,
        "hit_rate_pct": 42.7,
+       "mean_worst_drawdown_pct": -10.8,
+       "worst_drawdown_pct": -29.6,
+       "excess_per_risk": 0.06,
+       "breakeven_round_trip_cost_pct": 0.87,
+       "independent_observations": 3,
        "sufficient": true
       },
       "SELL": {
@@ -508,6 +713,11 @@
        "mean_excess_pct": -2.91,
        "median_excess_pct": -2.14,
        "hit_rate_pct": 41.3,
+       "mean_worst_drawdown_pct": -14.6,
+       "worst_drawdown_pct": -55.8,
+       "excess_per_risk": -0.19,
+       "breakeven_round_trip_cost_pct": 0.0,
+       "independent_observations": 4,
        "sufficient": true
       }
      },
@@ -524,6 +734,11 @@
        "mean_excess_pct": -0.75,
        "median_excess_pct": -1.35,
        "hit_rate_pct": 45.8,
+       "mean_worst_drawdown_pct": -14.3,
+       "worst_drawdown_pct": -40.0,
+       "excess_per_risk": -0.06,
+       "breakeven_round_trip_cost_pct": 0.0,
+       "independent_observations": 4,
        "sufficient": true
       },
       "WATCH": {
@@ -533,6 +748,11 @@
        "mean_excess_pct": 1.02,
        "median_excess_pct": -0.57,
        "hit_rate_pct": 48.1,
+       "mean_worst_drawdown_pct": -12.2,
+       "worst_drawdown_pct": -54.5,
+       "excess_per_risk": 0.07,
+       "breakeven_round_trip_cost_pct": 1.02,
+       "independent_observations": 4,
        "sufficient": true
       },
       "SELL": {
@@ -542,6 +762,11 @@
        "mean_excess_pct": -3.0,
        "median_excess_pct": -1.62,
        "hit_rate_pct": 43.3,
+       "mean_worst_drawdown_pct": -15.8,
+       "worst_drawdown_pct": -55.8,
+       "excess_per_risk": -0.21,
+       "breakeven_round_trip_cost_pct": 0.0,
+       "independent_observations": 3,
        "sufficient": true
       }
      },
@@ -558,6 +783,11 @@
        "mean_excess_pct": -2.73,
        "median_excess_pct": -1.72,
        "hit_rate_pct": 45.5,
+       "mean_worst_drawdown_pct": -20.2,
+       "worst_drawdown_pct": -38.2,
+       "excess_per_risk": -0.17,
+       "breakeven_round_trip_cost_pct": 0.0,
+       "independent_observations": 2,
        "sufficient": false
       },
       "WATCH": {
@@ -567,6 +797,11 @@
        "mean_excess_pct": 0.06,
        "median_excess_pct": -1.17,
        "hit_rate_pct": 46.5,
+       "mean_worst_drawdown_pct": -13.0,
+       "worst_drawdown_pct": -55.8,
+       "excess_per_risk": 0.0,
+       "breakeven_round_trip_cost_pct": 0.06,
+       "independent_observations": 4,
        "sufficient": true
       },
       "SELL": {
@@ -576,6 +811,11 @@
        "mean_excess_pct": 5.5,
        "median_excess_pct": 8.73,
        "hit_rate_pct": 66.7,
+       "mean_worst_drawdown_pct": -9.1,
+       "worst_drawdown_pct": -23.0,
+       "excess_per_risk": 0.46,
+       "breakeven_round_trip_cost_pct": 5.5,
+       "independent_observations": 1,
        "sufficient": false
       }
      },
@@ -592,6 +832,11 @@
        "mean_excess_pct": 10.31,
        "median_excess_pct": 6.18,
        "hit_rate_pct": 100.0,
+       "mean_worst_drawdown_pct": -13.8,
+       "worst_drawdown_pct": -23.1,
+       "excess_per_risk": 0.99,
+       "breakeven_round_trip_cost_pct": 10.31,
+       "independent_observations": 1,
        "sufficient": false
       },
       "WATCH": {
@@ -601,6 +846,11 @@
        "mean_excess_pct": -0.06,
        "median_excess_pct": -1.17,
        "hit_rate_pct": 46.5,
+       "mean_worst_drawdown_pct": -13.3,
+       "worst_drawdown_pct": -55.8,
+       "excess_per_risk": -0.0,
+       "breakeven_round_trip_cost_pct": 0.0,
+       "independent_observations": 4,
        "sufficient": true
       },
       "SELL": {
@@ -610,6 +860,11 @@
        "mean_excess_pct": -10.06,
        "median_excess_pct": -10.06,
        "hit_rate_pct": 0.0,
+       "mean_worst_drawdown_pct": -12.4,
+       "worst_drawdown_pct": -14.5,
+       "excess_per_risk": -4.65,
+       "breakeven_round_trip_cost_pct": 0.0,
+       "independent_observations": 1,
        "sufficient": false
       }
      },
@@ -626,6 +881,11 @@
        "mean_excess_pct": 0.42,
        "median_excess_pct": -0.19,
        "hit_rate_pct": 49.6,
+       "mean_worst_drawdown_pct": -13.9,
+       "worst_drawdown_pct": -54.5,
+       "excess_per_risk": 0.03,
+       "breakeven_round_trip_cost_pct": 0.42,
+       "independent_observations": 4,
        "sufficient": true
       },
       "WATCH": {
@@ -635,6 +895,11 @@
        "mean_excess_pct": -0.72,
        "median_excess_pct": -3.15,
        "hit_rate_pct": 40.0,
+       "mean_worst_drawdown_pct": -11.9,
+       "worst_drawdown_pct": -55.8,
+       "excess_per_risk": -0.05,
+       "breakeven_round_trip_cost_pct": 0.0,
+       "independent_observations": 3,
        "sufficient": true
       },
       "SELL": {
@@ -644,6 +909,11 @@
        "mean_excess_pct": -1.22,
        "median_excess_pct": -1.49,
        "hit_rate_pct": 42.6,
+       "mean_worst_drawdown_pct": -12.5,
+       "worst_drawdown_pct": -51.5,
+       "excess_per_risk": -0.09,
+       "breakeven_round_trip_cost_pct": 0.0,
+       "independent_observations": 4,
        "sufficient": true
       }
      },
@@ -660,6 +930,11 @@
        "mean_excess_pct": -0.66,
        "median_excess_pct": -1.1,
        "hit_rate_pct": 46.5,
+       "mean_worst_drawdown_pct": -14.3,
+       "worst_drawdown_pct": -40.0,
+       "excess_per_risk": -0.05,
+       "breakeven_round_trip_cost_pct": 0.0,
+       "independent_observations": 4,
        "sufficient": true
       },
       "WATCH": {
@@ -669,6 +944,11 @@
        "mean_excess_pct": 0.5,
        "median_excess_pct": -1.44,
        "hit_rate_pct": 47.0,
+       "mean_worst_drawdown_pct": -12.7,
+       "worst_drawdown_pct": -55.8,
+       "excess_per_risk": 0.03,
+       "breakeven_round_trip_cost_pct": 0.5,
+       "independent_observations": 4,
        "sufficient": true
       },
       "SELL": {
@@ -678,6 +958,11 @@
        "mean_excess_pct": -0.43,
        "median_excess_pct": -0.58,
        "hit_rate_pct": 46.4,
+       "mean_worst_drawdown_pct": -13.3,
+       "worst_drawdown_pct": -34.6,
+       "excess_per_risk": -0.04,
+       "breakeven_round_trip_cost_pct": 0.0,
+       "independent_observations": 3,
        "sufficient": false
       }
      },
@@ -694,6 +979,11 @@
        "mean_excess_pct": -5.55,
        "median_excess_pct": -2.52,
        "hit_rate_pct": 42.1,
+       "mean_worst_drawdown_pct": -21.8,
+       "worst_drawdown_pct": -38.2,
+       "excess_per_risk": -0.4,
+       "breakeven_round_trip_cost_pct": 0.0,
+       "independent_observations": 2,
        "sufficient": false
       },
       "WATCH": {
@@ -703,6 +993,11 @@
        "mean_excess_pct": 0.18,
        "median_excess_pct": -1.1,
        "hit_rate_pct": 46.7,
+       "mean_worst_drawdown_pct": -13.0,
+       "worst_drawdown_pct": -55.8,
+       "excess_per_risk": 0.01,
+       "breakeven_round_trip_cost_pct": 0.18,
+       "independent_observations": 4,
        "sufficient": true
       },
       "SELL": {
@@ -712,6 +1007,11 @@
        "mean_excess_pct": 8.33,
        "median_excess_pct": 11.57,
        "hit_rate_pct": 75.0,
+       "mean_worst_drawdown_pct": -5.4,
+       "worst_drawdown_pct": -14.5,
+       "excess_per_risk": 0.65,
+       "breakeven_round_trip_cost_pct": 8.33,
+       "independent_observations": 1,
        "sufficient": false
       }
      },
@@ -728,6 +1028,11 @@
        "mean_excess_pct": 4.68,
        "median_excess_pct": 1.83,
        "hit_rate_pct": 100.0,
+       "mean_worst_drawdown_pct": -18.5,
+       "worst_drawdown_pct": -23.1,
+       "excess_per_risk": 1.13,
+       "breakeven_round_trip_cost_pct": 4.68,
+       "independent_observations": 1,
        "sufficient": false
       },
       "WATCH": {
@@ -737,6 +1042,11 @@
        "mean_excess_pct": -0.02,
        "median_excess_pct": -1.17,
        "hit_rate_pct": 46.5,
+       "mean_worst_drawdown_pct": -13.3,
+       "worst_drawdown_pct": -55.8,
+       "excess_per_risk": -0.0,
+       "breakeven_round_trip_cost_pct": 0.0,
+       "independent_observations": 4,
        "sufficient": true
       },
       "SELL": {
@@ -746,6 +1056,11 @@
        "mean_excess_pct": -12.23,
        "median_excess_pct": -12.23,
        "hit_rate_pct": 0.0,
+       "mean_worst_drawdown_pct": -14.5,
+       "worst_drawdown_pct": -14.5,
+       "excess_per_risk": null,
+       "breakeven_round_trip_cost_pct": 0.0,
+       "independent_observations": 1,
        "sufficient": false
       }
      },
@@ -764,6 +1079,11 @@
       "mean_excess_pct": 9.51,
       "median_excess_pct": 12.04,
       "hit_rate_pct": 69.6,
+      "mean_worst_drawdown_pct": -14.9,
+      "worst_drawdown_pct": -39.3,
+      "excess_per_risk": 0.48,
+      "breakeven_round_trip_cost_pct": 9.51,
+      "independent_observations": 1,
       "sufficient": false
      },
      "WATCH": {
@@ -773,6 +1093,11 @@
       "mean_excess_pct": 0.79,
       "median_excess_pct": -0.45,
       "hit_rate_pct": 49.2,
+      "mean_worst_drawdown_pct": -17.1,
+      "worst_drawdown_pct": -55.8,
+      "excess_per_risk": 0.04,
+      "breakeven_round_trip_cost_pct": 0.79,
+      "independent_observations": 1,
       "sufficient": true
      },
      "SELL": {
@@ -782,6 +1107,11 @@
       "mean_excess_pct": -1.66,
       "median_excess_pct": 3.79,
       "hit_rate_pct": 80.0,
+      "mean_worst_drawdown_pct": -10.1,
+      "worst_drawdown_pct": -14.5,
+      "excess_per_risk": -0.16,
+      "breakeven_round_trip_cost_pct": 0.0,
+      "independent_observations": 1,
       "sufficient": false
      }
     },
@@ -799,6 +1129,11 @@
        "mean_excess_pct": 3.5,
        "median_excess_pct": 3.82,
        "hit_rate_pct": 56.2,
+       "mean_worst_drawdown_pct": -15.8,
+       "worst_drawdown_pct": -54.5,
+       "excess_per_risk": 0.16,
+       "breakeven_round_trip_cost_pct": 3.5,
+       "independent_observations": 1,
        "sufficient": true
       },
       "WATCH": {
@@ -808,6 +1143,11 @@
        "mean_excess_pct": -1.77,
        "median_excess_pct": -6.9,
        "hit_rate_pct": 37.2,
+       "mean_worst_drawdown_pct": -19.4,
+       "worst_drawdown_pct": -34.1,
+       "excess_per_risk": -0.09,
+       "breakeven_round_trip_cost_pct": 0.0,
+       "independent_observations": 1,
        "sufficient": true
       },
       "SELL": {
@@ -817,6 +1157,11 @@
        "mean_excess_pct": -3.19,
        "median_excess_pct": -0.76,
        "hit_rate_pct": 46.7,
+       "mean_worst_drawdown_pct": -17.9,
+       "worst_drawdown_pct": -55.8,
+       "excess_per_risk": -0.26,
+       "breakeven_round_trip_cost_pct": 0.0,
+       "independent_observations": 1,
        "sufficient": true
       }
      },
@@ -833,6 +1178,11 @@
        "mean_excess_pct": 5.33,
        "median_excess_pct": 5.7,
        "hit_rate_pct": 58.1,
+       "mean_worst_drawdown_pct": -15.3,
+       "worst_drawdown_pct": -42.7,
+       "excess_per_risk": 0.23,
+       "breakeven_round_trip_cost_pct": 5.33,
+       "independent_observations": 1,
        "sufficient": true
       },
       "WATCH": {
@@ -842,6 +1192,11 @@
        "mean_excess_pct": -1.46,
        "median_excess_pct": -2.87,
        "hit_rate_pct": 46.6,
+       "mean_worst_drawdown_pct": -18.1,
+       "worst_drawdown_pct": -54.5,
+       "excess_per_risk": -0.08,
+       "breakeven_round_trip_cost_pct": 0.0,
+       "independent_observations": 1,
        "sufficient": true
       },
       "SELL": {
@@ -851,6 +1206,11 @@
        "mean_excess_pct": -4.4,
        "median_excess_pct": -1.81,
        "hit_rate_pct": 40.6,
+       "mean_worst_drawdown_pct": -18.4,
+       "worst_drawdown_pct": -55.8,
+       "excess_per_risk": -0.43,
+       "breakeven_round_trip_cost_pct": 0.0,
+       "independent_observations": 1,
        "sufficient": true
       }
      },
@@ -867,6 +1227,11 @@
        "mean_excess_pct": 13.69,
        "median_excess_pct": 15.32,
        "hit_rate_pct": 75.9,
+       "mean_worst_drawdown_pct": -12.1,
+       "worst_drawdown_pct": -39.3,
+       "excess_per_risk": 0.7,
+       "breakeven_round_trip_cost_pct": 13.69,
+       "independent_observations": 1,
        "sufficient": true
       },
       "WATCH": {
@@ -876,6 +1241,11 @@
        "mean_excess_pct": -1.54,
        "median_excess_pct": -2.54,
        "hit_rate_pct": 44.3,
+       "mean_worst_drawdown_pct": -18.0,
+       "worst_drawdown_pct": -55.8,
+       "excess_per_risk": -0.08,
+       "breakeven_round_trip_cost_pct": 0.0,
+       "independent_observations": 1,
        "sufficient": true
       },
       "SELL": {
@@ -885,6 +1255,11 @@
        "mean_excess_pct": -3.83,
        "median_excess_pct": 2.68,
        "hit_rate_pct": 66.7,
+       "mean_worst_drawdown_pct": -15.5,
+       "worst_drawdown_pct": -51.5,
+       "excess_per_risk": -0.3,
+       "breakeven_round_trip_cost_pct": 0.0,
+       "independent_observations": 1,
        "sufficient": false
       }
      },
@@ -901,6 +1276,11 @@
        "mean_excess_pct": 24.21,
        "median_excess_pct": 22.36,
        "hit_rate_pct": 100.0,
+       "mean_worst_drawdown_pct": -10.3,
+       "worst_drawdown_pct": -23.1,
+       "excess_per_risk": 1.65,
+       "breakeven_round_trip_cost_pct": 24.21,
+       "independent_observations": 1,
        "sufficient": false
       },
       "WATCH": {
@@ -910,6 +1290,11 @@
        "mean_excess_pct": 0.61,
        "median_excess_pct": -0.38,
        "hit_rate_pct": 49.6,
+       "mean_worst_drawdown_pct": -17.1,
+       "worst_drawdown_pct": -55.8,
+       "excess_per_risk": 0.03,
+       "breakeven_round_trip_cost_pct": 0.61,
+       "independent_observations": 1,
        "sufficient": true
       },
       "SELL": {
@@ -919,6 +1304,11 @@
        "mean_excess_pct": -7.49,
        "median_excess_pct": -0.14,
        "hit_rate_pct": 33.3,
+       "mean_worst_drawdown_pct": -12.0,
+       "worst_drawdown_pct": -14.5,
+       "excess_per_risk": -0.71,
+       "breakeven_round_trip_cost_pct": 0.0,
+       "independent_observations": 1,
        "sufficient": false
       }
      },
@@ -935,6 +1325,11 @@
        "mean_excess_pct": 3.64,
        "median_excess_pct": 3.82,
        "hit_rate_pct": 55.9,
+       "mean_worst_drawdown_pct": -16.2,
+       "worst_drawdown_pct": -54.5,
+       "excess_per_risk": 0.17,
+       "breakeven_round_trip_cost_pct": 3.64,
+       "independent_observations": 1,
        "sufficient": true
       },
       "WATCH": {
@@ -944,6 +1339,11 @@
        "mean_excess_pct": -3.94,
        "median_excess_pct": -7.05,
        "hit_rate_pct": 37.5,
+       "mean_worst_drawdown_pct": -17.5,
+       "worst_drawdown_pct": -38.5,
+       "excess_per_risk": -0.2,
+       "breakeven_round_trip_cost_pct": 0.0,
+       "independent_observations": 1,
        "sufficient": true
       },
       "SELL": {
@@ -953,6 +1353,11 @@
        "mean_excess_pct": -3.22,
        "median_excess_pct": -1.1,
        "hit_rate_pct": 44.7,
+       "mean_worst_drawdown_pct": -18.8,
+       "worst_drawdown_pct": -55.8,
+       "excess_per_risk": -0.27,
+       "breakeven_round_trip_cost_pct": 0.0,
+       "independent_observations": 1,
        "sufficient": true
       }
      },
@@ -969,6 +1374,11 @@
        "mean_excess_pct": 4.79,
        "median_excess_pct": 4.07,
        "hit_rate_pct": 56.6,
+       "mean_worst_drawdown_pct": -16.3,
+       "worst_drawdown_pct": -42.7,
+       "excess_per_risk": 0.22,
+       "breakeven_round_trip_cost_pct": 4.79,
+       "independent_observations": 1,
        "sufficient": true
       },
       "WATCH": {
@@ -978,6 +1388,11 @@
        "mean_excess_pct": -0.23,
        "median_excess_pct": 0.43,
        "hit_rate_pct": 51.3,
+       "mean_worst_drawdown_pct": -16.4,
+       "worst_drawdown_pct": -54.5,
+       "excess_per_risk": -0.01,
+       "breakeven_round_trip_cost_pct": 0.0,
+       "independent_observations": 1,
        "sufficient": true
       },
       "SELL": {
@@ -987,6 +1402,11 @@
        "mean_excess_pct": -5.97,
        "median_excess_pct": -2.54,
        "hit_rate_pct": 29.6,
+       "mean_worst_drawdown_pct": -20.4,
+       "worst_drawdown_pct": -55.8,
+       "excess_per_risk": -0.57,
+       "breakeven_round_trip_cost_pct": 0.0,
+       "independent_observations": 1,
        "sufficient": false
       }
      },
@@ -1003,6 +1423,11 @@
        "mean_excess_pct": 12.39,
        "median_excess_pct": 15.64,
        "hit_rate_pct": 73.0,
+       "mean_worst_drawdown_pct": -13.2,
+       "worst_drawdown_pct": -39.3,
+       "excess_per_risk": 0.64,
+       "breakeven_round_trip_cost_pct": 12.39,
+       "independent_observations": 1,
        "sufficient": true
       },
       "WATCH": {
@@ -1012,6 +1437,11 @@
        "mean_excess_pct": -0.1,
        "median_excess_pct": -1.29,
        "hit_rate_pct": 47.5,
+       "mean_worst_drawdown_pct": -17.3,
+       "worst_drawdown_pct": -55.8,
+       "excess_per_risk": -0.0,
+       "breakeven_round_trip_cost_pct": 0.0,
+       "independent_observations": 1,
        "sufficient": true
       },
       "SELL": {
@@ -1021,6 +1451,11 @@
        "mean_excess_pct": -6.75,
        "median_excess_pct": 1.95,
        "hit_rate_pct": 66.7,
+       "mean_worst_drawdown_pct": -17.0,
+       "worst_drawdown_pct": -51.5,
+       "excess_per_risk": -0.45,
+       "breakeven_round_trip_cost_pct": 0.0,
+       "independent_observations": 1,
        "sufficient": false
       }
      },
@@ -1037,6 +1472,11 @@
        "mean_excess_pct": 26.32,
        "median_excess_pct": 28.33,
        "hit_rate_pct": 100.0,
+       "mean_worst_drawdown_pct": -11.3,
+       "worst_drawdown_pct": -23.1,
+       "excess_per_risk": 1.57,
+       "breakeven_round_trip_cost_pct": 26.32,
+       "independent_observations": 1,
        "sufficient": false
       },
       "WATCH": {
@@ -1046,6 +1486,11 @@
        "mean_excess_pct": 0.92,
        "median_excess_pct": 0.17,
        "hit_rate_pct": 50.2,
+       "mean_worst_drawdown_pct": -16.9,
+       "worst_drawdown_pct": -55.8,
+       "excess_per_risk": 0.05,
+       "breakeven_round_trip_cost_pct": 0.92,
+       "independent_observations": 1,
        "sufficient": true
       },
       "SELL": {
@@ -1055,6 +1500,11 @@
        "mean_excess_pct": -11.16,
        "median_excess_pct": -11.16,
        "hit_rate_pct": 50.0,
+       "mean_worst_drawdown_pct": -12.4,
+       "worst_drawdown_pct": -14.5,
+       "excess_per_risk": -0.99,
+       "breakeven_round_trip_cost_pct": 0.0,
+       "independent_observations": 1,
        "sufficient": false
       }
      },
@@ -1071,6 +1521,11 @@
        "mean_excess_pct": 3.56,
        "median_excess_pct": 3.33,
        "hit_rate_pct": 54.6,
+       "mean_worst_drawdown_pct": -16.4,
+       "worst_drawdown_pct": -54.5,
+       "excess_per_risk": 0.17,
+       "breakeven_round_trip_cost_pct": 3.56,
+       "independent_observations": 1,
        "sufficient": true
       },
       "WATCH": {
@@ -1080,6 +1535,11 @@
        "mean_excess_pct": -3.3,
        "median_excess_pct": -2.56,
        "hit_rate_pct": 47.1,
+       "mean_worst_drawdown_pct": -14.6,
+       "worst_drawdown_pct": -38.5,
+       "excess_per_risk": -0.17,
+       "breakeven_round_trip_cost_pct": 0.0,
+       "independent_observations": 1,
        "sufficient": true
       },
       "SELL": {
@@ -1089,6 +1549,11 @@
        "mean_excess_pct": -5.07,
        "median_excess_pct": -2.26,
        "hit_rate_pct": 38.9,
+       "mean_worst_drawdown_pct": -20.6,
+       "worst_drawdown_pct": -55.8,
+       "excess_per_risk": -0.39,
+       "breakeven_round_trip_cost_pct": 0.0,
+       "independent_observations": 1,
        "sufficient": true
       }
      },
@@ -1105,6 +1570,11 @@
        "mean_excess_pct": 2.79,
        "median_excess_pct": 0.65,
        "hit_rate_pct": 51.7,
+       "mean_worst_drawdown_pct": -17.5,
+       "worst_drawdown_pct": -42.7,
+       "excess_per_risk": 0.13,
+       "breakeven_round_trip_cost_pct": 2.79,
+       "independent_observations": 1,
        "sufficient": true
       },
       "WATCH": {
@@ -1114,6 +1584,11 @@
        "mean_excess_pct": 1.61,
        "median_excess_pct": 2.72,
        "hit_rate_pct": 56.6,
+       "mean_worst_drawdown_pct": -15.2,
+       "worst_drawdown_pct": -54.5,
+       "excess_per_risk": 0.08,
+       "breakeven_round_trip_cost_pct": 1.61,
+       "independent_observations": 1,
        "sufficient": true
       },
       "SELL": {
@@ -1123,6 +1598,11 @@
        "mean_excess_pct": -6.18,
        "median_excess_pct": -2.64,
        "hit_rate_pct": 22.7,
+       "mean_worst_drawdown_pct": -20.8,
+       "worst_drawdown_pct": -55.8,
+       "excess_per_risk": -0.66,
+       "breakeven_round_trip_cost_pct": 0.0,
+       "independent_observations": 1,
        "sufficient": false
       }
      },
@@ -1139,6 +1619,11 @@
        "mean_excess_pct": 9.51,
        "median_excess_pct": 12.04,
        "hit_rate_pct": 69.6,
+       "mean_worst_drawdown_pct": -14.9,
+       "worst_drawdown_pct": -39.3,
+       "excess_per_risk": 0.48,
+       "breakeven_round_trip_cost_pct": 9.51,
+       "independent_observations": 1,
        "sufficient": false
       },
       "WATCH": {
@@ -1148,6 +1633,11 @@
        "mean_excess_pct": 0.79,
        "median_excess_pct": -0.45,
        "hit_rate_pct": 49.2,
+       "mean_worst_drawdown_pct": -17.1,
+       "worst_drawdown_pct": -55.8,
+       "excess_per_risk": 0.04,
+       "breakeven_round_trip_cost_pct": 0.79,
+       "independent_observations": 1,
        "sufficient": true
       },
       "SELL": {
@@ -1157,6 +1647,11 @@
        "mean_excess_pct": -1.66,
        "median_excess_pct": 3.79,
        "hit_rate_pct": 80.0,
+       "mean_worst_drawdown_pct": -10.1,
+       "worst_drawdown_pct": -14.5,
+       "excess_per_risk": -0.16,
+       "breakeven_round_trip_cost_pct": 0.0,
+       "independent_observations": 1,
        "sufficient": false
       }
      },
@@ -1173,6 +1668,11 @@
        "mean_excess_pct": 30.95,
        "median_excess_pct": 29.69,
        "hit_rate_pct": 100.0,
+       "mean_worst_drawdown_pct": -12.2,
+       "worst_drawdown_pct": -23.1,
+       "excess_per_risk": 1.8,
+       "breakeven_round_trip_cost_pct": 30.95,
+       "independent_observations": 1,
        "sufficient": false
       },
       "WATCH": {
@@ -1182,6 +1682,11 @@
        "mean_excess_pct": 1.03,
        "median_excess_pct": 0.2,
        "hit_rate_pct": 50.6,
+       "mean_worst_drawdown_pct": -16.9,
+       "worst_drawdown_pct": -55.8,
+       "excess_per_risk": 0.05,
+       "breakeven_round_trip_cost_pct": 1.03,
+       "independent_observations": 1,
        "sufficient": true
       },
       "SELL": {
@@ -1191,6 +1696,11 @@
        "mean_excess_pct": -11.16,
        "median_excess_pct": -11.16,
        "hit_rate_pct": 50.0,
+       "mean_worst_drawdown_pct": -12.4,
+       "worst_drawdown_pct": -14.5,
+       "excess_per_risk": -0.99,
+       "breakeven_round_trip_cost_pct": 0.0,
+       "independent_observations": 1,
        "sufficient": false
       }
      },
@@ -1207,6 +1717,11 @@
        "mean_excess_pct": 4.08,
        "median_excess_pct": 3.83,
        "hit_rate_pct": 56.2,
+       "mean_worst_drawdown_pct": -16.2,
+       "worst_drawdown_pct": -54.5,
+       "excess_per_risk": 0.2,
+       "breakeven_round_trip_cost_pct": 4.08,
+       "independent_observations": 1,
        "sufficient": true
       },
       "WATCH": {
@@ -1216,6 +1731,11 @@
        "mean_excess_pct": -2.9,
        "median_excess_pct": -4.35,
        "hit_rate_pct": 44.4,
+       "mean_worst_drawdown_pct": -16.4,
+       "worst_drawdown_pct": -38.5,
+       "excess_per_risk": -0.13,
+       "breakeven_round_trip_cost_pct": 0.0,
+       "independent_observations": 1,
        "sufficient": true
       },
       "SELL": {
@@ -1225,6 +1745,11 @@
        "mean_excess_pct": -6.7,
        "median_excess_pct": -2.45,
        "hit_rate_pct": 35.3,
+       "mean_worst_drawdown_pct": -20.5,
+       "worst_drawdown_pct": -55.8,
+       "excess_per_risk": -0.48,
+       "breakeven_round_trip_cost_pct": 0.0,
+       "independent_observations": 1,
        "sufficient": true
       }
      },
@@ -1241,6 +1766,11 @@
        "mean_excess_pct": 2.52,
        "median_excess_pct": 0.65,
        "hit_rate_pct": 50.9,
+       "mean_worst_drawdown_pct": -17.8,
+       "worst_drawdown_pct": -42.7,
+       "excess_per_risk": 0.13,
+       "breakeven_round_trip_cost_pct": 2.52,
+       "independent_observations": 1,
        "sufficient": true
       },
       "WATCH": {
@@ -1250,6 +1780,11 @@
        "mean_excess_pct": 1.91,
        "median_excess_pct": 2.68,
        "hit_rate_pct": 56.2,
+       "mean_worst_drawdown_pct": -15.4,
+       "worst_drawdown_pct": -54.5,
+       "excess_per_risk": 0.09,
+       "breakeven_round_trip_cost_pct": 1.91,
+       "independent_observations": 1,
        "sufficient": true
       },
       "SELL": {
@@ -1259,6 +1794,11 @@
        "mean_excess_pct": -6.32,
        "median_excess_pct": -2.54,
        "hit_rate_pct": 23.8,
+       "mean_worst_drawdown_pct": -20.6,
+       "worst_drawdown_pct": -55.8,
+       "excess_per_risk": -0.66,
+       "breakeven_round_trip_cost_pct": 0.0,
+       "independent_observations": 1,
        "sufficient": false
       }
      },
@@ -1275,6 +1815,11 @@
        "mean_excess_pct": 5.6,
        "median_excess_pct": 4.07,
        "hit_rate_pct": 61.1,
+       "mean_worst_drawdown_pct": -18.4,
+       "worst_drawdown_pct": -39.3,
+       "excess_per_risk": 0.28,
+       "breakeven_round_trip_cost_pct": 5.6,
+       "independent_observations": 1,
        "sufficient": false
       },
       "WATCH": {
@@ -1284,6 +1829,11 @@
        "mean_excess_pct": 1.26,
        "median_excess_pct": 0.17,
        "hit_rate_pct": 50.2,
+       "mean_worst_drawdown_pct": -16.8,
+       "worst_drawdown_pct": -55.8,
+       "excess_per_risk": 0.06,
+       "breakeven_round_trip_cost_pct": 1.26,
+       "independent_observations": 1,
        "sufficient": true
       },
       "SELL": {
@@ -1293,6 +1843,11 @@
        "mean_excess_pct": -1.66,
        "median_excess_pct": 3.79,
        "hit_rate_pct": 80.0,
+       "mean_worst_drawdown_pct": -10.1,
+       "worst_drawdown_pct": -14.5,
+       "excess_per_risk": -0.16,
+       "breakeven_round_trip_cost_pct": 0.0,
+       "independent_observations": 1,
        "sufficient": false
       }
      },
@@ -1309,6 +1864,11 @@
        "mean_excess_pct": 30.18,
        "median_excess_pct": 29.01,
        "hit_rate_pct": 100.0,
+       "mean_worst_drawdown_pct": -13.8,
+       "worst_drawdown_pct": -23.1,
+       "excess_per_risk": 1.58,
+       "breakeven_round_trip_cost_pct": 30.18,
+       "independent_observations": 1,
        "sufficient": false
       },
       "WATCH": {
@@ -1318,6 +1878,11 @@
        "mean_excess_pct": 1.16,
        "median_excess_pct": 0.32,
        "hit_rate_pct": 50.8,
+       "mean_worst_drawdown_pct": -16.8,
+       "worst_drawdown_pct": -55.8,
+       "excess_per_risk": 0.06,
+       "breakeven_round_trip_cost_pct": 1.16,
+       "independent_observations": 1,
        "sufficient": true
       },
       "SELL": {
@@ -1327,6 +1892,11 @@
        "mean_excess_pct": -11.16,
        "median_excess_pct": -11.16,
        "hit_rate_pct": 50.0,
+       "mean_worst_drawdown_pct": -12.4,
+       "worst_drawdown_pct": -14.5,
+       "excess_per_risk": -0.99,
+       "breakeven_round_trip_cost_pct": 0.0,
+       "independent_observations": 1,
        "sufficient": false
       }
      },
@@ -1343,6 +1913,11 @@
        "mean_excess_pct": 4.54,
        "median_excess_pct": 4.33,
        "hit_rate_pct": 57.5,
+       "mean_worst_drawdown_pct": -16.0,
+       "worst_drawdown_pct": -54.5,
+       "excess_per_risk": 0.22,
+       "breakeven_round_trip_cost_pct": 4.54,
+       "independent_observations": 1,
        "sufficient": true
       },
       "WATCH": {
@@ -1352,6 +1927,11 @@
        "mean_excess_pct": -4.93,
        "median_excess_pct": -7.2,
        "hit_rate_pct": 39.2,
+       "mean_worst_drawdown_pct": -18.5,
+       "worst_drawdown_pct": -55.8,
+       "excess_per_risk": -0.22,
+       "breakeven_round_trip_cost_pct": 0.0,
+       "independent_observations": 1,
        "sufficient": true
       },
       "SELL": {
@@ -1361,6 +1941,11 @@
        "mean_excess_pct": -4.84,
        "median_excess_pct": -2.26,
        "hit_rate_pct": 38.2,
+       "mean_worst_drawdown_pct": -18.3,
+       "worst_drawdown_pct": -51.5,
+       "excess_per_risk": -0.34,
+       "breakeven_round_trip_cost_pct": 0.0,
+       "independent_observations": 1,
        "sufficient": true
       }
      },
@@ -1377,6 +1962,11 @@
        "mean_excess_pct": 3.52,
        "median_excess_pct": 1.42,
        "hit_rate_pct": 53.5,
+       "mean_worst_drawdown_pct": -17.2,
+       "worst_drawdown_pct": -42.7,
+       "excess_per_risk": 0.17,
+       "breakeven_round_trip_cost_pct": 3.52,
+       "independent_observations": 1,
        "sufficient": true
       },
       "WATCH": {
@@ -1386,6 +1976,11 @@
        "mean_excess_pct": 1.03,
        "median_excess_pct": 1.09,
        "hit_rate_pct": 53.8,
+       "mean_worst_drawdown_pct": -16.2,
+       "worst_drawdown_pct": -55.8,
+       "excess_per_risk": 0.05,
+       "breakeven_round_trip_cost_pct": 1.03,
+       "independent_observations": 1,
        "sufficient": true
       },
       "SELL": {
@@ -1395,6 +1990,11 @@
        "mean_excess_pct": -5.09,
        "median_excess_pct": -2.45,
        "hit_rate_pct": 25.0,
+       "mean_worst_drawdown_pct": -18.9,
+       "worst_drawdown_pct": -34.6,
+       "excess_per_risk": -0.64,
+       "breakeven_round_trip_cost_pct": 0.0,
+       "independent_observations": 1,
        "sufficient": false
       }
      },
@@ -1411,6 +2011,11 @@
        "mean_excess_pct": 2.3,
        "median_excess_pct": 3.81,
        "hit_rate_pct": 60.0,
+       "mean_worst_drawdown_pct": -20.0,
+       "worst_drawdown_pct": -39.3,
+       "excess_per_risk": 0.14,
+       "breakeven_round_trip_cost_pct": 2.3,
+       "independent_observations": 1,
        "sufficient": false
       },
       "WATCH": {
@@ -1420,6 +2025,11 @@
        "mean_excess_pct": 1.51,
        "median_excess_pct": 0.17,
        "hit_rate_pct": 50.6,
+       "mean_worst_drawdown_pct": -16.7,
+       "worst_drawdown_pct": -55.8,
+       "excess_per_risk": 0.07,
+       "breakeven_round_trip_cost_pct": 1.51,
+       "independent_observations": 1,
        "sufficient": true
       },
       "SELL": {
@@ -1429,6 +2039,11 @@
        "mean_excess_pct": -2.1,
        "median_excess_pct": 3.83,
        "hit_rate_pct": 75.0,
+       "mean_worst_drawdown_pct": -10.1,
+       "worst_drawdown_pct": -14.5,
+       "excess_per_risk": -0.18,
+       "breakeven_round_trip_cost_pct": 0.0,
+       "independent_observations": 1,
        "sufficient": false
       }
      },
@@ -1445,6 +2060,11 @@
        "mean_excess_pct": 20.78,
        "median_excess_pct": 28.33,
        "hit_rate_pct": 100.0,
+       "mean_worst_drawdown_pct": -18.5,
+       "worst_drawdown_pct": -23.1,
+       "excess_per_risk": 1.78,
+       "breakeven_round_trip_cost_pct": 20.78,
+       "independent_observations": 1,
        "sufficient": false
       },
       "WATCH": {
@@ -1454,6 +2074,11 @@
        "mean_excess_pct": 1.37,
        "median_excess_pct": 0.32,
        "hit_rate_pct": 51.2,
+       "mean_worst_drawdown_pct": -16.7,
+       "worst_drawdown_pct": -55.8,
+       "excess_per_risk": 0.07,
+       "breakeven_round_trip_cost_pct": 1.37,
+       "independent_observations": 1,
        "sufficient": true
       },
       "SELL": {
@@ -1463,6 +2088,11 @@
        "mean_excess_pct": -22.44,
        "median_excess_pct": -22.44,
        "hit_rate_pct": 0.0,
+       "mean_worst_drawdown_pct": -14.5,
+       "worst_drawdown_pct": -14.5,
+       "excess_per_risk": null,
+       "breakeven_round_trip_cost_pct": 0.0,
+       "independent_observations": 1,
        "sufficient": false
       }
      },
@@ -1481,6 +2111,11 @@
      "mean_excess_pct": -1.47,
      "median_excess_pct": -2.88,
      "hit_rate_pct": 39.9,
+     "mean_worst_drawdown_pct": -15.9,
+     "worst_drawdown_pct": -55.8,
+     "excess_per_risk": -0.12,
+     "breakeven_round_trip_cost_pct": 0.0,
+     "independent_observations": 4,
      "sufficient": true
     },
     "0": {
@@ -1490,6 +2125,11 @@
      "mean_excess_pct": 1.65,
      "median_excess_pct": 1.57,
      "hit_rate_pct": 57.4,
+     "mean_worst_drawdown_pct": -13.1,
+     "worst_drawdown_pct": -54.5,
+     "excess_per_risk": 0.1,
+     "breakeven_round_trip_cost_pct": 1.65,
+     "independent_observations": 4,
      "sufficient": true
     },
     "-1": {
@@ -1499,6 +2139,11 @@
      "mean_excess_pct": -0.88,
      "median_excess_pct": -2.52,
      "hit_rate_pct": 44.5,
+     "mean_worst_drawdown_pct": -11.3,
+     "worst_drawdown_pct": -51.6,
+     "excess_per_risk": -0.06,
+     "breakeven_round_trip_cost_pct": 0.0,
+     "independent_observations": 4,
      "sufficient": true
     }
    },
@@ -1510,6 +2155,11 @@
      "mean_excess_pct": 0.73,
      "median_excess_pct": -0.11,
      "hit_rate_pct": 49.8,
+     "mean_worst_drawdown_pct": -12.8,
+     "worst_drawdown_pct": -54.5,
+     "excess_per_risk": 0.05,
+     "breakeven_round_trip_cost_pct": 0.73,
+     "independent_observations": 4,
      "sufficient": true
     },
     "0": {
@@ -1519,6 +2169,11 @@
      "mean_excess_pct": -4.31,
      "median_excess_pct": -3.76,
      "hit_rate_pct": 36.9,
+     "mean_worst_drawdown_pct": -14.9,
+     "worst_drawdown_pct": -55.0,
+     "excess_per_risk": -0.27,
+     "breakeven_round_trip_cost_pct": 0.0,
+     "independent_observations": 5,
      "sufficient": true
     },
     "-1": {
@@ -1528,6 +2183,11 @@
      "mean_excess_pct": -0.46,
      "median_excess_pct": -2.3,
      "hit_rate_pct": 45.2,
+     "mean_worst_drawdown_pct": -16.0,
+     "worst_drawdown_pct": -55.8,
+     "excess_per_risk": -0.03,
+     "breakeven_round_trip_cost_pct": 0.0,
+     "independent_observations": 4,
      "sufficient": true
     }
    },
@@ -1539,6 +2199,11 @@
      "mean_excess_pct": 0.61,
      "median_excess_pct": -1.21,
      "hit_rate_pct": 48.4,
+     "mean_worst_drawdown_pct": -13.1,
+     "worst_drawdown_pct": -38.2,
+     "excess_per_risk": 0.04,
+     "breakeven_round_trip_cost_pct": 0.61,
+     "independent_observations": 4,
      "sufficient": true
     },
     "0": {
@@ -1548,6 +2213,11 @@
      "mean_excess_pct": 0.36,
      "median_excess_pct": -0.33,
      "hit_rate_pct": 48.6,
+     "mean_worst_drawdown_pct": -12.7,
+     "worst_drawdown_pct": -54.5,
+     "excess_per_risk": 0.03,
+     "breakeven_round_trip_cost_pct": 0.36,
+     "independent_observations": 4,
      "sufficient": true
     },
     "-1": {
@@ -1557,6 +2227,11 @@
      "mean_excess_pct": -4.77,
      "median_excess_pct": -5.49,
      "hit_rate_pct": 27.8,
+     "mean_worst_drawdown_pct": -18.0,
+     "worst_drawdown_pct": -55.8,
+     "excess_per_risk": -0.36,
+     "breakeven_round_trip_cost_pct": 0.0,
+     "independent_observations": 3,
      "sufficient": true
     }
    }
@@ -1570,6 +2245,11 @@
      "mean_excess_pct": 0.8,
      "median_excess_pct": -2.35,
      "hit_rate_pct": 40.6,
+     "mean_worst_drawdown_pct": -18.9,
+     "worst_drawdown_pct": -55.8,
+     "excess_per_risk": 0.04,
+     "breakeven_round_trip_cost_pct": 0.8,
+     "independent_observations": 1,
      "sufficient": true
     },
     "0": {
@@ -1579,6 +2259,11 @@
      "mean_excess_pct": 2.2,
      "median_excess_pct": 3.87,
      "hit_rate_pct": 63.3,
+     "mean_worst_drawdown_pct": -14.6,
+     "worst_drawdown_pct": -54.5,
+     "excess_per_risk": 0.1,
+     "breakeven_round_trip_cost_pct": 2.2,
+     "independent_observations": 1,
      "sufficient": true
     },
     "-1": {
@@ -1588,6 +2273,11 @@
      "mean_excess_pct": -3.31,
      "median_excess_pct": -4.39,
      "hit_rate_pct": 45.6,
+     "mean_worst_drawdown_pct": -19.2,
+     "worst_drawdown_pct": -59.5,
+     "excess_per_risk": -0.14,
+     "breakeven_round_trip_cost_pct": 0.0,
+     "independent_observations": 1,
      "sufficient": true
     }
    },
@@ -1599,6 +2289,11 @@
      "mean_excess_pct": 1.53,
      "median_excess_pct": 0.72,
      "hit_rate_pct": 51.9,
+     "mean_worst_drawdown_pct": -17.5,
+     "worst_drawdown_pct": -59.5,
+     "excess_per_risk": 0.06,
+     "breakeven_round_trip_cost_pct": 1.53,
+     "independent_observations": 1,
      "sufficient": true
     },
     "0": {
@@ -1608,6 +2303,11 @@
      "mean_excess_pct": -6.51,
      "median_excess_pct": -5.03,
      "hit_rate_pct": 43.5,
+     "mean_worst_drawdown_pct": -19.9,
+     "worst_drawdown_pct": -62.2,
+     "excess_per_risk": -0.33,
+     "breakeven_round_trip_cost_pct": 0.0,
+     "independent_observations": 2,
      "sufficient": true
     },
     "-1": {
@@ -1617,6 +2317,11 @@
      "mean_excess_pct": -3.91,
      "median_excess_pct": -2.45,
      "hit_rate_pct": 34.4,
+     "mean_worst_drawdown_pct": -20.5,
+     "worst_drawdown_pct": -55.8,
+     "excess_per_risk": -0.3,
+     "breakeven_round_trip_cost_pct": 0.0,
+     "independent_observations": 1,
      "sufficient": true
     }
    },
@@ -1628,6 +2333,11 @@
      "mean_excess_pct": 5.07,
      "median_excess_pct": 7.24,
      "hit_rate_pct": 60.9,
+     "mean_worst_drawdown_pct": -16.8,
+     "worst_drawdown_pct": -42.7,
+     "excess_per_risk": 0.23,
+     "breakeven_round_trip_cost_pct": 5.07,
+     "independent_observations": 1,
      "sufficient": true
     },
     "0": {
@@ -1637,6 +2347,11 @@
      "mean_excess_pct": 0.17,
      "median_excess_pct": -0.45,
      "hit_rate_pct": 48.7,
+     "mean_worst_drawdown_pct": -16.0,
+     "worst_drawdown_pct": -54.5,
+     "excess_per_risk": 0.01,
+     "breakeven_round_trip_cost_pct": 0.17,
+     "independent_observations": 1,
      "sufficient": true
     },
     "-1": {
@@ -1646,6 +2361,11 @@
      "mean_excess_pct": -2.4,
      "median_excess_pct": -2.26,
      "hit_rate_pct": 39.3,
+     "mean_worst_drawdown_pct": -21.0,
+     "worst_drawdown_pct": -55.8,
+     "excess_per_risk": -0.19,
+     "breakeven_round_trip_cost_pct": 0.0,
+     "independent_observations": 1,
      "sufficient": false
     }
    }
@@ -1695,7 +2415,7 @@
   "Excess return is measured against the mean of the same pilot companies on the same date, not against an index (no index history is stored).",
   "Financial score, peer standing and the valuation scenarios cannot be rebuilt as of a past date (peer sets, scores and entered assumptions are stored as of today only), so the production verdict itself is not back-tested; a three-component subset with a valuation proxy is.",
   "Annual results are assumed public 90 days after the year end; the real filing dates are not used.",
-  "Windows containing a split, bonus or flagged price gap are excluded rather than adjusted; no transaction costs, taxes or slippage are included.",
+  "Windows containing a split, bonus or flagged price gap are excluded rather than adjusted; no transaction costs, taxes or slippage are included (each bucket instead reports the round-trip cost that would remove its average excess return).",
   "The target price, stop-loss and reward-to-risk rules are not back-tested: they depend on valuation scenarios that cannot be reconstructed."
  ],
  "notes": [],

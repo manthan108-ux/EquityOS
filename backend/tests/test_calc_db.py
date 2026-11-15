@@ -1114,3 +1114,30 @@ def test_a_split_after_the_statement_adjusts_the_derived_share_count(session, co
         select(EvidenceRecord).where(EvidenceRecord.metric == "VALUATION.market_cap")
     )
     assert cap.value == 300 * 20 * CR  # the bonus doubled the share count
+
+
+def test_an_unconfirmed_split_after_the_share_count_withholds_market_cap(session, co, two_years):
+    # a bare "1:5" split is ambiguous, so it is not applied: a count from before it must not be
+    # multiplied by a price from after it, and a value stored earlier must not stay live
+    set_face_value(session, co, 10)
+    sec = listing(session, co)
+    add_prices(session, sec, [300] * 30)
+    run(session, co)
+    q = select(EvidenceRecord).where(EvidenceRecord.metric == "VALUATION.market_cap")
+    assert session.scalar(q).status.value == "ACTIVE"
+    session.add(
+        CorporateAction(
+            company_id=co.id,
+            provider_code="UPSTOX_FUNDAMENTALS",
+            action_type="Split",
+            effective_date=date(2026, 6, 1),
+            ratio_text="1:5",
+            source_url="https://x.invalid",
+            retrieved_at=NOW,
+        )
+    )
+    session.flush()
+    report = run(session, co)
+    assert session.scalar(q).status.value == "WITHDRAWN"
+    gap = next(g for g in report.gaps if g.metric == "VALUATION.market_cap")
+    assert "withheld" in gap.reason and "2026-06-01" in gap.reason

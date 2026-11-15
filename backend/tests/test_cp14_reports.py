@@ -144,3 +144,26 @@ def test_validation_flags_unordered_scenarios_and_untraceable_points():
 def test_the_gap_spacer_flowable_is_not_mistaken_for_content():
     out = pdf_gaps.consolidate([Paragraph("H", ST["h1"]), Paragraph("Sub", ST["h2"]), Spacer(1, 4)], ST)
     assert "Sub" not in text_of(out)
+
+
+# ---------------------------------------------------------------- stale reference price
+
+
+def test_a_reference_price_older_than_the_latest_close_is_flagged_with_its_lag():
+    from datetime import date
+
+    from app.research import verdict as vd
+
+    today = date(2026, 11, 16)  # Monday: the latest expected close is Friday 13 November
+    fresh = vd._price_freshness("2026-11-13", today)
+    assert fresh["price_stale"] is False and fresh["price_lag_days"] == 0
+    old = vd._price_freshness("2026-11-06", today)
+    assert old["price_stale"] is True and old["price_lag_days"] == 5
+    assert old["price_expected_date"] == "2026-11-13"
+    assert vd._price_freshness(None, today)["price_stale"] is None
+
+
+def test_validation_flags_growth_at_or_above_the_cost_of_equity():
+    sc = {c: {"value_per_share": v, "evidence_ids": [1], "assumptions": {"growth": g, "cost_of_equity": "10"}} for c, v, g in (("bear", "50", "4"), ("base", "60", "6"), ("bull", "70", "10"))}  # fmt: skip
+    out = vp.valuation_checks({"valuation": {"intrinsic": {"completed": True, "scenarios": sc}}})
+    assert out == ["intrinsic/bull: long-run growth 10% is not below the cost of equity 10%"]

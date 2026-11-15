@@ -1,6 +1,6 @@
 # Project Status
 
-**EquityOS 1.0 accepted on 2026-11-15** - see [ACCEPTANCE.md](ACCEPTANCE.md) for the evidence and the stated limits.
+**EquityOS 1.0 accepted on 2026-11-15**; closure programme run the same day. Criterion 3 (valuation for all applicable companies) is not yet met: see [ACCEPTANCE.md](ACCEPTANCE.md) for the evidence and [KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md) for exactly what is missing.
 
 | Phase | Scope | Status |
 |---|---|---|

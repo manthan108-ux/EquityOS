@@ -26,7 +26,7 @@ from sqlalchemy.orm import Session
 from app.core.storage import StoragePathError, resolve_inside
 from app.core.text import normalize_text
 from app.docintel import basis as basis_inference
-from app.docintel import kpi, operating, taxonomy, validate
+from app.docintel import kpi, operating, share_counts, taxonomy, validate
 from app.docintel.association import build_issuer_index
 from app.docintel.disclosures import extract_shareholding, find_group_entities, find_sections
 from app.docintel.entity import (
@@ -728,7 +728,6 @@ def _extract(
                 }
             )
     _persist_narrative(session, run, document, content, issues)
-
     doc_latest = max(
         (
             c.period.period_end
@@ -744,6 +743,34 @@ def _extract(
     ocr_review = _OcrReview(content)
     cover = cover_text(content.pages, names)
     dominance = document_dominance(content.pages, names)
+    try:
+        share_counts.persist(
+            session,
+            run,
+            document,
+            [
+                (p.number, p.text, p.method)
+                for p in content.pages
+                if check_entity(
+                    p.text,
+                    cover,
+                    names,
+                    first_page_text=content.pages[0].text,
+                    dominance=dominance,
+                ).confirmed
+            ],
+            promote
+            and document.company_id is not None
+            and document.association_status != "MISMATCH",
+        )
+    except Exception as exc:  # noqa: BLE001 - an extra reader never blocks the statements
+        issues.append(
+            {
+                "page": None,
+                "code": "SHARE_COUNT_ERROR",
+                "detail": f"skipped after {type(exc).__name__}",
+            }
+        )
     promoter = _Promoter(session, document, doc_latest) if promote else None
     facts_total = 0
     checks = {id(b): validate.run_checks(b) for b in blocks}

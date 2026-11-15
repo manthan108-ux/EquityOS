@@ -1243,7 +1243,7 @@ def verdict_block(report: dict, st) -> list:
         side = "BUY" if v["verdict"] == "BUY" else "SELL"
         rows = [
             _hdr(st, "Trade level", "Value", "Basis", right_from=1),
-            [Paragraph("Reference price", st["cell"]), Paragraph(f"Rs. {lv['price']}", st["cellr"]), Paragraph(clean(f"close on {lv['price_date']}"), st["cell"])],
+            [Paragraph("Reference price", st["cell"]), Paragraph(f"Rs. {lv['price']}", st["cellr"]), Paragraph(clean(f"close on {lv['price_date']}" + (f"; STALE: {lv['price_lag_days']} trading day(s) older than the latest expected close ({lv['price_expected_date']}), so the levels below are not current" if lv.get("price_stale") else "")), st["cell"])],
             [Paragraph("Target" if side == "BUY" else "Downside target", st["cellb"]), Paragraph(f"Rs. {lv['target']} ({'+' if Decimal(lv['target_pct']) > 0 else ''}{lv['target_pct']}%)", st["cellr"]),
              Paragraph(clean(("mean base-case " if side == "BUY" else "mean bear-case ") + "scenario value (" + ", ".join(lv["value_sources"]) + "); no time horizon"
                    + ("; one method only, so half of the gap to that value is counted" if lv.get("single_method") else "")), st["cell"])],

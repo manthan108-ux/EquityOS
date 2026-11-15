@@ -51,7 +51,7 @@ BORROWINGS = Metric(
     "borrowings", "Borrowings", ("LEVERAGE.total_borrowings",), AMOUNT, ptype="ANNUAL"
 )
 NCI = Metric("nci", "Non-controlling interests", ("BALANCE_SHEET.non_controlling_interests", "BALANCE_SHEET.minority_interest"), AMOUNT, ptype="ANNUAL")  # fmt: skip
-SHARES = Metric("shares", "Shares outstanding", ("BALANCE.shares_outstanding",), MULT, ptype="ANY")
+SHARES = Metric("shares", "Shares outstanding", ("BALANCE.shares_outstanding", "SHAREHOLDING.total.shares"), MULT, ptype="ANY")  # fmt: skip
 PRICE = Metric("price", "Share price", ("PRICE.close",), AMOUNT, ptype="ANY")
 NAMES = frozenset({n for m in (REVENUE, NET_DEBT, BORROWINGS, NCI, SHARES, PRICE) for n in m.names})
 SCENARIO_INPUTS = ("revenue_growth", "terminal_growth", "operating_margin", "tax_rate", "capex_to_revenue", "depreciation_to_revenue", "working_capital_to_revenue")  # fmt: skip
@@ -243,6 +243,9 @@ def scenario(
         flags.append("non-controlling interests are not stored and are not deducted")
     if act["net_debt"]["period_end"] != act["revenue"]["period_end"]:
         flags.append(f"net debt is as at {act['net_debt']['period_end']} but revenue is for the year ended {act['revenue']['period_end']}")  # fmt: skip
+    shares_ref = act["shares"]
+    if shares_ref["period_end"] and shares_ref["period_end"] != act["revenue"]["period_end"]:
+        flags.append(f"the share count is as printed at {shares_ref['period_end']}, not at the revenue year end {act['revenue']['period_end']}; later issues, buy-backs, splits or bonus issues are not applied")  # fmt: skip
     out = {
         "completed": True,
         "assumptions": {

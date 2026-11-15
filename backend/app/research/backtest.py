@@ -34,7 +34,7 @@ import uuid
 from datetime import date, timedelta
 from decimal import Decimal
 from pathlib import Path
-from statistics import mean, median
+from statistics import mean, median, pstdev
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -193,6 +193,7 @@ def company_observations(session: Session, company_id: uuid.UUID, prefer: str, s
             if any(window_start <= a <= end for a in adj):
                 continue
             obs[f"fwd{h}"] = closes[i + h] / closes[i] - 1
+            obs[f"dd{h}"] = min(closes[i : i + h + 1]) / closes[i] - 1  # worst point from entry (<= 0)
         if not any(k.startswith("fwd") for k in obs):
             continue
         if any(window_start <= a <= d for a in adj):
@@ -236,6 +237,17 @@ def bucket_stats(items: list[dict], horizon: int) -> dict:
         out["mean_excess_pct"] = round(mean(ex) * 100, 2)
         out["median_excess_pct"] = round(median(ex) * 100, 2)
         out["hit_rate_pct"] = round(sum(1 for x in ex if x > 0) / n * 100, 1)
+        # risk, cost and independence (all from the same observations; nothing is assumed)
+        dd = [r[f"dd{horizon}"] for r in items if r.get(f"ex{horizon}") is not None and r.get(f"dd{horizon}") is not None]  # fmt: skip
+        if dd:
+            out["mean_worst_drawdown_pct"] = round(float(mean(dd)) * 100, 1)
+            out["worst_drawdown_pct"] = round(float(min(dd)) * 100, 1)
+        sd = pstdev(ex) if n > 1 else 0
+        out["excess_per_risk"] = round(mean(ex) / sd, 2) if sd else None  # mean excess / its standard deviation, per observation
+        # the round-trip cost (percent of position) that would remove the average excess return; a measured cost
+        # below this leaves the mean positive. No cost is assumed: the data holds none.
+        out["breakeven_round_trip_cost_pct"] = round(mean(ex) * 100, 2) if mean(ex) > 0 else 0.0
+        out["independent_observations"] = max(1, round(months / max(1, round(horizon / 21))))  # non-overlapping windows
     out["sufficient"] = n >= MIN_BUCKET and months >= MIN_MONTHS
     return out
 
@@ -302,7 +314,7 @@ LIMITATIONS = [
     "Excess return is measured against the mean of the same pilot companies on the same date, not against an index (no index history is stored).",
     "Financial score, peer standing and the valuation scenarios cannot be rebuilt as of a past date (peer sets, scores and entered assumptions are stored as of today only), so the production verdict itself is not back-tested; a three-component subset with a valuation proxy is.",
     f"Annual results are assumed public {PUBLICATION_LAG_DAYS} days after the year end; the real filing dates are not used.",
-    "Windows containing a split, bonus or flagged price gap are excluded rather than adjusted; no transaction costs, taxes or slippage are included.",
+    "Windows containing a split, bonus or flagged price gap are excluded rather than adjusted; no transaction costs, taxes or slippage are included (each bucket instead reports the round-trip cost that would remove its average excess return).",
     "The target price, stop-loss and reward-to-risk rules are not back-tested: they depend on valuation scenarios that cannot be reconstructed.",
 ]
 

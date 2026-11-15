@@ -455,3 +455,25 @@ def test_feature_flag_switches_the_connector_off_even_with_a_token(monkeypatch, 
 
     monkeypatch.setattr("app.providers.upstox.get_settings", lambda: settings(True))
     assert UpstoxFundamentalsProvider(client=None).is_configured()
+
+
+def test_verification_bypasses_the_cache_so_a_bad_token_cannot_be_masked(
+    session, reliance, tmp_path
+):
+    """The cache is keyed by URL. Without the bypass, a rejected token would still 'verify' from it."""
+    provider, seen = make_provider(standard_handler, tmp_path)
+    assert provider.acquire(session, reliance, Dataset.KEY_RATIOS).outcome is Outcome.OK
+    n = len(seen)
+    provider.acquire(session, reliance, Dataset.KEY_RATIOS)
+    assert len(seen) == n  # a normal run is served from the cache
+
+    def denied(request):
+        return json_response({"status": "error", "errors": [{"errorCode": "UDAPI100050"}]}, 401)
+
+    bad, seen_bad = make_provider(denied, tmp_path, token="expired-token")
+    assert (
+        bad.acquire(session, reliance, Dataset.KEY_RATIOS).outcome is Outcome.OK
+    )  # cache masks it
+    bad.bypass_cache = True
+    assert bad.acquire(session, reliance, Dataset.KEY_RATIOS).outcome is not Outcome.OK
+    assert seen_bad  # it really called the API

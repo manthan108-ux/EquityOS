@@ -197,3 +197,17 @@ def test_the_risk_register_has_the_four_families_and_labels_sector_context():
     assert any("gross npa" in p["text"] for p in reg["industry_regulatory"])
     assert any("SECTOR" in p["kind"] for p in reg["industry_regulatory"])
     assert any("No valuation method is completed" in p["text"] for p in reg["valuation"])
+
+
+def test_bucket_statistics_report_drawdown_risk_and_the_break_even_cost():
+    rows = [
+        {"symbol": "A", "date": date(2025, m, 28), "ex126": e, "dd126": d}
+        for m, e, d in ((1, 0.10, -0.05), (2, 0.04, -0.20), (3, -0.02, -0.10), (4, 0.08, 0.0))
+    ]
+    s = bt.bucket_stats(rows, 126)
+    assert s["mean_excess_pct"] == 5.0
+    assert s["worst_drawdown_pct"] == -20.0 and s["mean_worst_drawdown_pct"] == -8.8
+    assert s["breakeven_round_trip_cost_pct"] == 5.0  # a cost above this removes the average excess
+    assert s["excess_per_risk"] > 0 and s["independent_observations"] == 1
+    losing = [{**r, "ex126": -0.01} for r in rows]
+    assert bt.bucket_stats(losing, 126)["breakeven_round_trip_cost_pct"] == 0.0

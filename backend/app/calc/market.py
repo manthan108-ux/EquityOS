@@ -25,6 +25,7 @@ from app.evidence.core import canon
 from app.evidence.ledger import LedgerError, price_evidence, register_calculation
 from app.models import (
     Company,
+    CorporateAction,
     EvidenceClass,
     EvidenceRecord,
     EvidenceStatus,
@@ -238,7 +239,63 @@ def run_market(
     # with the best available equity, whose basis is then the basis of the P/B.
     share_basis = None
     share_date = None
-    if found is None:
+    # A split or bonus after the date of the count that is not APPLIED (a bare ratio such as "1:5"
+    # is ambiguous, an implied price break is only suspected) would put a count of one share
+    # structure beside a price of another: withhold instead of computing a wrong multiple.
+    pending: list[tuple[date, str]] = []
+    if found is not None:
+        after = found[0].period_end
+        pending = [
+            (e.ex_date, e.detail or e.kind.value)
+            for e in events
+            if not e.applied and after < e.ex_date <= price_date
+        ]
+        applied_days = {e.ex_date for e in events if e.applied}
+        for a in session.scalars(
+            select(CorporateAction).where(CorporateAction.company_id == company.id)
+        ):
+            label = (a.action_type or "").lower()
+            if (
+                any(w in label for w in ("split", "bonus", "sub-division", "subdivision"))
+                and a.effective_date is not None
+                and after < a.effective_date <= price_date
+                and a.effective_date not in applied_days
+            ):
+                pending.append((a.effective_date, f"{a.action_type} {a.ratio_text or ''}".strip()))
+        pending.sort()
+    if pending:
+        first_day, first_detail = pending[0]
+        result.gaps.append(
+            Gap(
+                "VALUATION.market_cap",
+                price_date,
+                None,
+                None,
+                f"the share count is as at {found[0].period_end}, but a split or bonus took effect "
+                f"on {first_day} ({first_detail[:120]}) and is not "
+                "confirmed in the price adjustments, so the count cannot be brought to today's "
+                "share structure; market capitalisation and price-to-book are withheld rather "
+                "than computed on a mixed share structure",
+            )
+        )
+        # a value stored before the split was known must not stay live beside the gap
+        for old in session.scalars(
+            select(EvidenceRecord).where(
+                EvidenceRecord.company_id == company.id,
+                EvidenceRecord.metric.in_(("VALUATION.market_cap", "VALUATION.price_to_book")),
+                EvidenceRecord.status == EvidenceStatus.ACTIVE,
+                EvidenceRecord.created_by == CREATED_BY,
+            )
+        ):
+            old.status = EvidenceStatus.WITHDRAWN
+            old.status_reason = f"share count predates the split or bonus of {first_day}"[:200]
+            old.status_changed_at = now
+        session.flush()
+        from app.calc.engine import retire_stale_calculations
+
+        retire_stale_calculations(session, company.id, now)
+        found = None
+    elif found is None:
         result.gaps.append(
             Gap(
                 "VALUATION.market_cap",
