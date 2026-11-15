@@ -128,6 +128,11 @@ class _Previous:
 
 def child_main(spec: ChildSpec, conn) -> None:
     """Entry point of the child process: run the stage, send back an Outcome as a dict."""
+    if sys.platform != "win32":
+        try:
+            os.setsid()  # its own process group, so stopping the stage never signals the parent
+        except OSError:
+            pass
     from pathlib import Path as _Path
 
     from app.core.database import get_engine
@@ -203,7 +208,13 @@ def stop_tree(pid: int) -> None:
             import signal
 
             try:
-                os.killpg(os.getpgid(pid), signal.SIGKILL)
+                group = os.getpgid(pid)
+                if group == os.getpgrp():
+                    # the child has not left our own group (yet): signalling the group would
+                    # kill this process and its caller as well, so stop the child alone
+                    os.kill(pid, signal.SIGKILL)
+                else:
+                    os.killpg(group, signal.SIGKILL)
             except (ProcessLookupError, PermissionError):
                 os.kill(pid, signal.SIGKILL)
     except Exception:  # noqa: BLE001

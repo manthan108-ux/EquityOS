@@ -130,11 +130,22 @@ code has not changed except as stated); **NOT VERIFIED**; **BLOCKED**.
 
 ## GitHub Actions failure
 
-- **Failing runs:** `07c1edb` (run 43700146415) and `6a6ebf4` (run 43750720144); earlier runs also failed.
-- **Job and step:** `backend`, step "Run ruff format --check ." The `frontend` and `docker` jobs passed in both runs.
-- **Cause:** 16 Python files were not in `ruff format` layout. Local checks had run `ruff check` only, not the format check.
-  It is not a code regression, a dependency or Python-version mismatch, a missing secret or a service-start failure.
-- **Fix:** commit `fe25b92`, layout-only formatting with the pinned ruff 0.17.4. The full suite was re-run locally afterwards:
-  1,981 passed, the same count as before.
-- **Status:** run 43751201814 for `fe25b92`: `frontend` and `docker` passed; the `backend` job was still running when this was
-  written, so CI is **not yet confirmed passing**. Check the Actions tab; if it fails, the failing step shows which check.
+- **Failing runs:** every run since `2917b8c`; checked in detail: `07c1edb`, `6a6ebf4`, `fe25b92` (run 43751201814), `0f8786b`.
+- **Failure 1 (fixed in `fe25b92`):** `backend` job, step "Run ruff format --check ." - 16 files not in `ruff format` layout.
+  Local checks had run `ruff check` only. Layout-only fix with the pinned ruff 0.17.4.
+- **Failure 2 (found after failure 1 was fixed):** the `backend` job ran `pytest -q` for about 47 minutes and ended with "The hosted
+  runner lost communication with the server". Steps after pytest never ran, so CI had never exercised pytest, `alembic upgrade head`
+  or `alembic check` on Linux for these commits.
+- **Root cause:** a genuine defect in `app/pipeline/isolation.py`, not a CI-configuration problem. On POSIX, `stop_tree` ran
+  `os.killpg(os.getpgid(pid), SIGKILL)` on a stage's child process, but the spawned child never left its parent's process group,
+  so a stage timeout also killed the parent (pytest and the runner's step on CI; the worker itself in Docker). Windows used
+  `taskkill`, so it never appeared locally. Reproduced on Linux: with the committed code pytest was "Killed" after 5 tests of
+  `tests/test_pipeline_isolation.py`.
+- **Fix:** the child calls `os.setsid()` on start, and `stop_tree` kills the child alone when its group is still the caller's own.
+  No other behaviour changed; no valuation, scoring or verdict code was touched.
+- **Verified (this run, local Linux, `python:3.13` image of the project backend and a fresh Postgres 17, mirroring the CI job):**
+  `ruff check` clean, `ruff format --check` clean, `pytest`: 1,980 passed and 1 skipped, `alembic upgrade head` from an empty
+  database through 0023, `alembic check`: no new operations. Windows: isolation tests 19 passed; full suite 1,981 passed before the
+  change. The Linux image has Tesseract, which the GitHub runner does not, so tests that need it are the one difference.
+- **CI status:** NOT yet confirmed green on GitHub. It is confirmed only after the run for the commit that carries this fix
+  finishes; check the Actions tab.
