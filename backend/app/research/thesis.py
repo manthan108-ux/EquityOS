@@ -316,6 +316,100 @@ def _monitoring(analysis: dict, sector: Sector) -> list[dict]:
     return out
 
 
+def _evidence_points(analysis: dict, side: str) -> list[dict]:
+    """Strengths or weaknesses already derived from the company's own figures (business analysis)."""
+    blk = (analysis.get("business") or {}).get("strengths" if side == "bull" else "weaknesses") or {}
+    return [
+        _p(side, i["text"], i.get("evidence_ids") or [], "business analysis (company figures)")
+        for i in blk.get("evidence", [])
+    ]
+
+
+def _industry_catalysts(analysis: dict) -> list[dict]:
+    """Sector opportunities whose company figure moved the favourable way: a catalyst only if the data shows it."""
+    out = []
+    for w in ((analysis.get("industry_view") or {}).get("opportunities_threats") or {}).get(
+        "checked_against_company", []
+    ):
+        r = w.get("company_evidence")
+        if w["kind"] == "OPPORTUNITY" and r and r.get("direction") == "FAVOURABLE":
+            out.append(
+                _p(
+                    "catalyst",
+                    f"Sector opportunity ({w['theme']}): the company's {r['label'].lower()} moved favourably "
+                    f"({r.get('change_from')} to {r.get('change_to')}). Whether this continues is a hypothesis.",
+                    r["evidence_ids"],
+                    "sector opportunity checked against the company",
+                    HYPOTHESIS,
+                )
+            )
+    return out
+
+
+def _risk_register(analysis: dict, sector: Sector, risks: dict, score: dict) -> dict:
+    """The four risk families the verdict reader asks for, each point labelled by what it rests on."""
+    business = [
+        *risks["company"],
+        *[
+            _p("risk", i["text"], i.get("evidence_ids") or [], "business analysis (company figures)")
+            for i in ((analysis.get("business") or {}).get("weaknesses") or {}).get("evidence", [])
+        ],
+    ]
+    for key in ("health", "cashflow"):
+        blk = analysis.get(key) or {}
+        for o in (blk.get("observations") or []) if blk.get("available") else []:
+            low = o["text"].lower()
+            if any(w in low for w in ("negative", "cannot be repaid", "weak", "below")):
+                business.append(_p("risk", o["text"], o.get("evidence_ids") or [], f"{key} analysis"))
+    gov = (analysis.get("governance") or {})
+    governance = []
+    if gov.get("available"):
+        for i in (gov.get("checklist") or {}).get("items", []):
+            if i["status"] == "FLAG":
+                governance.append(_p("risk", f"{i['label']}: {i['detail']}", i.get("evidence_ids") or [], "governance checklist"))
+        unknown = [i["label"] for i in (gov.get("checklist") or {}).get("items", []) if i["status"] == "UNKNOWN"]
+        if unknown:
+            governance.append(_p("risk", "Not assessed for lack of stored evidence: " + ", ".join(unknown) + ".", [], "governance checklist"))
+    governance += risks["governance"]
+    env = (analysis.get("industry_view") or {})
+    industry = []
+    reg = (env.get("environment") or {}).get("regulation")
+    if reg:
+        regs = reg if isinstance(reg, list) else [reg]
+        industry += [{"side": "risk", "text": str(x), "evidence_ids": [], "basis": "sector context", "kind": "SECTOR TEMPLATE (not evidence about this company)"} for x in regs[:4]]  # fmt: skip
+    for w in (env.get("opportunities_threats") or {}).get("checked_against_company", []):
+        r = w.get("company_evidence")
+        if w["kind"] == "THREAT" and r and r.get("direction") == "UNFAVOURABLE":
+            industry.append(_p("risk", f"Sector threat ({w['theme']}): the company's {r['label'].lower()} moved unfavourably ({r.get('change_from')} to {r.get('change_to')}).", r["evidence_ids"], "sector threat checked against the company", HYPOTHESIS))  # fmt: skip
+    industry += [{"side": "risk", "text": f"{s['title']}. {s['text']}", "evidence_ids": [], "basis": "sector template", "kind": s["kind"]} for s in risks["sector"]]  # fmt: skip
+    valuation = list(risks["valuation"])
+    val = analysis["valuation"]
+    for name in ("dcf", "sotp", "relative_ev_ebitda", "relative_pb"):
+        blk = val.get(name) or {}
+        for sc in (blk.get("scenarios") or {}).values():
+            for f in (sc.get("flags") or []) if isinstance(sc, dict) and sc.get("completed") else []:
+                valuation.append(_p("risk", f"{name.replace('_', ' ')}: {f}.", sc.get("evidence_ids") or [], "valuation flag"))
+            break
+    kinds = [b for b in (val.get("dcf"), val.get("relative"), val.get("intrinsic")) if b and b.get("completed")]
+    if not kinds:
+        valuation.append(_p("risk", "No valuation method is completed, so the price cannot be tested against a value.", [], "valuation coverage"))
+    ledger = val.get("input_ledger") or {}
+    for f in (ledger.get("flags") or [])[:3]:
+        valuation.append(_p("risk", f"Valuation input: {f}" if isinstance(f, str) else f"Valuation input: {f.get('text', f)}", [], "assumption ledger"))
+    seen, uniq = set(), []
+    for pt in valuation:
+        if pt["text"] not in seen:
+            seen.add(pt["text"])
+            uniq.append(pt)
+    return {
+        "business_financial": business[: MAX_POINTS + 4],
+        "management_governance": governance[: MAX_POINTS + 2],
+        "industry_regulatory": industry[: MAX_POINTS + 4],
+        "valuation": uniq[: MAX_POINTS + 2],
+        "data": risks["data"],
+    }
+
+
 def trajectory(analysis: dict) -> dict:
     """improving / deteriorating / mixed / stable from the latest annual change of up to four measures."""
     ups = downs = 0
@@ -377,7 +471,7 @@ def _valuation_text(val: dict) -> str:
     return (
         lead
         + "These are measurements against peers and scenario-implied values under stated assumptions, "
-        "not a verdict on cheapness; the verdict in section 7 uses them under its stated rules."
+        "not a verdict on cheapness; the verdict in the Investment thesis and verdict section uses them under its stated rules."
     )
 
 
@@ -476,17 +570,21 @@ def build(
     auditor_flags,
 ) -> dict:
     signals = _peer_signals(analysis) + _trend_signals(analysis) + _valuation_signals(analysis)
+    signals += _evidence_points(analysis, "bull") + _evidence_points(analysis, "bear")
     all_bear = [s for s in signals if s["side"] == "bear"]
     bull = [s for s in signals if s["side"] == "bull"][:MAX_POINTS]
     bear = all_bear[:MAX_POINTS]
     traj = trajectory(analysis)
     monitoring = _monitoring(analysis, sector)
+    risks = _risks(analysis, sector, all_bear, score, auditor_flags)
+    catalysts = (_catalysts(bull, mgmt, applied) + _industry_catalysts(analysis))[: MAX_POINTS + 4]
     return {
         "version": VERSION,
         "bull": bull,
         "bear": bear,
-        "catalysts": _catalysts(bull, mgmt, applied),
-        "risks": _risks(analysis, sector, all_bear, score, auditor_flags),
+        "catalysts": catalysts,
+        "risks": risks,
+        "risk_register": _risk_register(analysis, sector, risks, score),
         "monitoring": monitoring,
         "trajectory": traj,
         "conclusion": {

@@ -591,6 +591,15 @@ def _nonfin(code, label, lens, risks, extra_monitor=()) -> Sector:
             Metric(
                 "pb", "Price-to-book", ("VALUATION.price_to_book",), MULT, None, "ANY", "Valuation"
             ),
+            Metric(
+                "ev_ebitda",
+                "EV / EBITDA",
+                ("VALUATION.ev_to_ebitda",),
+                MULT,
+                None,
+                "ANY",
+                "Valuation",
+            ),
         ),  # fmt: skip
         monitor=(
             "revenue",

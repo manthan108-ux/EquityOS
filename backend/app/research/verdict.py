@@ -1,4 +1,4 @@
-"""EquityOS verdict: BUY / SELL / WATCH with target, stop-loss and confidence (methodology v1).
+"""EquityOS verdict: BUY / HOLD / WATCH / SELL with target price, stop-loss and confidence (methodology v2).
 
 This is a transparent rule set, not a prediction and not investment advice. It exists so that a verdict
 is reproducible from stored evidence: every input, point and threshold is printed in the report.
@@ -10,16 +10,23 @@ Components (each scored -1, 0 or +1; valuation counts double):
   4 valuation (weight 2)   upside of the base-case value to the price >= +15% -> +1, <= -15% -> -1
   5 price trend            close vs its 200-day average, beyond +/-5%
 
-Net points >= +3 -> BUY, <= -3 -> SELL, otherwise WATCH. A BUY or SELL also needs at least four of the
-five components to be computable, and a reward-to-risk of at least 1.5; otherwise the verdict is WATCH
+Net points >= +3 -> BUY, <= -3 -> SELL, otherwise HOLD or WATCH. A BUY or SELL also needs at least four of
+the five components to be computable, and a reward-to-risk of at least 1.5; otherwise the verdict is not a trade
 and the reason is stated.
+
+HOLD (v2): the evidence is adequate (at least four components computable, including a valuation) and the price
+lies within +/-15% of the base-case value, with net points inside the BUY and SELL thresholds: the evidence
+supports owning the shares if held, without a case to add or to exit. WATCH is everything unresolved: too little
+evidence, no valuation, or components that conflict (for example a valuation gap that the other evidence does not
+confirm, or a BUY that fails the reward-to-risk test).
 
 Target: the mean of the available base-case scenario values (BUY), or of the bear-case values (SELL);
 with only one valuation method, half of the gap to that value is counted and confidence drops.
-These are scenario-implied values under the illustrative assumptions in the valuation section, with no
-time horizon. Stop-loss: 2 x the 14-day average true range from the stored price history, kept between
+The target price is the valuation-linked scenario value (base case; bear case for a SELL) from the completed
+valuation methods, shown with the bear-to-bull range and a stated review horizon (a convention, not a forecast of
+when the market will agree). Stop-loss: 2 x the 14-day average true range from the stored price history, kept between
 5% and 15% of the price. Confidence is EVIDENCE confidence (coverage, agreement, evidence quality), not
-the probability that the trade works. The method has not been back-tested.
+the probability that the trade works. The rule is back-tested only as a three-component subset (see backtest.py and its limitations).
 """
 
 from __future__ import annotations
@@ -34,7 +41,8 @@ from app.models import EodPrice, PriceAdjustment, Security
 from app.research.analysis import _s, dec
 from app.research.valuation import _material
 
-VERSION = "1.0"
+VERSION = "2.0"
+HORIZON_MONTHS = 12  # review horizon: a convention for stating the target, not a prediction of timing
 SCORE_BUY, SCORE_SELL = Decimal("60"), Decimal("40")
 PEER_SHARE = Decimal("0.3334")
 UPSIDE = Decimal("15")
@@ -49,10 +57,11 @@ CONF_BANDS = (("HIGH", 85), ("MEDIUM", 55), ("LOW", 0))
 DISAGREE_PENALTY = 10
 SINGLE_PENALTY = 10
 DISCLOSURE = (
-    "Methodology v1 is an EquityOS rule set, not a forecast or investment advice, and has not been "
-    "back-tested. Confidence describes the evidence behind the verdict, not the probability that a "
-    "trade succeeds. Targets are scenario-implied values with no time horizon. Do not trade on this "
-    "report alone."
+    "Methodology v2 is an EquityOS rule set, not a forecast or investment advice. Only a three-component "
+    "subset of it can be back-tested on the stored history (see the back-test summary and its limitations). "
+    "Confidence describes the evidence behind the verdict, not the probability that a trade succeeds. Target "
+    "prices are scenario-implied values under the stated assumptions; the review horizon is a convention. "
+    "Do not trade on this report alone."
 )
 
 
@@ -107,10 +116,26 @@ def _comp_peers(peers: dict):
     )
 
 
+def _pb(valuation: dict) -> dict:
+    blk = valuation.get("relative_pb") or {}
+    return blk if blk.get("in_verdict") else {}
+
+
+def _blocks(valuation: dict) -> list[dict]:
+    """The valuation methods whose scenario values the verdict may use."""
+    return [
+        valuation.get("intrinsic", {}),
+        valuation.get("relative", {}),
+        valuation.get("dcf") or {},
+        _pb(valuation),
+        valuation.get("relative_ev_ebitda") or {},
+        valuation.get("sotp") or {},
+    ]
+
+
 def _values(valuation: dict, case: str) -> list[Decimal]:
     out = []
-    intr, rel = valuation.get("intrinsic", {}), valuation.get("relative", {})
-    for block in (intr, rel):
+    for block in _blocks(valuation):
         if block.get("completed"):
             v = dec(block["scenarios"].get(case, {}).get("value_per_share"))
             if v is not None:
@@ -218,12 +243,12 @@ def _comp_trend(ctx: dict):
 def _methods_disagree(valuation: dict, price) -> bool:
     """True when the residual-income and relative base cases lie on opposite sides of the price."""
     sides = []
-    for blk in (valuation.get("intrinsic", {}), valuation.get("relative", {})):
+    for blk in _blocks(valuation):
         if blk.get("completed") and price:
             v = dec(blk["scenarios"].get("base", {}).get("value_per_share"))
             if v is not None:
                 sides.append(v > price)
-    return len(sides) == 2 and sides[0] != sides[1]
+    return len(sides) >= 2 and len(set(sides)) == 2
 
 
 def _haircut(price, value, single):
@@ -279,6 +304,171 @@ def _confidence(comps, verdict, readiness_score, score, disagree=False, single=F
     }
 
 
+THRESHOLDS = {
+    "net_buy": NET_BUY,
+    "net_sell": NET_SELL,
+    "score_buy": str(SCORE_BUY),
+    "score_sell": str(SCORE_SELL),
+    "valuation_upside_pct": str(UPSIDE),
+    "trend_band_pct": str(TREND_BAND),
+    "min_reward_risk": str(MIN_REWARD_RISK),
+    "min_components": MIN_COMPONENTS,
+}
+
+
+def _backtest() -> dict:
+    from app.research import backtest
+
+    s = backtest.summary()
+    try:
+        s["threshold_validation"] = backtest.validate_thresholds()
+    except Exception:  # noqa: BLE001 - never block a report on the validation notes
+        s["threshold_validation"] = None
+    return s
+
+
+def _target_price(verdict, levels, price, base, bear, bull, single) -> dict:
+    """The valuation-linked price: the trade target for BUY / SELL, the fair value (base case) otherwise."""
+    if base is None or price is None:
+        return {"available": False, "reason": "no completed valuation method gives a scenario value, so no valuation-linked target price can be stated"}
+    if verdict == "SELL":
+        value, kind = (bear if bear is not None else base), "downside value (mean bear case)"
+    else:
+        value, kind = base, "base-case value" if verdict != "BUY" else "target (mean base case)"
+    value = _haircut(price, value, single)
+    return {
+        "available": True,
+        "kind": kind,
+        "value": _s(value.quantize(Decimal("1"))),
+        "vs_price_pct": _s(((value / price - 1) * 100).quantize(Decimal("0.1"))),
+        "range": {
+            "bear": _s(bear.quantize(Decimal("1"))) if bear is not None else None,
+            "bull": _s(bull.quantize(Decimal("1"))) if bull is not None else None,
+        },
+        "sources": levels.get("value_sources", []),
+        "single_method": single,
+        "review_horizon_months": HORIZON_MONTHS,
+        "note": "a scenario-implied value under the entered assumptions, not a forecast of the share price; the horizon is the review period for restating it",
+    }
+
+
+def _scenarios(valuation: dict, price) -> dict:
+    """Upside and downside from the bear / base / bull values of every completed method; no probabilities."""
+    rows = []
+    for case in ("bear", "base", "bull"):
+        vals = _values(valuation, case)
+        m = _mean(vals)
+        rows.append(
+            {
+                "case": case,
+                "value_per_share": _s(m.quantize(Decimal("1"))) if m is not None else None,
+                "vs_price_pct": _s(((m / price - 1) * 100).quantize(Decimal("0.1"))) if m is not None and price else None,
+                "methods": len(vals),
+                "low": _s(min(vals).quantize(Decimal("1"))) if vals else None,
+                "high": _s(max(vals).quantize(Decimal("1"))) if vals else None,
+            }
+        )
+    ok = all(r["value_per_share"] is not None for r in rows)
+    return {
+        "available": any(r["value_per_share"] is not None for r in rows),
+        "complete": ok,
+        "rows": rows,
+        "note": "the mean of each completed method's scenario value; no probability is attached to any case because none is evidenced. Low and high are the extremes across methods.",
+    }
+
+
+def _horizon(valuation: dict) -> dict:
+    parts = []
+    if (valuation.get("dcf") or {}).get("completed"):
+        parts.append("the DCF explicit forecast spans 5 years, so its value is a medium- to long-term (3 to 5 year) view")
+    if (valuation.get("intrinsic") or {}).get("completed"):
+        parts.append("the residual-income value rests on a long-run ROE, growth and cost of equity, a multi-year view")
+    if (valuation.get("relative") or {}).get("completed") or (valuation.get("relative_ev_ebitda") or {}).get("completed"):
+        parts.append("relative values apply today's peer multiples to the latest reported figures and carry no horizon of their own")
+    return {
+        "review_months": HORIZON_MONTHS,
+        "kind": "CONVENTION",
+        "statement": f"The target and levels are restated every {HORIZON_MONTHS} months or on a new annual result, whichever comes first. This is a review convention, not a prediction of when the price reaches the value.",
+        "method_horizons": parts,
+    }
+
+
+def _triggers(comps, levels, verdict) -> list[dict]:
+    """What would change the verdict: the thresholds each component and the price must cross."""
+    out = []
+    flips = {
+        "score": f"the financial score crosses {SCORE_BUY} (to +1) or {SCORE_SELL} (to -1)",
+        "trajectory": "the latest annual change in profit, EPS or revenue turns clearly up or down",
+        "peers": "the net share of peer metrics better or worse than the median crosses one third",
+        "valuation": f"the price moves {UPSIDE}% or more away from the base-case value, or an entered valuation input changes",
+        "trend": f"the close moves beyond {TREND_BAND}% either side of its {SMA_DAYS}-day average",
+    }
+    for c in comps:
+        out.append(
+            {
+                "component": c["label"],
+                "now": "n/a" if not c["available"] else f"{c['points']:+d}",
+                "changes_when": flips[c["key"]],
+            }
+        )
+    if levels.get("would_turn_buy_below"):
+        out.append({"component": "Price", "now": levels.get("price"), "changes_when": f"the price falls to Rs. {levels['would_turn_buy_below']} or below (valuation turns positive) or rises to Rs. {levels['would_turn_sell_above']} or above (valuation turns negative)"})  # fmt: skip
+    if levels.get("stop_loss"):
+        out.append({"component": "Invalidation", "now": levels.get("price"), "changes_when": f"the price reaches Rs. {levels['stop_loss']} (the stop level): the {verdict} case is abandoned"})  # fmt: skip
+    out.append({"component": "Reports", "now": "-", "changes_when": f"a new annual or quarterly result is published, or {HORIZON_MONTHS} months pass without a restatement"})  # fmt: skip
+    return out
+
+
+def _risk(levels, ctx, price, analysis, score, scen) -> dict:
+    """Risk assessment from stated factors: HIGH / MODERATE / LOW, or not established when too few can be measured."""
+    factors = []
+
+    def add(key, label, pts, reading, available=True):
+        factors.append({"key": key, "label": label, "points": pts, "available": available, "reading": reading})
+
+    bear = next((r for r in scen["rows"] if r["case"] == "bear"), None)
+    if bear and bear["vs_price_pct"] is not None:
+        d = Decimal(bear["vs_price_pct"])
+        add("downside", "Downside to the bear-case value", 2 if d <= -30 else 1 if d <= -15 else 0, f"bear-case value is {d}% from the price; 2 points at -30% or worse, 1 at -15% or worse")
+    else:
+        add("downside", "Downside to the bear-case value", None, "no bear-case value", False)
+    rows = {r["case"]: r for r in scen["rows"]}
+    if scen["complete"] and rows["base"]["value_per_share"]:
+        spread = (Decimal(rows["bull"]["value_per_share"]) - Decimal(rows["bear"]["value_per_share"])) / Decimal(rows["base"]["value_per_share"]) * 100
+        add("dispersion", "Dispersion of scenario values", 1 if spread > 60 else 0, f"bull minus bear is {spread.quantize(Decimal('1'))}% of the base value; 1 point above 60%")
+    else:
+        add("dispersion", "Dispersion of scenario values", None, "scenario values are incomplete", False)
+    atr = dec(ctx.get("atr14")) if ctx.get("available") else None
+    if atr is not None and price:
+        f = atr / price * 100
+        add("volatility", "Price volatility (14-day average true range)", 2 if f >= 3 else 1 if f >= 1.5 else 0, f"average daily range is {f.quantize(Decimal('0.1'))}% of the price; 2 points at 3% or more, 1 at 1.5% or more")
+    else:
+        add("volatility", "Price volatility (14-day average true range)", None, ctx.get("reason") or "no price range is stored", False)
+    bear_pts = len((analysis.get("thesis") or {}).get("bear") or [])
+    add("adverse", "Adverse evidence-based points", 1 if bear_pts >= 4 else 0, f"{bear_pts} adverse evidence-based point(s) in the bear case; 1 point at four or more")
+    gov_block = analysis.get("governance") or {}
+    if gov_block.get("available"):
+        gov = [i for i in (gov_block.get("checklist") or {}).get("items", []) if i["status"] == "FLAG"]
+        add("governance", "Governance checklist flags", 1 if gov else 0, f"{len(gov)} flagged item(s)" + (": " + ", ".join(i["label"] for i in gov) if gov else "") + "; 1 point for any flag")
+    else:
+        add("governance", "Governance checklist flags", None, "governance analysis is not available", False)
+    low_conf = bool(score.get("available") and str(score.get("confidence")).upper() == "LOW")
+    add("evidence", "Evidence confidence of the financial score", 1 if low_conf else 0, "the financial score has LOW confidence" if low_conf else "no low-confidence flag")
+    avail = [f for f in factors if f["available"]]
+    pts = sum(f["points"] for f in avail)
+    if len(avail) < 4 or not factors[0]["available"]:
+        level = "NOT ESTABLISHED"  # without a bear-case value the largest risk, the downside, is unmeasured
+    else:
+        level = "HIGH" if pts >= 5 else "MODERATE" if pts >= 3 else "LOW"
+    return {
+        "level": level,
+        "points": pts,
+        "measurable": f"{len(avail)} of {len(factors)} factors measurable",
+        "factors": factors,
+        "rule": "HIGH at 5 or more points, MODERATE at 3 or 4, LOW at 2 or fewer; not established when fewer than four factors can be measured or when there is no bear-case value to measure the downside against. The points and bands are EquityOS conventions.",
+    }
+
+
 def build(
     session: Session,
     company_id: uuid.UUID,
@@ -323,6 +513,13 @@ def build(
             for name, blk in (
                 ("residual-income (justified P/B)", analysis["valuation"].get("intrinsic", {})),
                 ("relative (peer P/E)", analysis["valuation"].get("relative", {})),
+                ("discounted cash flow (FCFF)", analysis["valuation"].get("dcf") or {}),
+                ("relative (peer P/B)", _pb(analysis["valuation"])),
+                (
+                    "relative (peer EV/EBITDA)",
+                    analysis["valuation"].get("relative_ev_ebitda") or {},
+                ),
+                ("sum of the parts", analysis["valuation"].get("sotp") or {}),
             )
             if blk.get("completed")
         ],
@@ -352,11 +549,24 @@ def build(
                     f"reward-to-risk {rr.quantize(Decimal('0.1')) if rr is not None else 'n/a'} is below the minimum {MIN_REWARD_RISK}"
                 )
                 verdict, stop, target, rr = "WATCH", None, None, None
-    if verdict == "WATCH" and base is not None and price is not None:
+    if verdict in ("WATCH", "HOLD") and base is not None and price is not None:
         levels["would_turn_buy_below"] = _s((base / (1 + UPSIDE / 100)).quantize(Decimal("1")))
         levels["would_turn_sell_above"] = _s((base / (1 - UPSIDE / 100)).quantize(Decimal("1")))
+    val_comp = next(c for c in comps if c["key"] == "valuation")
     if verdict == "WATCH" and raw == "WATCH":
-        reasons.append(f"net points {net} lie between {NET_SELL} and {NET_BUY}")
+        if n_avail >= MIN_COMPONENTS and val_comp["available"] and val_comp["points"] == 0:
+            verdict = "HOLD"
+            reasons.append(f"net points {net} lie between {NET_SELL} and {NET_BUY} and the price is within {UPSIDE}% of the base-case value, so there is no case to add or to exit")
+        else:
+            if not val_comp["available"]:
+                reasons.append("no valuation could be computed, so the evidence cannot say whether the price is fair")
+            elif val_comp["points"] != 0:
+                reasons.append("the valuation gap is not confirmed by the other evidence (net points inside the thresholds)")
+            if n_avail < MIN_COMPONENTS:
+                reasons.append(f"only {n_avail} of 5 components are computable; {MIN_COMPONENTS} are needed for a HOLD")
+            reasons.append(f"net points {net} lie between {NET_SELL} and {NET_BUY}")
+    elif verdict == "WATCH" and raw != "WATCH":
+        reasons.append("a BUY or SELL case was found but did not pass its guards, so the evidence is conflicting")
     if stop is not None:
         levels |= {
             "target": _s(target.quantize(Decimal("1"))),
@@ -365,6 +575,10 @@ def build(
             "target_pct": _s(((target / price - 1) * 100).quantize(Decimal("0.1"))),
             "stop_pct": _s(((stop / price - 1) * 100).quantize(Decimal("0.1"))),
         }
+    levels["target_price"] = _target_price(verdict, levels, price, base, bear, bull, single)
+    scen = _scenarios(analysis["valuation"], price)
+    horizon = _horizon(analysis["valuation"])
+    risk = _risk(levels, ctx, price, analysis, score, scen)
     conf = _confidence(
         comps,
         verdict,
@@ -379,6 +593,12 @@ def build(
         "net_points": net,
         "components": comps,
         "levels": levels,
+        "scenarios": scen,
+        "horizon": horizon,
+        "risk": risk,
+        "triggers": _triggers(comps, levels, verdict),
+        "backtest": _backtest(),
+        "thresholds": THRESHOLDS,
         "confidence": conf,
         "reasons": reasons,
         "rules": (

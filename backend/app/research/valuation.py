@@ -367,9 +367,14 @@ def relative_scenarios(price, own_pe, peer_pe_row: dict | None) -> dict:
     own = dec(own_pe.value)
     px = dec(price.value)
     out = {}
+    ids = sorted(
+        {price.id, own_pe.id}
+        | {p["evidence_id"] for p in peer_pe_row["peers"] if p.get("comparable") and p.get("evidence_id")}
+    )
     for name, pe in (("bear", low), ("base", mid), ("bull", high)):
         value = px * pe / own
         out[name] = {
+            "evidence_ids": ids,
             "peer_pe": _s(pe.quantize(Decimal("0.01"))),
             "value_per_share": _s(value.quantize(Decimal("1"))),
             "vs_price_pct": _s(((value / px - 1) * 100).quantize(Decimal("0.1"))),
@@ -416,22 +421,87 @@ def build(
         out["intrinsic"] = bank_intrinsic(
             own_store, sector, prefer, price, pb, trend_by_key.get("roe"), scenarios, missing
         )
-        out["not_completed"].append(
-            "Historical P/B: share counts for past dates are not stored, so past book value per share cannot be derived."
-        )
     else:
         out["intrinsic"] = {
             "completed": False,
-            "method": "discounted cash flow (FCFF/FCFE)",
-            "reason": "a DCF needs explicit multi-year forecasts and a sourced discount rate; the evidence store holds history only, so none is built",
+            "method": "residual income (justified P/B)",
+            "reason": "the residual-income method is a bank method; for a non-financial company the discounted cash flow valuation applies (see the DCF section)",
             "needs": [
                 "an entered risk-free rate, beta and equity risk premium (or a cost of equity) with their sources",
                 "explicit multi-year forecasts of cash flow with a stated basis",
             ],
         }
-        out["not_completed"].append(
-            "Historical P/B and EV-based multiples: past share counts and enterprise-value inputs are not stored."
-        )
+    from app.research import dcf, relative, sotp
+
+    out["dcf"] = dcf.build(session, company_id, own_store, sector, prefer)
+    bank = sector.valuation == "BANK"
+    ev = _latest(own_store, ("VALUATION.ev_to_ebitda",))
+    snapshot["ev_ebitda"] = _ref(ev)
+    out["historical_pb"] = relative.historical_pb(session, company_id, own_store, prefer)
+    out["historical_ev_ebitda"] = (
+        {"available": False, "reason": "enterprise value is not used for a lender"}
+        if bank
+        else relative.historical_ev_ebitda(session, company_id, own_store, prefer)
+    )
+    out["historical_context"] = {
+        k: c
+        for k, c in {
+            "pe": relative.context(out["historical"], snapshot["pe"], "pe", "P/E"),
+            "pb": relative.context(out["historical_pb"], snapshot["pb"], "pb", "P/B"),
+            "ev_ebitda": relative.context(
+                out["historical_ev_ebitda"], snapshot["ev_ebitda"], "ev_ebitda", "EV/EBITDA"
+            ),
+        }.items()
+        if c is not None
+    }
+    out["relative_pb"] = relative.relative_on_price(
+        price, pb, _find(peer_rows, "pb"), "P/B", "book value"
+    )
+    out["relative_pb"]["in_verdict"] = (
+        bank  # for a non-financial company P/B is shown, not valued on
+    )
+    out["relative_hist_pe"] = relative.historical_scenarios(price, pe, out["historical"])
+    act = dcf.actuals(own_store, prefer)
+    ebitda_rec = None
+    ebitdas = relative._on_basis(own_store, relative.EBITDA, prefer)
+    if ebitdas:
+        ebitda_rec = ebitdas[max(ebitdas)]
+    out["relative_ev_ebitda"] = (
+        {"completed": False, "reason": "EV/EBITDA is not used for a lender"}
+        if bank
+        else relative.relative_ev_ebitda(act, ebitda_rec, _find(peer_rows, "ev_ebitda"))
+    )
+    price_v = dec(price.value) if price is not None else None
+    out["sotp"] = (
+        {"applicable": False, "reason": "not used for a lender"}
+        if bank
+        else sotp.build(own_store, prefer, sector.code, act, inputs, price_v)
+    )
+    from app.models import Company
+
+    company = session.get(Company, company_id)
+    is_nbfc = bool(company and ((company.sector and "nbfc" in company.sector.code) or (company.industry and "nbfc" in company.industry.code)))  # fmt: skip
+    out["method_plan"] = relative.method_plan(
+        sector.code,
+        sector.valuation,
+        is_nbfc,
+        {
+            "historical": out["historical"],
+            "peer": {"available": bool(out["peer"]["rows"])},
+            "relative": out["relative"],
+            "historical_pb": out["historical_pb"],
+            "relative_pb": out["relative_pb"],
+            "pb_vs_roe": {"available": bool(out.get("pb_vs_roe"))},
+            "intrinsic": out.get("intrinsic") or {},
+            "ev_ebitda": {
+                "available": bool(snapshot["ev_ebitda"])
+                or out["historical_ev_ebitda"].get("available")
+            },
+            "relative_ev_ebitda": out["relative_ev_ebitda"],
+            "dcf": out["dcf"],
+            "sotp": out["sotp"],
+        },
+    )
     out["input_ledger"] = input_ledger(
         inputs, capm, snapshot, out.get("intrinsic") or {}, scenarios
     )

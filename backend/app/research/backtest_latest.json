@@ -1,0 +1,1703 @@
+{
+ "version": "1.0",
+ "generated_on": "2026-11-15",
+ "universe": [
+  "ICICIBANK",
+  "HDFCBANK",
+  "KOTAKBANK",
+  "AXISBANK",
+  "SBIN",
+  "TCS",
+  "INFY",
+  "WIPRO",
+  "TECHM",
+  "HCLTECH",
+  "RELIANCE",
+  "ITC",
+  "HINDUNILVR",
+  "M&M",
+  "MARUTI",
+  "NESTLEIND",
+  "BRITANNIA",
+  "GODREJCP",
+  "TMPV",
+  "HYUNDAI",
+  "TVSMOTOR",
+  "ONGC",
+  "IOC",
+  "BPCL"
+ ],
+ "observations": 629,
+ "first_as_of": "2023-11-30",
+ "last_as_of": "2026-04-30",
+ "weights": {
+  "trajectory": 1,
+  "valuation": 2,
+  "trend": 1
+ },
+ "results": {
+  "126": {
+   "horizon_trading_days": 126,
+   "default_rule": {
+    "buckets": {
+     "BUY": {
+      "n": 28,
+      "months": 14,
+      "companies": 11,
+      "mean_excess_pct": 1.3,
+      "median_excess_pct": 1.08,
+      "hit_rate_pct": 53.6,
+      "sufficient": false
+     },
+     "WATCH": {
+      "n": 368,
+      "months": 21,
+      "companies": 23,
+      "mean_excess_pct": -0.2,
+      "median_excess_pct": -1.45,
+      "hit_rate_pct": 45.9,
+      "sufficient": true
+     },
+     "SELL": {
+      "n": 6,
+      "months": 5,
+      "companies": 4,
+      "mean_excess_pct": 5.5,
+      "median_excess_pct": 8.73,
+      "hit_rate_pct": 66.7,
+      "sufficient": false
+     }
+    },
+    "reading": "INSUFFICIENT"
+   },
+   "threshold_grid": [
+    {
+     "upside_pct": 5,
+     "net_threshold": 1,
+     "buckets": {
+      "BUY": {
+       "n": 253,
+       "months": 21,
+       "companies": 22,
+       "mean_excess_pct": 0.42,
+       "median_excess_pct": -0.17,
+       "hit_rate_pct": 49.8,
+       "sufficient": true
+      },
+      "WATCH": {
+       "n": 82,
+       "months": 20,
+       "companies": 22,
+       "mean_excess_pct": 1.31,
+       "median_excess_pct": -0.72,
+       "hit_rate_pct": 47.6,
+       "sufficient": true
+      },
+      "SELL": {
+       "n": 67,
+       "months": 21,
+       "companies": 10,
+       "mean_excess_pct": -3.24,
+       "median_excess_pct": -4.7,
+       "hit_rate_pct": 34.3,
+       "sufficient": true
+      }
+     },
+     "reading": "CONSISTENT"
+    },
+    {
+     "upside_pct": 5,
+     "net_threshold": 2,
+     "buckets": {
+      "BUY": {
+       "n": 190,
+       "months": 21,
+       "companies": 21,
+       "mean_excess_pct": 0.94,
+       "median_excess_pct": 0.35,
+       "hit_rate_pct": 51.1,
+       "sufficient": true
+      },
+      "WATCH": {
+       "n": 167,
+       "months": 21,
+       "companies": 22,
+       "mean_excess_pct": -0.06,
+       "median_excess_pct": -1.44,
+       "hit_rate_pct": 45.5,
+       "sufficient": true
+      },
+      "SELL": {
+       "n": 45,
+       "months": 20,
+       "companies": 7,
+       "mean_excess_pct": -3.87,
+       "median_excess_pct": -4.98,
+       "hit_rate_pct": 33.3,
+       "sufficient": true
+      }
+     },
+     "reading": "CONSISTENT"
+    },
+    {
+     "upside_pct": 5,
+     "net_threshold": 3,
+     "buckets": {
+      "BUY": {
+       "n": 72,
+       "months": 20,
+       "companies": 17,
+       "mean_excess_pct": 4.59,
+       "median_excess_pct": 3.16,
+       "hit_rate_pct": 63.9,
+       "sufficient": true
+      },
+      "WATCH": {
+       "n": 319,
+       "months": 21,
+       "companies": 23,
+       "mean_excess_pct": -0.98,
+       "median_excess_pct": -2.56,
+       "hit_rate_pct": 42.6,
+       "sufficient": true
+      },
+      "SELL": {
+       "n": 11,
+       "months": 10,
+       "companies": 6,
+       "mean_excess_pct": -2.01,
+       "median_excess_pct": 2.66,
+       "hit_rate_pct": 54.5,
+       "sufficient": false
+      }
+     },
+     "reading": "INSUFFICIENT"
+    },
+    {
+     "upside_pct": 5,
+     "net_threshold": 4,
+     "buckets": {
+      "BUY": {
+       "n": 12,
+       "months": 6,
+       "companies": 6,
+       "mean_excess_pct": 10.41,
+       "median_excess_pct": 9.47,
+       "hit_rate_pct": 100.0,
+       "sufficient": false
+      },
+      "WATCH": {
+       "n": 387,
+       "months": 21,
+       "companies": 23,
+       "mean_excess_pct": -0.26,
+       "median_excess_pct": -1.49,
+       "hit_rate_pct": 45.5,
+       "sufficient": true
+      },
+      "SELL": {
+       "n": 3,
+       "months": 3,
+       "companies": 1,
+       "mean_excess_pct": -10.12,
+       "median_excess_pct": -10.22,
+       "hit_rate_pct": 0.0,
+       "sufficient": false
+      }
+     },
+     "reading": "INSUFFICIENT"
+    },
+    {
+     "upside_pct": 10,
+     "net_threshold": 1,
+     "buckets": {
+      "BUY": {
+       "n": 272,
+       "months": 21,
+       "companies": 22,
+       "mean_excess_pct": 0.65,
+       "median_excess_pct": 0.2,
+       "hit_rate_pct": 50.7,
+       "sufficient": true
+      },
+      "WATCH": {
+       "n": 73,
+       "months": 21,
+       "companies": 18,
+       "mean_excess_pct": 0.46,
+       "median_excess_pct": -1.24,
+       "hit_rate_pct": 43.8,
+       "sufficient": true
+      },
+      "SELL": {
+       "n": 57,
+       "months": 21,
+       "companies": 9,
+       "mean_excess_pct": -3.75,
+       "median_excess_pct": -5.53,
+       "hit_rate_pct": 31.6,
+       "sufficient": true
+      }
+     },
+     "reading": "CONSISTENT"
+    },
+    {
+     "upside_pct": 10,
+     "net_threshold": 2,
+     "buckets": {
+      "BUY": {
+       "n": 177,
+       "months": 21,
+       "companies": 20,
+       "mean_excess_pct": 1.03,
+       "median_excess_pct": 0.84,
+       "hit_rate_pct": 51.4,
+       "sufficient": true
+      },
+      "WATCH": {
+       "n": 184,
+       "months": 21,
+       "companies": 22,
+       "mean_excess_pct": 0.02,
+       "median_excess_pct": -1.34,
+       "hit_rate_pct": 45.7,
+       "sufficient": true
+      },
+      "SELL": {
+       "n": 41,
+       "months": 21,
+       "companies": 7,
+       "mean_excess_pct": -4.65,
+       "median_excess_pct": -5.53,
+       "hit_rate_pct": 31.7,
+       "sufficient": true
+      }
+     },
+     "reading": "CONSISTENT"
+    },
+    {
+     "upside_pct": 10,
+     "net_threshold": 3,
+     "buckets": {
+      "BUY": {
+       "n": 43,
+       "months": 17,
+       "companies": 14,
+       "mean_excess_pct": 4.45,
+       "median_excess_pct": 2.17,
+       "hit_rate_pct": 62.8,
+       "sufficient": true
+      },
+      "WATCH": {
+       "n": 351,
+       "months": 21,
+       "companies": 23,
+       "mean_excess_pct": -0.54,
+       "median_excess_pct": -2.09,
+       "hit_rate_pct": 44.4,
+       "sufficient": true
+      },
+      "SELL": {
+       "n": 8,
+       "months": 7,
+       "companies": 5,
+       "mean_excess_pct": -0.76,
+       "median_excess_pct": 8.18,
+       "hit_rate_pct": 62.5,
+       "sufficient": false
+      }
+     },
+     "reading": "INSUFFICIENT"
+    },
+    {
+     "upside_pct": 10,
+     "net_threshold": 4,
+     "buckets": {
+      "BUY": {
+       "n": 7,
+       "months": 4,
+       "companies": 5,
+       "mean_excess_pct": 11.41,
+       "median_excess_pct": 10.53,
+       "hit_rate_pct": 100.0,
+       "sufficient": false
+      },
+      "WATCH": {
+       "n": 393,
+       "months": 21,
+       "companies": 23,
+       "mean_excess_pct": -0.16,
+       "median_excess_pct": -1.44,
+       "hit_rate_pct": 46.1,
+       "sufficient": true
+      },
+      "SELL": {
+       "n": 2,
+       "months": 2,
+       "companies": 1,
+       "mean_excess_pct": -10.06,
+       "median_excess_pct": -10.06,
+       "hit_rate_pct": 0.0,
+       "sufficient": false
+      }
+     },
+     "reading": "INSUFFICIENT"
+    },
+    {
+     "upside_pct": 15,
+     "net_threshold": 1,
+     "buckets": {
+      "BUY": {
+       "n": 291,
+       "months": 21,
+       "companies": 22,
+       "mean_excess_pct": 0.41,
+       "median_excess_pct": -0.33,
+       "hit_rate_pct": 49.1,
+       "sufficient": true
+      },
+      "WATCH": {
+       "n": 62,
+       "months": 20,
+       "companies": 16,
+       "mean_excess_pct": 1.03,
+       "median_excess_pct": -2.36,
+       "hit_rate_pct": 43.5,
+       "sufficient": true
+      },
+      "SELL": {
+       "n": 49,
+       "months": 21,
+       "companies": 10,
+       "mean_excess_pct": -3.83,
+       "median_excess_pct": -5.53,
+       "hit_rate_pct": 36.7,
+       "sufficient": true
+      }
+     },
+     "reading": "CONSISTENT"
+    },
+    {
+     "upside_pct": 15,
+     "net_threshold": 2,
+     "buckets": {
+      "BUY": {
+       "n": 184,
+       "months": 21,
+       "companies": 21,
+       "mean_excess_pct": -0.18,
+       "median_excess_pct": -1.17,
+       "hit_rate_pct": 46.7,
+       "sufficient": true
+      },
+      "WATCH": {
+       "n": 188,
+       "months": 21,
+       "companies": 23,
+       "mean_excess_pct": 0.72,
+       "median_excess_pct": -0.57,
+       "hit_rate_pct": 47.9,
+       "sufficient": true
+      },
+      "SELL": {
+       "n": 30,
+       "months": 20,
+       "companies": 5,
+       "mean_excess_pct": -3.57,
+       "median_excess_pct": -4.07,
+       "hit_rate_pct": 40.0,
+       "sufficient": true
+      }
+     },
+     "reading": "MIXED"
+    },
+    {
+     "upside_pct": 15,
+     "net_threshold": 3,
+     "buckets": {
+      "BUY": {
+       "n": 28,
+       "months": 14,
+       "companies": 11,
+       "mean_excess_pct": 1.3,
+       "median_excess_pct": 1.08,
+       "hit_rate_pct": 53.6,
+       "sufficient": false
+      },
+      "WATCH": {
+       "n": 368,
+       "months": 21,
+       "companies": 23,
+       "mean_excess_pct": -0.2,
+       "median_excess_pct": -1.45,
+       "hit_rate_pct": 45.9,
+       "sufficient": true
+      },
+      "SELL": {
+       "n": 6,
+       "months": 5,
+       "companies": 4,
+       "mean_excess_pct": 5.5,
+       "median_excess_pct": 8.73,
+       "hit_rate_pct": 66.7,
+       "sufficient": false
+      }
+     },
+     "reading": "INSUFFICIENT"
+    },
+    {
+     "upside_pct": 15,
+     "net_threshold": 4,
+     "buckets": {
+      "BUY": {
+       "n": 5,
+       "months": 4,
+       "companies": 3,
+       "mean_excess_pct": 13.06,
+       "median_excess_pct": 10.53,
+       "hit_rate_pct": 100.0,
+       "sufficient": false
+      },
+      "WATCH": {
+       "n": 395,
+       "months": 21,
+       "companies": 23,
+       "mean_excess_pct": -0.13,
+       "median_excess_pct": -1.24,
+       "hit_rate_pct": 46.3,
+       "sufficient": true
+      },
+      "SELL": {
+       "n": 2,
+       "months": 2,
+       "companies": 1,
+       "mean_excess_pct": -10.06,
+       "median_excess_pct": -10.06,
+       "hit_rate_pct": 0.0,
+       "sufficient": false
+      }
+     },
+     "reading": "INSUFFICIENT"
+    },
+    {
+     "upside_pct": 20,
+     "net_threshold": 1,
+     "buckets": {
+      "BUY": {
+       "n": 281,
+       "months": 21,
+       "companies": 22,
+       "mean_excess_pct": 0.23,
+       "median_excess_pct": -0.34,
+       "hit_rate_pct": 48.8,
+       "sufficient": true
+      },
+      "WATCH": {
+       "n": 75,
+       "months": 20,
+       "companies": 19,
+       "mean_excess_pct": 0.87,
+       "median_excess_pct": -2.56,
+       "hit_rate_pct": 42.7,
+       "sufficient": true
+      },
+      "SELL": {
+       "n": 46,
+       "months": 21,
+       "companies": 9,
+       "mean_excess_pct": -2.91,
+       "median_excess_pct": -2.14,
+       "hit_rate_pct": 41.3,
+       "sufficient": true
+      }
+     },
+     "reading": "CONSISTENT"
+    },
+    {
+     "upside_pct": 20,
+     "net_threshold": 2,
+     "buckets": {
+      "BUY": {
+       "n": 166,
+       "months": 21,
+       "companies": 20,
+       "mean_excess_pct": -0.75,
+       "median_excess_pct": -1.35,
+       "hit_rate_pct": 45.8,
+       "sufficient": true
+      },
+      "WATCH": {
+       "n": 206,
+       "months": 21,
+       "companies": 23,
+       "mean_excess_pct": 1.02,
+       "median_excess_pct": -0.57,
+       "hit_rate_pct": 48.1,
+       "sufficient": true
+      },
+      "SELL": {
+       "n": 30,
+       "months": 20,
+       "companies": 5,
+       "mean_excess_pct": -3.0,
+       "median_excess_pct": -1.62,
+       "hit_rate_pct": 43.3,
+       "sufficient": true
+      }
+     },
+     "reading": "MIXED"
+    },
+    {
+     "upside_pct": 20,
+     "net_threshold": 3,
+     "buckets": {
+      "BUY": {
+       "n": 22,
+       "months": 14,
+       "companies": 9,
+       "mean_excess_pct": -2.73,
+       "median_excess_pct": -1.72,
+       "hit_rate_pct": 45.5,
+       "sufficient": false
+      },
+      "WATCH": {
+       "n": 374,
+       "months": 21,
+       "companies": 23,
+       "mean_excess_pct": 0.06,
+       "median_excess_pct": -1.17,
+       "hit_rate_pct": 46.5,
+       "sufficient": true
+      },
+      "SELL": {
+       "n": 6,
+       "months": 5,
+       "companies": 4,
+       "mean_excess_pct": 5.5,
+       "median_excess_pct": 8.73,
+       "hit_rate_pct": 66.7,
+       "sufficient": false
+      }
+     },
+     "reading": "INSUFFICIENT"
+    },
+    {
+     "upside_pct": 20,
+     "net_threshold": 4,
+     "buckets": {
+      "BUY": {
+       "n": 4,
+       "months": 3,
+       "companies": 3,
+       "mean_excess_pct": 10.31,
+       "median_excess_pct": 6.18,
+       "hit_rate_pct": 100.0,
+       "sufficient": false
+      },
+      "WATCH": {
+       "n": 396,
+       "months": 21,
+       "companies": 23,
+       "mean_excess_pct": -0.06,
+       "median_excess_pct": -1.17,
+       "hit_rate_pct": 46.5,
+       "sufficient": true
+      },
+      "SELL": {
+       "n": 2,
+       "months": 2,
+       "companies": 1,
+       "mean_excess_pct": -10.06,
+       "median_excess_pct": -10.06,
+       "hit_rate_pct": 0.0,
+       "sufficient": false
+      }
+     },
+     "reading": "INSUFFICIENT"
+    },
+    {
+     "upside_pct": 25,
+     "net_threshold": 1,
+     "buckets": {
+      "BUY": {
+       "n": 270,
+       "months": 21,
+       "companies": 22,
+       "mean_excess_pct": 0.42,
+       "median_excess_pct": -0.19,
+       "hit_rate_pct": 49.6,
+       "sufficient": true
+      },
+      "WATCH": {
+       "n": 85,
+       "months": 19,
+       "companies": 20,
+       "mean_excess_pct": -0.72,
+       "median_excess_pct": -3.15,
+       "hit_rate_pct": 40.0,
+       "sufficient": true
+      },
+      "SELL": {
+       "n": 47,
+       "months": 21,
+       "companies": 10,
+       "mean_excess_pct": -1.22,
+       "median_excess_pct": -1.49,
+       "hit_rate_pct": 42.6,
+       "sufficient": true
+      }
+     },
+     "reading": "CONSISTENT"
+    },
+    {
+     "upside_pct": 25,
+     "net_threshold": 2,
+     "buckets": {
+      "BUY": {
+       "n": 155,
+       "months": 21,
+       "companies": 18,
+       "mean_excess_pct": -0.66,
+       "median_excess_pct": -1.1,
+       "hit_rate_pct": 46.5,
+       "sufficient": true
+      },
+      "WATCH": {
+       "n": 219,
+       "months": 21,
+       "companies": 23,
+       "mean_excess_pct": 0.5,
+       "median_excess_pct": -1.44,
+       "hit_rate_pct": 47.0,
+       "sufficient": true
+      },
+      "SELL": {
+       "n": 28,
+       "months": 18,
+       "companies": 4,
+       "mean_excess_pct": -0.43,
+       "median_excess_pct": -0.58,
+       "hit_rate_pct": 46.4,
+       "sufficient": false
+      }
+     },
+     "reading": "INSUFFICIENT"
+    },
+    {
+     "upside_pct": 25,
+     "net_threshold": 3,
+     "buckets": {
+      "BUY": {
+       "n": 19,
+       "months": 13,
+       "companies": 6,
+       "mean_excess_pct": -5.55,
+       "median_excess_pct": -2.52,
+       "hit_rate_pct": 42.1,
+       "sufficient": false
+      },
+      "WATCH": {
+       "n": 379,
+       "months": 21,
+       "companies": 23,
+       "mean_excess_pct": 0.18,
+       "median_excess_pct": -1.1,
+       "hit_rate_pct": 46.7,
+       "sufficient": true
+      },
+      "SELL": {
+       "n": 4,
+       "months": 3,
+       "companies": 3,
+       "mean_excess_pct": 8.33,
+       "median_excess_pct": 11.57,
+       "hit_rate_pct": 75.0,
+       "sufficient": false
+      }
+     },
+     "reading": "INSUFFICIENT"
+    },
+    {
+     "upside_pct": 25,
+     "net_threshold": 4,
+     "buckets": {
+      "BUY": {
+       "n": 3,
+       "months": 2,
+       "companies": 2,
+       "mean_excess_pct": 4.68,
+       "median_excess_pct": 1.83,
+       "hit_rate_pct": 100.0,
+       "sufficient": false
+      },
+      "WATCH": {
+       "n": 398,
+       "months": 21,
+       "companies": 23,
+       "mean_excess_pct": -0.02,
+       "median_excess_pct": -1.17,
+       "hit_rate_pct": 46.5,
+       "sufficient": true
+      },
+      "SELL": {
+       "n": 1,
+       "months": 1,
+       "companies": 1,
+       "mean_excess_pct": -12.23,
+       "median_excess_pct": -12.23,
+       "hit_rate_pct": 0.0,
+       "sufficient": false
+      }
+     },
+     "reading": "INSUFFICIENT"
+    }
+   ]
+  },
+  "252": {
+   "horizon_trading_days": 252,
+   "default_rule": {
+    "buckets": {
+     "BUY": {
+      "n": 23,
+      "months": 11,
+      "companies": 9,
+      "mean_excess_pct": 9.51,
+      "median_excess_pct": 12.04,
+      "hit_rate_pct": 69.6,
+      "sufficient": false
+     },
+     "WATCH": {
+      "n": 236,
+      "months": 15,
+      "companies": 22,
+      "mean_excess_pct": 0.79,
+      "median_excess_pct": -0.45,
+      "hit_rate_pct": 49.2,
+      "sufficient": true
+     },
+     "SELL": {
+      "n": 5,
+      "months": 4,
+      "companies": 3,
+      "mean_excess_pct": -1.66,
+      "median_excess_pct": 3.79,
+      "hit_rate_pct": 80.0,
+      "sufficient": false
+     }
+    },
+    "reading": "INSUFFICIENT"
+   },
+   "threshold_grid": [
+    {
+     "upside_pct": 5,
+     "net_threshold": 1,
+     "buckets": {
+      "BUY": {
+       "n": 176,
+       "months": 15,
+       "companies": 21,
+       "mean_excess_pct": 3.5,
+       "median_excess_pct": 3.82,
+       "hit_rate_pct": 56.2,
+       "sufficient": true
+      },
+      "WATCH": {
+       "n": 43,
+       "months": 14,
+       "companies": 12,
+       "mean_excess_pct": -1.77,
+       "median_excess_pct": -6.9,
+       "hit_rate_pct": 37.2,
+       "sufficient": true
+      },
+      "SELL": {
+       "n": 45,
+       "months": 15,
+       "companies": 9,
+       "mean_excess_pct": -3.19,
+       "median_excess_pct": -0.76,
+       "hit_rate_pct": 46.7,
+       "sufficient": true
+      }
+     },
+     "reading": "CONSISTENT"
+    },
+    {
+     "upside_pct": 5,
+     "net_threshold": 2,
+     "buckets": {
+      "BUY": {
+       "n": 129,
+       "months": 15,
+       "companies": 18,
+       "mean_excess_pct": 5.33,
+       "median_excess_pct": 5.7,
+       "hit_rate_pct": 58.1,
+       "sufficient": true
+      },
+      "WATCH": {
+       "n": 103,
+       "months": 15,
+       "companies": 17,
+       "mean_excess_pct": -1.46,
+       "median_excess_pct": -2.87,
+       "hit_rate_pct": 46.6,
+       "sufficient": true
+      },
+      "SELL": {
+       "n": 32,
+       "months": 15,
+       "companies": 7,
+       "mean_excess_pct": -4.4,
+       "median_excess_pct": -1.81,
+       "hit_rate_pct": 40.6,
+       "sufficient": true
+      }
+     },
+     "reading": "CONSISTENT"
+    },
+    {
+     "upside_pct": 5,
+     "net_threshold": 3,
+     "buckets": {
+      "BUY": {
+       "n": 54,
+       "months": 15,
+       "companies": 14,
+       "mean_excess_pct": 13.69,
+       "median_excess_pct": 15.32,
+       "hit_rate_pct": 75.9,
+       "sufficient": true
+      },
+      "WATCH": {
+       "n": 201,
+       "months": 15,
+       "companies": 21,
+       "mean_excess_pct": -1.54,
+       "median_excess_pct": -2.54,
+       "hit_rate_pct": 44.3,
+       "sufficient": true
+      },
+      "SELL": {
+       "n": 9,
+       "months": 8,
+       "companies": 5,
+       "mean_excess_pct": -3.83,
+       "median_excess_pct": 2.68,
+       "hit_rate_pct": 66.7,
+       "sufficient": false
+      }
+     },
+     "reading": "INSUFFICIENT"
+    },
+    {
+     "upside_pct": 5,
+     "net_threshold": 4,
+     "buckets": {
+      "BUY": {
+       "n": 11,
+       "months": 5,
+       "companies": 5,
+       "mean_excess_pct": 24.21,
+       "median_excess_pct": 22.36,
+       "hit_rate_pct": 100.0,
+       "sufficient": false
+      },
+      "WATCH": {
+       "n": 250,
+       "months": 15,
+       "companies": 22,
+       "mean_excess_pct": 0.61,
+       "median_excess_pct": -0.38,
+       "hit_rate_pct": 49.6,
+       "sufficient": true
+      },
+      "SELL": {
+       "n": 3,
+       "months": 3,
+       "companies": 1,
+       "mean_excess_pct": -7.49,
+       "median_excess_pct": -0.14,
+       "hit_rate_pct": 33.3,
+       "sufficient": false
+      }
+     },
+     "reading": "INSUFFICIENT"
+    },
+    {
+     "upside_pct": 10,
+     "net_threshold": 1,
+     "buckets": {
+      "BUY": {
+       "n": 186,
+       "months": 15,
+       "companies": 20,
+       "mean_excess_pct": 3.64,
+       "median_excess_pct": 3.82,
+       "hit_rate_pct": 55.9,
+       "sufficient": true
+      },
+      "WATCH": {
+       "n": 40,
+       "months": 15,
+       "companies": 12,
+       "mean_excess_pct": -3.94,
+       "median_excess_pct": -7.05,
+       "hit_rate_pct": 37.5,
+       "sufficient": true
+      },
+      "SELL": {
+       "n": 38,
+       "months": 15,
+       "companies": 8,
+       "mean_excess_pct": -3.22,
+       "median_excess_pct": -1.1,
+       "hit_rate_pct": 44.7,
+       "sufficient": true
+      }
+     },
+     "reading": "CONSISTENT"
+    },
+    {
+     "upside_pct": 10,
+     "net_threshold": 2,
+     "buckets": {
+      "BUY": {
+       "n": 122,
+       "months": 15,
+       "companies": 18,
+       "mean_excess_pct": 4.79,
+       "median_excess_pct": 4.07,
+       "hit_rate_pct": 56.6,
+       "sufficient": true
+      },
+      "WATCH": {
+       "n": 115,
+       "months": 15,
+       "companies": 18,
+       "mean_excess_pct": -0.23,
+       "median_excess_pct": 0.43,
+       "hit_rate_pct": 51.3,
+       "sufficient": true
+      },
+      "SELL": {
+       "n": 27,
+       "months": 15,
+       "companies": 7,
+       "mean_excess_pct": -5.97,
+       "median_excess_pct": -2.54,
+       "hit_rate_pct": 29.6,
+       "sufficient": false
+      }
+     },
+     "reading": "INSUFFICIENT"
+    },
+    {
+     "upside_pct": 10,
+     "net_threshold": 3,
+     "buckets": {
+      "BUY": {
+       "n": 37,
+       "months": 14,
+       "companies": 12,
+       "mean_excess_pct": 12.39,
+       "median_excess_pct": 15.64,
+       "hit_rate_pct": 73.0,
+       "sufficient": true
+      },
+      "WATCH": {
+       "n": 221,
+       "months": 15,
+       "companies": 21,
+       "mean_excess_pct": -0.1,
+       "median_excess_pct": -1.29,
+       "hit_rate_pct": 47.5,
+       "sufficient": true
+      },
+      "SELL": {
+       "n": 6,
+       "months": 5,
+       "companies": 4,
+       "mean_excess_pct": -6.75,
+       "median_excess_pct": 1.95,
+       "hit_rate_pct": 66.7,
+       "sufficient": false
+      }
+     },
+     "reading": "INSUFFICIENT"
+    },
+    {
+     "upside_pct": 10,
+     "net_threshold": 4,
+     "buckets": {
+      "BUY": {
+       "n": 7,
+       "months": 4,
+       "companies": 5,
+       "mean_excess_pct": 26.32,
+       "median_excess_pct": 28.33,
+       "hit_rate_pct": 100.0,
+       "sufficient": false
+      },
+      "WATCH": {
+       "n": 255,
+       "months": 15,
+       "companies": 22,
+       "mean_excess_pct": 0.92,
+       "median_excess_pct": 0.17,
+       "hit_rate_pct": 50.2,
+       "sufficient": true
+      },
+      "SELL": {
+       "n": 2,
+       "months": 2,
+       "companies": 1,
+       "mean_excess_pct": -11.16,
+       "median_excess_pct": -11.16,
+       "hit_rate_pct": 50.0,
+       "sufficient": false
+      }
+     },
+     "reading": "INSUFFICIENT"
+    },
+    {
+     "upside_pct": 15,
+     "net_threshold": 1,
+     "buckets": {
+      "BUY": {
+       "n": 194,
+       "months": 15,
+       "companies": 21,
+       "mean_excess_pct": 3.56,
+       "median_excess_pct": 3.33,
+       "hit_rate_pct": 54.6,
+       "sufficient": true
+      },
+      "WATCH": {
+       "n": 34,
+       "months": 14,
+       "companies": 11,
+       "mean_excess_pct": -3.3,
+       "median_excess_pct": -2.56,
+       "hit_rate_pct": 47.1,
+       "sufficient": true
+      },
+      "SELL": {
+       "n": 36,
+       "months": 15,
+       "companies": 8,
+       "mean_excess_pct": -5.07,
+       "median_excess_pct": -2.26,
+       "hit_rate_pct": 38.9,
+       "sufficient": true
+      }
+     },
+     "reading": "CONSISTENT"
+    },
+    {
+     "upside_pct": 15,
+     "net_threshold": 2,
+     "buckets": {
+      "BUY": {
+       "n": 120,
+       "months": 15,
+       "companies": 19,
+       "mean_excess_pct": 2.79,
+       "median_excess_pct": 0.65,
+       "hit_rate_pct": 51.7,
+       "sufficient": true
+      },
+      "WATCH": {
+       "n": 122,
+       "months": 15,
+       "companies": 20,
+       "mean_excess_pct": 1.61,
+       "median_excess_pct": 2.72,
+       "hit_rate_pct": 56.6,
+       "sufficient": true
+      },
+      "SELL": {
+       "n": 22,
+       "months": 14,
+       "companies": 5,
+       "mean_excess_pct": -6.18,
+       "median_excess_pct": -2.64,
+       "hit_rate_pct": 22.7,
+       "sufficient": false
+      }
+     },
+     "reading": "INSUFFICIENT"
+    },
+    {
+     "upside_pct": 15,
+     "net_threshold": 3,
+     "buckets": {
+      "BUY": {
+       "n": 23,
+       "months": 11,
+       "companies": 9,
+       "mean_excess_pct": 9.51,
+       "median_excess_pct": 12.04,
+       "hit_rate_pct": 69.6,
+       "sufficient": false
+      },
+      "WATCH": {
+       "n": 236,
+       "months": 15,
+       "companies": 22,
+       "mean_excess_pct": 0.79,
+       "median_excess_pct": -0.45,
+       "hit_rate_pct": 49.2,
+       "sufficient": true
+      },
+      "SELL": {
+       "n": 5,
+       "months": 4,
+       "companies": 3,
+       "mean_excess_pct": -1.66,
+       "median_excess_pct": 3.79,
+       "hit_rate_pct": 80.0,
+       "sufficient": false
+      }
+     },
+     "reading": "INSUFFICIENT"
+    },
+    {
+     "upside_pct": 15,
+     "net_threshold": 4,
+     "buckets": {
+      "BUY": {
+       "n": 5,
+       "months": 4,
+       "companies": 3,
+       "mean_excess_pct": 30.95,
+       "median_excess_pct": 29.69,
+       "hit_rate_pct": 100.0,
+       "sufficient": false
+      },
+      "WATCH": {
+       "n": 257,
+       "months": 15,
+       "companies": 22,
+       "mean_excess_pct": 1.03,
+       "median_excess_pct": 0.2,
+       "hit_rate_pct": 50.6,
+       "sufficient": true
+      },
+      "SELL": {
+       "n": 2,
+       "months": 2,
+       "companies": 1,
+       "mean_excess_pct": -11.16,
+       "median_excess_pct": -11.16,
+       "hit_rate_pct": 50.0,
+       "sufficient": false
+      }
+     },
+     "reading": "INSUFFICIENT"
+    },
+    {
+     "upside_pct": 20,
+     "net_threshold": 1,
+     "buckets": {
+      "BUY": {
+       "n": 185,
+       "months": 15,
+       "companies": 21,
+       "mean_excess_pct": 4.08,
+       "median_excess_pct": 3.83,
+       "hit_rate_pct": 56.2,
+       "sufficient": true
+      },
+      "WATCH": {
+       "n": 45,
+       "months": 14,
+       "companies": 15,
+       "mean_excess_pct": -2.9,
+       "median_excess_pct": -4.35,
+       "hit_rate_pct": 44.4,
+       "sufficient": true
+      },
+      "SELL": {
+       "n": 34,
+       "months": 15,
+       "companies": 8,
+       "mean_excess_pct": -6.7,
+       "median_excess_pct": -2.45,
+       "hit_rate_pct": 35.3,
+       "sufficient": true
+      }
+     },
+     "reading": "CONSISTENT"
+    },
+    {
+     "upside_pct": 20,
+     "net_threshold": 2,
+     "buckets": {
+      "BUY": {
+       "n": 106,
+       "months": 15,
+       "companies": 18,
+       "mean_excess_pct": 2.52,
+       "median_excess_pct": 0.65,
+       "hit_rate_pct": 50.9,
+       "sufficient": true
+      },
+      "WATCH": {
+       "n": 137,
+       "months": 15,
+       "companies": 20,
+       "mean_excess_pct": 1.91,
+       "median_excess_pct": 2.68,
+       "hit_rate_pct": 56.2,
+       "sufficient": true
+      },
+      "SELL": {
+       "n": 21,
+       "months": 14,
+       "companies": 5,
+       "mean_excess_pct": -6.32,
+       "median_excess_pct": -2.54,
+       "hit_rate_pct": 23.8,
+       "sufficient": false
+      }
+     },
+     "reading": "INSUFFICIENT"
+    },
+    {
+     "upside_pct": 20,
+     "net_threshold": 3,
+     "buckets": {
+      "BUY": {
+       "n": 18,
+       "months": 11,
+       "companies": 8,
+       "mean_excess_pct": 5.6,
+       "median_excess_pct": 4.07,
+       "hit_rate_pct": 61.1,
+       "sufficient": false
+      },
+      "WATCH": {
+       "n": 241,
+       "months": 15,
+       "companies": 22,
+       "mean_excess_pct": 1.26,
+       "median_excess_pct": 0.17,
+       "hit_rate_pct": 50.2,
+       "sufficient": true
+      },
+      "SELL": {
+       "n": 5,
+       "months": 4,
+       "companies": 3,
+       "mean_excess_pct": -1.66,
+       "median_excess_pct": 3.79,
+       "hit_rate_pct": 80.0,
+       "sufficient": false
+      }
+     },
+     "reading": "INSUFFICIENT"
+    },
+    {
+     "upside_pct": 20,
+     "net_threshold": 4,
+     "buckets": {
+      "BUY": {
+       "n": 4,
+       "months": 3,
+       "companies": 3,
+       "mean_excess_pct": 30.18,
+       "median_excess_pct": 29.01,
+       "hit_rate_pct": 100.0,
+       "sufficient": false
+      },
+      "WATCH": {
+       "n": 258,
+       "months": 15,
+       "companies": 22,
+       "mean_excess_pct": 1.16,
+       "median_excess_pct": 0.32,
+       "hit_rate_pct": 50.8,
+       "sufficient": true
+      },
+      "SELL": {
+       "n": 2,
+       "months": 2,
+       "companies": 1,
+       "mean_excess_pct": -11.16,
+       "median_excess_pct": -11.16,
+       "hit_rate_pct": 50.0,
+       "sufficient": false
+      }
+     },
+     "reading": "INSUFFICIENT"
+    },
+    {
+     "upside_pct": 25,
+     "net_threshold": 1,
+     "buckets": {
+      "BUY": {
+       "n": 179,
+       "months": 15,
+       "companies": 21,
+       "mean_excess_pct": 4.54,
+       "median_excess_pct": 4.33,
+       "hit_rate_pct": 57.5,
+       "sufficient": true
+      },
+      "WATCH": {
+       "n": 51,
+       "months": 13,
+       "companies": 17,
+       "mean_excess_pct": -4.93,
+       "median_excess_pct": -7.2,
+       "hit_rate_pct": 39.2,
+       "sufficient": true
+      },
+      "SELL": {
+       "n": 34,
+       "months": 15,
+       "companies": 9,
+       "mean_excess_pct": -4.84,
+       "median_excess_pct": -2.26,
+       "hit_rate_pct": 38.2,
+       "sufficient": true
+      }
+     },
+     "reading": "CONSISTENT"
+    },
+    {
+     "upside_pct": 25,
+     "net_threshold": 2,
+     "buckets": {
+      "BUY": {
+       "n": 99,
+       "months": 15,
+       "companies": 16,
+       "mean_excess_pct": 3.52,
+       "median_excess_pct": 1.42,
+       "hit_rate_pct": 53.5,
+       "sufficient": true
+      },
+      "WATCH": {
+       "n": 145,
+       "months": 15,
+       "companies": 21,
+       "mean_excess_pct": 1.03,
+       "median_excess_pct": 1.09,
+       "hit_rate_pct": 53.8,
+       "sufficient": true
+      },
+      "SELL": {
+       "n": 20,
+       "months": 14,
+       "companies": 4,
+       "mean_excess_pct": -5.09,
+       "median_excess_pct": -2.45,
+       "hit_rate_pct": 25.0,
+       "sufficient": false
+      }
+     },
+     "reading": "INSUFFICIENT"
+    },
+    {
+     "upside_pct": 25,
+     "net_threshold": 3,
+     "buckets": {
+      "BUY": {
+       "n": 15,
+       "months": 10,
+       "companies": 5,
+       "mean_excess_pct": 2.3,
+       "median_excess_pct": 3.81,
+       "hit_rate_pct": 60.0,
+       "sufficient": false
+      },
+      "WATCH": {
+       "n": 245,
+       "months": 15,
+       "companies": 22,
+       "mean_excess_pct": 1.51,
+       "median_excess_pct": 0.17,
+       "hit_rate_pct": 50.6,
+       "sufficient": true
+      },
+      "SELL": {
+       "n": 4,
+       "months": 3,
+       "companies": 3,
+       "mean_excess_pct": -2.1,
+       "median_excess_pct": 3.83,
+       "hit_rate_pct": 75.0,
+       "sufficient": false
+      }
+     },
+     "reading": "INSUFFICIENT"
+    },
+    {
+     "upside_pct": 25,
+     "net_threshold": 4,
+     "buckets": {
+      "BUY": {
+       "n": 3,
+       "months": 2,
+       "companies": 2,
+       "mean_excess_pct": 20.78,
+       "median_excess_pct": 28.33,
+       "hit_rate_pct": 100.0,
+       "sufficient": false
+      },
+      "WATCH": {
+       "n": 260,
+       "months": 15,
+       "companies": 22,
+       "mean_excess_pct": 1.37,
+       "median_excess_pct": 0.32,
+       "hit_rate_pct": 51.2,
+       "sufficient": true
+      },
+      "SELL": {
+       "n": 1,
+       "months": 1,
+       "companies": 1,
+       "mean_excess_pct": -22.44,
+       "median_excess_pct": -22.44,
+       "hit_rate_pct": 0.0,
+       "sufficient": false
+      }
+     },
+     "reading": "INSUFFICIENT"
+    }
+   ]
+  }
+ },
+ "component_diagnostics": {
+  "126": {
+   "trend": {
+    "+1": {
+     "n": 153,
+     "months": 21,
+     "companies": 22,
+     "mean_excess_pct": -1.47,
+     "median_excess_pct": -2.88,
+     "hit_rate_pct": 39.9,
+     "sufficient": true
+    },
+    "0": {
+     "n": 122,
+     "months": 21,
+     "companies": 23,
+     "mean_excess_pct": 1.65,
+     "median_excess_pct": 1.57,
+     "hit_rate_pct": 57.4,
+     "sufficient": true
+    },
+    "-1": {
+     "n": 146,
+     "months": 21,
+     "companies": 21,
+     "mean_excess_pct": -0.88,
+     "median_excess_pct": -2.52,
+     "hit_rate_pct": 44.5,
+     "sufficient": true
+    }
+   },
+   "trajectory": {
+    "+1": {
+     "n": 307,
+     "months": 22,
+     "companies": 19,
+     "mean_excess_pct": 0.73,
+     "median_excess_pct": -0.11,
+     "hit_rate_pct": 49.8,
+     "sufficient": true
+    },
+    "0": {
+     "n": 111,
+     "months": 30,
+     "companies": 8,
+     "mean_excess_pct": -4.31,
+     "median_excess_pct": -3.76,
+     "hit_rate_pct": 36.9,
+     "sufficient": true
+    },
+    "-1": {
+     "n": 62,
+     "months": 22,
+     "companies": 6,
+     "mean_excess_pct": -0.46,
+     "median_excess_pct": -2.3,
+     "hit_rate_pct": 45.2,
+     "sufficient": true
+    }
+   },
+   "valuation": {
+    "+1": {
+     "n": 124,
+     "months": 21,
+     "companies": 19,
+     "mean_excess_pct": 0.61,
+     "median_excess_pct": -1.21,
+     "hit_rate_pct": 48.4,
+     "sufficient": true
+    },
+    "0": {
+     "n": 243,
+     "months": 21,
+     "companies": 23,
+     "mean_excess_pct": 0.36,
+     "median_excess_pct": -0.33,
+     "hit_rate_pct": 48.6,
+     "sufficient": true
+    },
+    "-1": {
+     "n": 36,
+     "months": 19,
+     "companies": 10,
+     "mean_excess_pct": -4.77,
+     "median_excess_pct": -5.49,
+     "hit_rate_pct": 27.8,
+     "sufficient": true
+    }
+   }
+  },
+  "252": {
+   "trend": {
+    "+1": {
+     "n": 101,
+     "months": 14,
+     "companies": 20,
+     "mean_excess_pct": 0.8,
+     "median_excess_pct": -2.35,
+     "hit_rate_pct": 40.6,
+     "sufficient": true
+    },
+    "0": {
+     "n": 79,
+     "months": 15,
+     "companies": 20,
+     "mean_excess_pct": 2.2,
+     "median_excess_pct": 3.87,
+     "hit_rate_pct": 63.3,
+     "sufficient": true
+    },
+    "-1": {
+     "n": 103,
+     "months": 15,
+     "companies": 18,
+     "mean_excess_pct": -3.31,
+     "median_excess_pct": -4.39,
+     "hit_rate_pct": 45.6,
+     "sufficient": true
+    }
+   },
+   "trajectory": {
+    "+1": {
+     "n": 206,
+     "months": 16,
+     "companies": 19,
+     "mean_excess_pct": 1.53,
+     "median_excess_pct": 0.72,
+     "hit_rate_pct": 51.9,
+     "sufficient": true
+    },
+    "0": {
+     "n": 92,
+     "months": 24,
+     "companies": 6,
+     "mean_excess_pct": -6.51,
+     "median_excess_pct": -5.03,
+     "hit_rate_pct": 43.5,
+     "sufficient": true
+    },
+    "-1": {
+     "n": 32,
+     "months": 16,
+     "companies": 6,
+     "mean_excess_pct": -3.91,
+     "median_excess_pct": -2.45,
+     "hit_rate_pct": 34.4,
+     "sufficient": true
+    }
+   },
+   "valuation": {
+    "+1": {
+     "n": 87,
+     "months": 15,
+     "companies": 15,
+     "mean_excess_pct": 5.07,
+     "median_excess_pct": 7.24,
+     "hit_rate_pct": 60.9,
+     "sufficient": true
+    },
+    "0": {
+     "n": 150,
+     "months": 15,
+     "companies": 19,
+     "mean_excess_pct": 0.17,
+     "median_excess_pct": -0.45,
+     "hit_rate_pct": 48.7,
+     "sufficient": true
+    },
+    "-1": {
+     "n": 28,
+     "months": 13,
+     "companies": 7,
+     "mean_excess_pct": -2.4,
+     "median_excess_pct": -2.26,
+     "hit_rate_pct": 39.3,
+     "sufficient": false
+    }
+   }
+  }
+ },
+ "threshold_validation": {
+  "checks": [
+   {
+    "check": "symmetric thresholds",
+    "ok": true,
+    "detail": "BUY at +3, SELL at -3"
+   },
+   {
+    "check": "a verdict is reachable",
+    "ok": true,
+    "detail": "the maximum is 6 points; BUY needs 3 with at least 4 of 5 components"
+   },
+   {
+    "check": "valuation alone cannot decide",
+    "ok": true,
+    "detail": "valuation counts at most 2 points; BUY needs 3, so at least one other component must agree"
+   },
+   {
+    "check": "score thresholds bracket neutral",
+    "ok": true,
+    "detail": "score +1 at 60, -1 at 40"
+   },
+   {
+    "check": "valuation threshold reachable at the widest stop",
+    "ok": false,
+    "detail": "a stop at the 15% cap needs a target 22.500% away for reward-to-risk 1.5; a valuation gap of exactly 15% passes only when the stop is 10.0% or less"
+   },
+   {
+    "check": "trend band below the stop floor",
+    "ok": true,
+    "detail": "trend band 5% against stop floor 5%"
+   }
+  ],
+  "all_ok": false,
+  "note": "internal consistency of the rule, independent of any market data; a check that is not OK is a design finding, not a failure of the program"
+ },
+ "limitations": [
+  "About three years of daily prices are stored, so only about fifteen month-end dates can be tested at a 12-month horizon and about twenty-one at 6 months.",
+  "The universe is today's 24 pilot companies, chosen with hindsight (survivorship and selection bias); companies that fell out of favour or delisted are absent.",
+  "Windows overlap (monthly as-of dates, 6-12 month horizons), so observations are strongly dependent and a hit rate or mean looks more certain than it is; the number of independent observations is far below the count shown.",
+  "One market regime is covered; the result says nothing about other periods.",
+  "Excess return is measured against the mean of the same pilot companies on the same date, not against an index (no index history is stored).",
+  "Financial score, peer standing and the valuation scenarios cannot be rebuilt as of a past date (peer sets, scores and entered assumptions are stored as of today only), so the production verdict itself is not back-tested; a three-component subset with a valuation proxy is.",
+  "Annual results are assumed public 90 days after the year end; the real filing dates are not used.",
+  "Windows containing a split, bonus or flagged price gap are excluded rather than adjusted; no transaction costs, taxes or slippage are included.",
+  "The target price, stop-loss and reward-to-risk rules are not back-tested: they depend on valuation scenarios that cannot be reconstructed."
+ ],
+ "notes": [],
+ "min_bucket": 30
+}

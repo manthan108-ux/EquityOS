@@ -26,7 +26,9 @@ from app.research import assumptions as asm
 
 def _print(item: dict) -> None:
     unit = "%" if item["unit"] == "percent" else ""
-    scen = f" [{item['scenario']}]" if item["scenario"] else ""
+    scen = (f" [{item['segment']}]" if item.get("segment") else "") + (
+        f" [{item['scenario']}]" if item["scenario"] else ""
+    )
     src = item["source"] or f"{item['author']} (own assumption)"
     flag = " STALE" if item["stale"] else ""
     print(f"  #{item['evidence_id']:<6} {item['label']}{scen}: {item['value']}{unit}  as of {item['as_of']}{flag}  | {item['class']} | {src}  | {item['status']}")  # fmt: skip
@@ -43,6 +45,10 @@ def main(argv: list[str] | None = None) -> int:
         if name in ("set", "history"):
             s.add_argument("--input", required=True, choices=sorted(asm.SPECS))
             s.add_argument("--scenario", choices=asm.SCENARIOS)
+            s.add_argument(
+                "--segment",
+                help="the reported segment name, for per-segment inputs such as sotp_multiple",
+            )
         if name == "set":
             s.add_argument("--value", required=True)
             s.add_argument(
@@ -77,12 +83,14 @@ def main(argv: list[str] | None = None) -> int:
                 if missing:
                     print("  not entered (none is assumed): " + ", ".join(missing))
             elif args.cmd == "history":
-                for item in asm.history(session, company.id, args.input, args.scenario):
+                for item in asm.history(
+                    session, company.id, args.input, args.scenario, segment=args.segment
+                ):
                     _print(item)
             else:
                 r = asm.set_input(
                     session, company.id, args.input, args.value, author=args.author, rationale=args.rationale,
-                    as_of=date.fromisoformat(args.as_of), scenario=args.scenario, source=args.source,
+                    as_of=date.fromisoformat(args.as_of), scenario=args.scenario, segment=args.segment, source=args.source,
                     source_url=args.source_url, edit_reason=args.edit_reason,
                 )  # fmt: skip
                 session.commit()

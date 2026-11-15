@@ -7,6 +7,7 @@ MANAGEMENT STATEMENT / ASSUMPTION / SECTOR TEMPLATE) and, where it has one, its 
 
 from __future__ import annotations
 
+import re
 from decimal import Decimal
 
 from reportlab.graphics.charts.barcharts import HorizontalBarChart, VerticalBarChart
@@ -546,7 +547,7 @@ def valuation_section(report: dict, st) -> list:
     if not a:
         return []
     v = a["valuation"]
-    out = []
+    out = method_plan_block(v, st)
     # historical
     h = v["historical"]
     out.append(Paragraph("A. Historical valuation", st["h2"]))
@@ -579,6 +580,7 @@ def valuation_section(report: dict, st) -> list:
     for s in h.get("skipped", []):
         out.append(Paragraph(clean(f"{s['fy']}: not computed - {s['reason']}."), st["small"]))
     # peer valuation
+    out += historical_more_block(v, st)
     out.append(Paragraph("B. Peer valuation", st["h2"]))
     pv = v["peer"]["rows"]
     if pv:
@@ -726,6 +728,8 @@ def valuation_section(report: dict, st) -> list:
                 st["body"],
             )
         )
+    out += dcf_block(v, st)
+    out += sotp_block(v, st)
     # relative scenarios
     rel = v["relative"]
     out.append(Paragraph("D. Relative valuation scenarios", st["h2"]))
@@ -741,7 +745,7 @@ def valuation_section(report: dict, st) -> list:
                 ]
             )
         out.append(KeepTogether([_table(rows, [34 * mm, 44 * mm, 44 * mm, W - 122 * mm]),
-                                 Paragraph(clean(f"{rel['method']}. Spread: {rel['spread']}. Assumes {rel['assumption']}. Scenario-implied values, not target prices.") + " " + tag("DERIVED"), st["small"])]))  # fmt: skip
+                                 Paragraph(clean(f"{rel['method']}. Spread: {rel['spread']}. Assumes {rel['assumption']}. Scenario-implied values, not target prices.") + " " + tag("DERIVED") + " Evidence: " + _ids(rel["scenarios"]["base"].get("evidence_ids", [])), st["small"])]))  # fmt: skip
         vals = {k: Decimal(s["value_per_share"]) for k, s in rel["scenarios"].items()}
         out += [
             Spacer(1, 6),
@@ -749,13 +753,363 @@ def valuation_section(report: dict, st) -> list:
         ]
     else:
         out.append(Paragraph(clean(f"Not completed: {rel.get('reason')}."), st["body"]))
+    out += relative_more_block(v, st)
     out += input_ledger_block(v, st)
+    if v.get("method_plan"):  # the method plan above already states every method's status and reason
+        return out
     out.append(Paragraph("Models not completed", st["h2"]))
     nc = list(v.get("not_completed", []))
     if intr.get("completed") is False:
         nc.insert(0, f"{intr.get('method') or 'Intrinsic valuation'}: {intr.get('reason')}")
     for line in nc or ["None."]:
         out.append(Paragraph(clean(line), st["bullet"], bulletText="-"))
+    return out
+
+
+def method_plan_block(v: dict, st) -> list:
+    plan = v.get("method_plan")
+    if not plan:
+        return []
+    out = [Paragraph("Valuation methods for this sector", st["h2"])]
+    rows = [_hdr(st, "Method", "Applies", "Status", "Why or what is missing")]
+    for m in plan:
+        rows.append([Paragraph(clean(m["method"]), st["cell"]), Paragraph("yes" if m["applies"] else "no", st["cell"]), Paragraph(m["status"].lower().replace("_", " "), st["cell"]), Paragraph(clean(m["reason"] or ""), st["small"])])  # fmt: skip
+    out += [_table(rows, [58 * mm, 16 * mm, 28 * mm, W - 102 * mm]), Paragraph(clean("Methods that do not apply are not forced: a lender is not valued by enterprise value or free cash flow to the firm, and a sum of the parts is used only where several segments report a result."), st["small"])]  # fmt: skip
+    return out
+
+
+def historical_more_block(v: dict, st) -> list:
+    out = []
+    for key, title, col, head in (
+        ("historical_pb", "Historical P/B", "pb", "P/B"),
+        ("historical_ev_ebitda", "Historical EV/EBITDA", "ev_ebitda", "EV/EBITDA"),
+    ):
+        h = v.get(key)
+        if not h:
+            continue
+        if h.get("available"):
+            rows = [_hdr(st, "Fiscal year-end", "Price date", head, "Evidence", right_from=1)]
+            for r in h["rows"]:
+                rows.append([Paragraph(clean(r["fy"]), st["cell"]), Paragraph(clean(r["price_date"]), st["cellr"]), Paragraph(f"{Decimal(r[col]).quantize(Decimal('0.01'))}x", st["cellr"]), Paragraph(", ".join(map(str, r["evidence_ids"])), st["small"])])  # fmt: skip
+            out += [Paragraph(title, st["small"]), _table(rows, [34 * mm, 34 * mm, 30 * mm, W - 98 * mm]), Paragraph(clean(h["formula"] + "."), st["small"])]  # fmt: skip
+        else:
+            out.append(Paragraph(clean(f"{title}: not available: {h.get('reason')}."), st["small"]))
+    ctx = v.get("historical_context") or {}
+    if ctx:
+        rows = [
+            _hdr(
+                st,
+                "Multiple",
+                "Current",
+                "Min",
+                "Median",
+                "Max",
+                "At or below",
+                "Position",
+                right_from=1,
+            )
+        ]
+        gaps = []
+        for c in ctx.values():
+            if not c["available"]:
+                gaps.append(f"{c['label']}: {c['reason']}")
+                continue
+            rows.append([Paragraph(c["label"], st["cellb"]), Paragraph(f"{c['current']}x", st["cellr"]), Paragraph(f"{c['min']}x", st["cellr"]), Paragraph(f"{c['median']}x", st["cellr"]), Paragraph(f"{c['max']}x", st["cellr"]), Paragraph(f"{c['share_at_or_below_pct']}%", st["cellr"]), Paragraph(c["position"].lower().replace("_", " "), st["cellr"])])  # fmt: skip
+        if len(rows) > 1:
+            out += [Paragraph("Historical valuation comparison: today against the company's own year ends", st["small"]), _table(rows, [28 * mm, 22 * mm, 20 * mm, 22 * mm, 20 * mm, 26 * mm, W - 138 * mm]), Paragraph(clean("Year-end observations only; the position says where today's multiple sits in the company's own past and is not a verdict on cheapness."), st["small"])]  # fmt: skip
+        out += [Paragraph(clean(g + "."), st["small"]) for g in gaps]
+    return out
+
+
+def _grid_table(st, grid: list, key: str, head: str, colkey: str, colfmt) -> list:
+    cols = [c[colkey] for c in grid[0]["cells"]]
+    rows = [_hdr(st, head, *[colfmt(c) for c in cols], right_from=1)]
+    for r in grid:
+        rows.append(
+            [Paragraph(f"{r['multiple']}x", st["cell"])]
+            + [Paragraph(f"Rs. {c['value_per_share']}", st["cellr"]) for c in r["cells"]]
+        )
+    return [_table(rows, [34 * mm] + [(W - 34 * mm) / len(cols)] * len(cols))]
+
+
+def relative_more_block(v: dict, st) -> list:
+    out = []
+    for key, title, per in (
+        ("relative_pb", "D2. Relative valuation on P/B", "book value"),
+        ("relative_ev_ebitda", "D3. Relative valuation on EV/EBITDA", "EBITDA"),
+        ("relative_hist_pe", "D4. Valuation on the company's own historical P/E (context; not in the verdict)", "EPS"),
+    ):
+        b = v.get(key)
+        if not b:
+            continue
+        out.append(Paragraph(title, st["h2"]))
+        if not b.get("completed"):
+            out.append(Paragraph(clean(f"Not completed: {b.get('reason')}."), st["body"]))
+            continue
+        rows = [_hdr(st, "Scenario", b.get("multiple_label", "Peer multiple"), "Value / share", "vs price", "Evidence")]
+        for name, sc in b["scenarios"].items():
+            rows.append([Paragraph(name.capitalize(), st["cellb"]), Paragraph(f"{sc['peer_multiple']}x", st["cellr"]), Paragraph(f"Rs. {sc['value_per_share']}", st["cellr"]), Paragraph(f"{sc['vs_price_pct']}%", st["cellr"]), Paragraph(", ".join(map(str, sc["evidence_ids"])), st["small"])])  # fmt: skip
+        out += [_table(rows, [30 * mm, 34 * mm, 34 * mm, 24 * mm, W - 122 * mm]), Paragraph(clean(f"{b['method']}. Spread: {b['spread']} ({b['peer_count']} {b.get('count_label', 'peers')}). Assumes {b['assumption']}. Scenario-implied values, not target prices.") + " " + tag("DERIVED"), st["small"])]  # fmt: skip
+        out += [Paragraph(clean("Flag: " + f + "."), st["small"]) for f in b.get("flags", [])]
+        grid = b["sensitivity"]["grid"]
+        if grid:
+            colkey = "ebitda" if key == "relative_ev_ebitda" else "own_" + per.replace(" ", "_")
+            fmt = (
+                (lambda c: f"{Decimal(c):,.0f}")
+                if key == "relative_ev_ebitda"
+                else (lambda c: f"{c}")
+            )
+            out += [
+                Paragraph(
+                    clean(
+                        f"Sensitivity: value per share, {b['sensitivity']['rows']} against {b['sensitivity']['cols']}"
+                    ),
+                    st["small"],
+                )
+            ]
+            out += _grid_table(st, grid, "multiple", "Multiple \\ " + per, colkey, fmt)
+    return out
+
+
+def sotp_block(v: dict, st) -> list:
+    s = v.get("sotp")
+    if not s:
+        return []
+    out = [Paragraph("C3. Sum of the parts", st["h2"])]
+    if not s.get("applicable"):
+        out.append(Paragraph(clean("Not used: " + s["reason"] + "."), st["body"]))
+        return out
+    rows = [_hdr(st, "Segment", "Reported result (INR crore)", "Measure", right_from=1)]
+    for r in s["segments"]:
+        rows.append([Paragraph(clean(r["segment"]), st["cell"]), Paragraph(_cr(r["result"]), st["cellr"]), Paragraph(clean(r["measure"]), st["small"])])  # fmt: skip
+    out += [_table(rows, [W - 90 * mm, 50 * mm, 40 * mm]), Paragraph(clean(f"Segment note for the year ended {s['period_end']}, {s['basis'].lower()} basis; results as the company defines them. Multiples are entered inputs (per segment and scenario) with their source or author; none is built in."), st["small"])]  # fmt: skip
+    if not s["scenarios_complete"]:
+        out.append(Paragraph(clean("Not completed: needs " + _needs(s["scenarios"]) + ", entered for the bear, base and bull scenarios. To enter the multiples: " + s["how_to_enter"] + "."), st["body"]))  # fmt: skip
+        return out
+    rows = [_hdr(st, "Scenario", "Enterprise value", "Equity value", "Value / share", "vs price")]
+    for name, sc in s["scenarios"].items():
+        if not sc["completed"]:
+            rows.append([Paragraph(name.capitalize(), st["cellb"]), Paragraph(clean("not completed: needs " + "; ".join(sc["missing"][:4]) + (" ..." if len(sc["missing"]) > 4 else "")), st["small"]), "", "", ""])  # fmt: skip
+            continue
+        rows.append([Paragraph(name.capitalize(), st["cellb"]), Paragraph(f"{_cr(sc['enterprise_value'])} cr", st["cellr"]), Paragraph(f"{_cr(sc['bridge']['equity_value'])} cr", st["cellr"]), Paragraph(f"Rs. {sc['value_per_share']}" if sc.get("value_per_share") else "n/a", st["cellr"]), Paragraph(f"{sc['vs_price_pct']}%" if sc.get("vs_price_pct") else "-", st["cellr"])])  # fmt: skip
+    out.append(_table(rows, [24 * mm, 56 * mm, 36 * mm, 30 * mm, W - 146 * mm]))
+    base = s["scenarios"].get("base")
+    if base and base["completed"]:
+        rows = [
+            _hdr(
+                st,
+                "Base case segment",
+                "Result (cr)",
+                "Multiple",
+                "Value (cr)",
+                "Source or author",
+                "As of",
+            )
+        ]
+        for p_ in base["parts"]:
+            who = p_["source"] or (
+                f"{p_['author']} (own assumption)" if p_["author"] else (p_["note"] or "")
+            )
+            rows.append([Paragraph(clean(p_["segment"]), st["cell"]), Paragraph(_cr(p_["result"]), st["cellr"]), Paragraph(f"{p_['multiple']}x" if p_["multiple"] else "n/a", st["cellr"]), Paragraph(_cr(p_["value"]), st["cellr"]), Paragraph(clean(who), st["small"]), Paragraph(clean(p_["as_of"] or ""), st["small"])])  # fmt: skip
+        out += [_table(rows, [48 * mm, 24 * mm, 20 * mm, 26 * mm, W - 142 * mm, 24 * mm])]
+    for f in sorted({f for sc in s["scenarios"].values() if sc["completed"] for f in sc["flags"]}):
+        out.append(Paragraph(clean("Flag: " + f + "."), st["small"]))
+    if s.get("sensitivity"):
+        rows = [_hdr(st, "Every multiple offset by (turns)", "Value / share", right_from=1)]
+        for r in s["sensitivity"]["rows"]:
+            rows.append(
+                [
+                    Paragraph(r["multiple_offset"], st["cell"]),
+                    Paragraph(f"Rs. {r['value_per_share']}", st["cellr"]),
+                ]
+            )
+        out += [
+            _table(rows, [60 * mm, 40 * mm]),
+            Paragraph(clean(s["sensitivity"]["note"] + "."), st["small"]),
+        ]
+    if not s["scenarios_complete"]:
+        out.append(
+            Paragraph(
+                clean("Not completed. To enter the multiples: " + s["how_to_enter"] + "."),
+                st["small"],
+            )
+        )
+    return out
+
+
+def _cr(x) -> str:
+    return f"{(Decimal(x) / Decimal(10_000_000)):,.0f}"
+
+
+def _needs(scenarios: dict) -> str:
+    """The distinct things missing across the scenarios, said once (without the scenario name)."""
+    seen: list[str] = []
+    for sc in scenarios.values():
+        items = list(sc.get("missing") or [])
+        if sc.get("reason"):
+            items.append(sc["reason"])
+        for m in items:
+            m = re.sub(r"\s*(in|for) the (bear|base|bull) scenario", "", m)
+            m = re.sub(r"\s*\(or an entered discount rate\)", "", m)
+            if m and m not in seen:
+                seen.append(m)
+    return "; ".join(seen)
+
+
+def dcf_block(v: dict, st) -> list:
+    """Discounted cash flow: scenarios, assumptions with provenance, projection, bridge, sensitivity."""
+    d = v.get("dcf")
+    if not d:
+        return []
+    out = [Paragraph("C2. Discounted cash flow (FCFF)", st["h2"])]
+    if not d["applicable"]:
+        out.append(Paragraph(clean(d["reason"] + "."), st["body"]))
+        return out
+    done = d["scenarios_complete"]
+    if not done:
+        out.append(Paragraph(clean("Not completed: needs " + _needs(d["scenarios"]) + ", entered for the bear, base and bull scenarios; none is assumed."), st["body"]))  # fmt: skip
+        return out
+    out.append(
+        Paragraph(
+            clean(
+                "Every figure in a scenario is an entered input with its source or author, date and rationale (see the input table); none is built in. "
+                f"{d['valuation_date_note']}. Results are scenario-implied values, not target prices. "
+            )
+            + tag("ASSUMPTION"),
+            st["body"],
+        )
+    )
+    rows = [
+        _hdr(
+            st,
+            "Scenario",
+            "Discount rate",
+            "Long-run growth",
+            "Enterprise value",
+            "Equity value",
+            "Value / share",
+            "vs price",
+            "Terminal share",
+        )
+    ]
+    for name, sc in d["scenarios"].items():
+        if not sc["completed"]:
+            need = sc.get("reason") or "needs " + "; ".join(sc["missing"][:6]) + (
+                " ..." if len(sc["missing"]) > 6 else ""
+            )
+            rows.append(
+                [
+                    Paragraph(name.capitalize(), st["cellb"]),
+                    Paragraph(clean("not completed: " + need), st["small"]),
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                ]
+            )
+            continue
+        rows.append([
+            Paragraph(name.capitalize(), st["cellb"]),
+            Paragraph(f"{sc['discount_rate']['value']}%", st["cellr"]),
+            Paragraph(f"{sc['assumptions']['terminal_growth']['value']}%", st["cellr"]),
+            Paragraph(f"{_cr(sc['enterprise_value'])} cr", st["cellr"]),
+            Paragraph(f"{_cr(sc['bridge']['equity_value'])} cr", st["cellr"]),
+            Paragraph(f"Rs. {sc['value_per_share']}" if sc.get("value_per_share") else "n/a", st["cellr"]),
+            Paragraph(f"{sc['vs_price_pct']}%" if sc.get("vs_price_pct") else "-", st["cellr"]),
+            Paragraph(f"{sc['terminal']['share_of_enterprise_value_pct']}%" if sc["terminal"]["share_of_enterprise_value_pct"] else "n/a", st["cellr"]),
+        ])  # fmt: skip
+    out.append(
+        _table(rows, [20 * mm, 22 * mm, 24 * mm, 26 * mm, 26 * mm, 24 * mm, 18 * mm, W - 160 * mm])
+    )
+    vals = {
+        k: Decimal(s["value_per_share"])
+        for k, s in d["scenarios"].items()
+        if s["completed"] and s.get("value_per_share")
+    }
+    price = d.get("price")
+    if vals:
+        out += [
+            Spacer(1, 6),
+            _scen_chart(
+                "DCF scenarios against the current price",
+                Decimal(price["value"]) if price else None,
+                vals,
+            ),
+        ]
+    if d["flags"]:
+        out += [Paragraph(clean("Flag: " + f + "."), st["small"]) for f in d["flags"]]
+    base = d["scenarios"].get("base")
+    if base and base["completed"]:
+        a = base["assumptions"]
+        rows = [_hdr(st, "Base-case input", "Value", "Source or author", "As of", "Why")]
+        for key, x in a.items():
+            who = x["source"] or f"{x['author']} (own assumption)"
+            rows.append([Paragraph(clean(key.replace("_", " ")), st["cell"]), Paragraph(f"{x['value']}%", st["cellr"]), Paragraph(clean(who), st["small"]), Paragraph(clean(x["as_of"] or ""), st["small"]), Paragraph(clean(x["rationale"] or ""), st["small"])])  # fmt: skip
+        dr = base["discount_rate"]
+        rows.append([Paragraph("discount rate", st["cell"]), Paragraph(f"{dr['value']}%", st["cellr"]), Paragraph(clean(dr["label"]), st["small"]), "", Paragraph("evidence " + ", ".join(map(str, dr["input_ids"])), st["small"])])  # fmt: skip
+        out += [
+            Paragraph("Base-case assumptions and their provenance", st["small"]),
+            _table(rows, [40 * mm, 18 * mm, 42 * mm, 22 * mm, W - 122 * mm]),
+        ]
+        rows = [_hdr(st, "INR crore", *[r["fy"] for r in base["projection"]], right_from=1)]
+        for label, key in (("Revenue", "revenue"), ("EBIT", "ebit"), ("Tax", "tax"), ("Depreciation", "depreciation"), ("Capital expenditure", "capex"), ("Change in working capital", "change_in_working_capital"), ("FCFF", "fcff"), ("Present value", "pv")):  # fmt: skip
+            rows.append(
+                [Paragraph(label, st["cellb"] if key == "fcff" else st["cell"])]
+                + [Paragraph(_cr(r[key]), st["cellr"]) for r in base["projection"]]
+            )
+        n = len(base["projection"])
+        out += [
+            Paragraph("Base-case projection", st["small"]),
+            _table(rows, [W - 22 * mm * n] + [22 * mm] * n),
+        ]
+        b, tm = base["bridge"], base["terminal"]
+        out.append(Paragraph(clean(f"Base case: present value of the explicit cash flows INR {_cr(base['pv_explicit'])} crore plus present value of the terminal value INR {_cr(tm['pv_terminal_value'])} crore ({tm['share_of_enterprise_value_pct']}% of enterprise value) gives enterprise value INR {_cr(b['enterprise_value'])} crore; less net debt INR {_cr(b['net_debt'])} crore and non-controlling interests INR {_cr(b['non_controlling_interests'])} crore gives equity value INR {_cr(b['equity_value'])} crore over {Decimal(b['shares']):,.0f} shares.") + " " + tag("DERIVED"), st["small"]))  # fmt: skip
+    s = d.get("sensitivity")
+    if s:
+        cols = [c["terminal_growth"] for c in s["wacc_vs_growth"][0]["cells"]]
+        rows = [_hdr(st, "WACC \\ long-run growth", *[f"{c}%" for c in cols], right_from=1)]
+        for r in s["wacc_vs_growth"]:
+            rows.append(
+                [Paragraph(f"{r['wacc']}%", st["cell"])]
+                + [
+                    Paragraph(
+                        f"Rs. {c['value_per_share']}" if c["value_per_share"] else "n/a",
+                        st["cellr"],
+                    )
+                    for c in r["cells"]
+                ]
+            )
+        out += [
+            Paragraph(
+                "Sensitivity: value per share, discount rate against long-run growth", st["small"]
+            ),
+            _table(rows, [34 * mm] + [(W - 34 * mm) / len(cols)] * len(cols)),
+        ]
+        cols = [c["revenue_growth"] for c in s["margin_vs_growth"][0]["cells"]]
+        rows = [
+            _hdr(st, "EBIT margin \\ first-year growth", *[f"{c}%" for c in cols], right_from=1)
+        ]
+        for r in s["margin_vs_growth"]:
+            rows.append(
+                [Paragraph(f"{r['operating_margin']}%", st["cell"])]
+                + [
+                    Paragraph(
+                        f"Rs. {c['value_per_share']}" if c["value_per_share"] else "n/a",
+                        st["cellr"],
+                    )
+                    for c in r["cells"]
+                ]
+            )
+        out += [Paragraph("Sensitivity: value per share, operating margin against first-year revenue growth", st["small"]), _table(rows, [44 * mm] + [(W - 44 * mm) / len(cols)] * len(cols)), Paragraph(clean(s["note"] + "."), st["small"])]  # fmt: skip
+    if not done:
+        out.append(
+            Paragraph(
+                clean("Not completed. To enter the inputs: " + d["how_to_enter"] + "."), st["small"]
+            )
+        )
+    out += [Paragraph(clean("Method: " + " ".join(d["method"])), st["small"])]
     return out
 
 
@@ -831,7 +1185,7 @@ def input_ledger_block(v: dict, st) -> list:
 
 # ---------------------------------------------------------------- verdict
 
-VCOL = {"BUY": "#2f7d5b", "SELL": "#b3442f", "WATCH": "#c77d0a"}
+VCOL = {"BUY": "#2f7d5b", "HOLD": "#3b6ea5", "SELL": "#b3442f", "WATCH": "#c77d0a"}
 
 
 def verdict_block(report: dict, st) -> list:
@@ -894,12 +1248,12 @@ def verdict_block(report: dict, st) -> list:
              Paragraph(clean(("mean base-case " if side == "BUY" else "mean bear-case ") + "scenario value (" + ", ".join(lv["value_sources"]) + "); no time horizon"
                    + ("; one method only, so half of the gap to that value is counted" if lv.get("single_method") else "")), st["cell"])],
             [Paragraph("Stop-loss" if side == "BUY" else "Invalidation level", st["cellb"]), Paragraph(f"Rs. {lv['stop_loss']} ({lv['stop_pct']}%)", st["cellr"]),
-             Paragraph(clean(f"2 x 14-day average true range (Rs. {lv['atr14']}), kept within 5% to 15% of the price"), st["cell"])],
+             Paragraph(clean(f"2 x 14-day average true range (Rs. {Decimal(lv["atr14"]).quantize(Decimal("0.01"))}), kept within 5% to 15% of the price"), st["cell"])],
             [Paragraph("Reward-to-risk", st["cell"]), Paragraph(lv["reward_to_risk"], st["cellr"]), Paragraph("target distance / stop distance; at least 1.5 required", st["cell"])],
         ]  # fmt: skip
         out.append(KeepTogether([_table(rows, [34 * mm, 42 * mm, W - 76 * mm])]))
     else:
-        out.append(Paragraph("No trade levels are given: the verdict is WATCH.", st["body"]))
+        out.append(Paragraph(f"No trade levels are given: the verdict is {v['verdict']}.", st["body"]))
         if lv.get("would_turn_buy_below"):
             out.append(
                 Paragraph(
@@ -923,7 +1277,67 @@ def verdict_block(report: dict, st) -> list:
             st["small"],
         )
     )
+    out += verdict_more_block(v, st)
     out.append(Paragraph(clean(v["rules"] + ". " + v["disclosure"]), st["small"]))
+    return out
+
+
+def verdict_more_block(v: dict, st) -> list:
+    out = []
+    tp = v["levels"].get("target_price") or {}
+    if tp.get("available"):
+        rng = tp["range"]
+        out.append(Paragraph("Valuation-linked target price", st["h2"]))
+        rows = [_hdr(st, "Item", "Value", "Basis", right_from=1),
+                [Paragraph(clean(tp["kind"].capitalize()), st["cellb"]), Paragraph(f"Rs. {tp['value']} ({'+' if Decimal(tp['vs_price_pct']) > 0 else ''}{tp['vs_price_pct']}%)", st["cellr"]), Paragraph(clean("from " + ", ".join(tp["sources"]) + ("; one method only, so half of the gap is counted" if tp["single_method"] else "")), st["cell"])],
+                [Paragraph("Bear to bull range", st["cell"]), Paragraph(f"Rs. {rng['bear'] or 'n/a'} to Rs. {rng['bull'] or 'n/a'}", st["cellr"]), Paragraph("mean of each completed method's bear and bull values", st["cell"])],
+                [Paragraph("Review horizon", st["cell"]), Paragraph(f"{tp['review_horizon_months']} months", st["cellr"]), Paragraph("a review convention, not a forecast of timing", st["cell"])]]  # fmt: skip
+        out += [_table(rows, [40 * mm, 46 * mm, W - 86 * mm]), Paragraph(clean(tp["note"] + "."), st["small"])]
+    else:
+        out.append(Paragraph(clean("Valuation-linked target price: " + (tp.get("reason") or "not available") + "."), st["small"]))
+    sc = v.get("scenarios") or {}
+    if sc.get("available"):
+        out.append(Paragraph("Upside and downside scenarios", st["h2"]))
+        rows = [_hdr(st, "Case", "Value / share", "vs price", "Methods", "Lowest", "Highest", right_from=1)]
+        for r in sc["rows"]:
+            rows.append([Paragraph(r["case"].capitalize(), st["cellb"]), Paragraph(f"Rs. {r['value_per_share']}" if r["value_per_share"] else "n/a", st["cellr"]), Paragraph(f"{r['vs_price_pct']}%" if r["vs_price_pct"] else "-", st["cellr"]), Paragraph(str(r["methods"]), st["cellr"]), Paragraph(f"Rs. {r['low']}" if r["low"] else "-", st["cellr"]), Paragraph(f"Rs. {r['high']}" if r["high"] else "-", st["cellr"])])  # fmt: skip
+        out += [_table(rows, [26 * mm, 32 * mm, 24 * mm, 22 * mm, 30 * mm, W - 134 * mm]), Paragraph(clean(sc["note"]), st["small"])]
+    hz = v.get("horizon") or {}
+    if hz:
+        out.append(Paragraph("Investment horizon", st["h2"]))
+        out.append(Paragraph(clean(hz["statement"]), st["body"]))
+        for p_ in hz["method_horizons"]:
+            out.append(Paragraph(clean(p_.capitalize() + "."), st["bullet"], bulletText="-"))
+    rk = v.get("risk") or {}
+    if rk:
+        out.append(Paragraph(clean(f"Risk assessment: {rk['level'].lower()} ({rk['points']} points; {rk['measurable']})"), st["h2"]))
+        rows = [_hdr(st, "Factor", "Reading", "Points", right_from=2)]
+        for f in rk["factors"]:
+            rows.append([Paragraph(clean(f["label"]), st["cellb"]), Paragraph(clean(f["reading"]), st["cell"]), Paragraph("n/a" if not f["available"] else str(f["points"]), st["cellr"])])  # fmt: skip
+        out += [KeepTogether([_table(rows, [52 * mm, W - 68 * mm, 16 * mm])]), Paragraph(clean(rk["rule"]), st["small"])]
+    trg = v.get("triggers") or []
+    if trg:
+        out.append(Paragraph("What would change this verdict (thesis monitoring)", st["h2"]))
+        rows = [_hdr(st, "Item", "Now", "Changes when", right_from=9)]
+        for t_ in trg:
+            rows.append([Paragraph(clean(t_["component"]), st["cellb"]), Paragraph(clean(str(t_["now"])), st["cell"]), Paragraph(clean(t_["changes_when"]), st["cell"])])  # fmt: skip
+        out.append(_table(rows, [34 * mm, 22 * mm, W - 56 * mm]))
+    bt = v.get("backtest") or {}
+    out.append(Paragraph("Back-test and threshold validation", st["h2"]))
+    if bt.get("available"):
+        b = bt["buckets"]
+        parts = []
+        for k in ("BUY", "WATCH", "SELL"):
+            x = b[k]
+            parts.append(f"{k}: n={x['n']}" + (f", mean excess return {x['mean_excess_pct']}%, hit rate {x['hit_rate_pct']}%" if x["n"] else "") + ("" if x["sufficient"] else " (too few to read)"))  # fmt: skip
+        out.append(Paragraph(clean(f"A three-component subset of the rule (trend, trajectory and a P/E-history valuation proxy; the score, peer and scenario components cannot be rebuilt for past dates) was tested on {bt['observations']} month-end observations of the pilot companies ({bt['first_as_of']} to {bt['last_as_of']}), forward horizon {bt['horizon_trading_days']} trading days: " + "; ".join(parts) + f". Reading: {bt['reading'].lower()}. Generated {bt['generated_on']}."), st["small"]))  # fmt: skip
+    else:
+        out.append(Paragraph(clean(bt.get("reason", "The back-test has not been run") + "."), st["small"]))
+    tv = bt.get("threshold_validation") or {}
+    for c in tv.get("checks", []):
+        if not c["ok"]:
+            out.append(Paragraph(clean("Threshold finding: " + c["check"] + ": " + c["detail"] + "."), st["small"]))
+    out.append(Paragraph(clean("Limitations: " + " ".join(bt.get("limitations", [])[:5])), st["small"]))
     return out
 
 
@@ -965,25 +1379,45 @@ def thesis_section(report: dict, st) -> list:
     out += _points("Bear case", t["bear"], st)
     out += verdict_block(report, st)
     out += _points("Key catalysts", t["catalysts"], st)
+    reg = t.get("risk_register")
+    if reg:
+        out.append(Paragraph("Risks by family", st["h2"]))
+        for title, key in (
+            ("Business and financial", "business_financial"),
+            ("Management and governance", "management_governance"),
+            ("Industry and regulatory", "industry_regulatory"),
+            ("Valuation", "valuation"),
+        ):
+            out.append(Paragraph(f"<b>{clean(title)}</b>", st["small"]))
+            if not reg[key]:
+                out.append(Paragraph("None established from the stored evidence.", st["bullet"], bulletText="-"))
+            for p in reg[key]:
+                tagtxt = " (sector context, not evidence about this company)" if "SECTOR" in p.get("kind", "") else ""
+                out.append(Paragraph(_qualified(p) + clean(tagtxt) + f" <font size=6.5 color='#6b7280'>{_ids(p['evidence_ids'])}</font>", st["bullet"], bulletText="-"))
     r = t["risks"]
-    out.append(Paragraph("Key risks", st["h2"]))
+    out.append(Paragraph("Data and evidence risks" if reg else "Key risks", st["h2"]))
     for title, pts in (
-        ("Company-specific (from the evidence)", r["company"]),
-        ("Valuation", r["valuation"]),
-        ("Data and evidence", r["data"]),
-        ("Governance", r["governance"]),
+        (
+            ("Data and evidence", r["data"]),
+            *(() if reg else (
+                ("Company-specific (from the evidence)", r["company"]),
+                ("Valuation", r["valuation"]),
+                ("Governance", r["governance"]),
+            )),
+        )
     ):
         if pts:
             out.append(Paragraph(f"<b>{clean(title)}</b>", st["small"]))
             for p in pts:
                 out.append(Paragraph(_qualified(p), st["bullet"], bulletText="-"))
-    out.append(
-        Paragraph(
-            "<b>Sector risks</b> <font size=7 color='#6b7280'>(industry-level, not evidence about this company)</font>",
-            st["small"],
+    if not reg:
+        out.append(
+            Paragraph(
+                "<b>Sector risks</b> <font size=7 color='#6b7280'>(industry-level, not evidence about this company)</font>",
+                st["small"],
+            )
         )
-    )
-    for s in r["sector"]:
+    for s in [] if reg else r["sector"]:
         out.append(
             Paragraph(
                 f"<b>{clean(s['title'])}.</b> {clean(s['text'])}", st["bullet"], bulletText="-"
@@ -1050,7 +1484,7 @@ def conclusion_section(report: dict, st) -> list:
             [
                 Paragraph(
                     clean(
-                        "The verdict, target and stop-loss in section 7 come from a stated rule set (methodology v1). This conclusion is an evidence summary, not investment advice or a forecast."
+                        "The verdict, target and stop-loss in the Investment thesis and verdict section come from a stated rule set (methodology v2). This conclusion is an evidence summary, not investment advice or a forecast."
                     ),
                     st["body"],
                 )

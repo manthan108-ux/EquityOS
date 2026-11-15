@@ -243,8 +243,70 @@ def _thousand_crore(value) -> float:
 # ---------------------------------------------------------------- building blocks
 
 
+_EMPTY = {"", "n/a", "-", "—", "not available", "not computed"}
+PRUNED: list[str] = []  # labels of rows and columns left out of tables because every value was missing
+
+
+def _txt(cell) -> str:
+    return (cell.getPlainText() if hasattr(cell, "getPlainText") else str(cell)).strip().lower()
+
+
+def _raw(cell) -> str:
+    return (cell.getPlainText() if hasattr(cell, "getPlainText") else str(cell)).strip()
+
+
+def _prune(rows, widths, header):
+    """Drops columns and rows whose every cell is an explicit "no value" (n/a, dash); they are listed in the
+    gaps appendix instead. Blank cells (sub-headings, spacers) never count as missing."""
+    if not header or len(rows) < 3 or len(widths) < 3 or any(len(r) != len(widths) for r in rows):
+        return rows, widths
+    body = rows[1:]
+
+    def missing(cell) -> bool:
+        return _txt(cell) in _EMPTY - {""}
+
+    def blank(cell) -> bool:
+        return _txt(cell) == ""
+
+    def dead(cells) -> bool:
+        return all(missing(c) or blank(c) for c in cells) and any(missing(c) for c in cells)
+
+    keep_cols = [0] + [j for j in range(1, len(widths)) if not dead([r[j] for r in body])]
+    dropped_cols = [_raw(rows[0][j]) for j in range(1, len(widths)) if j not in keep_cols]
+    if len(keep_cols) < 2:
+        return rows, widths
+    keep_rows = [r for r in body if not dead([r[j] for j in keep_cols[1:]])]
+    dropped_rows = [_raw(r[0]) for r in body if r not in keep_rows]
+    if not keep_rows or (not dropped_cols and not dropped_rows):
+        return rows, widths
+    PRUNED.extend(f"{x} (no stored value)" for x in dropped_cols + dropped_rows if x)
+    total = sum(widths)
+    kept = sum(widths[j] for j in keep_cols)
+    new_w = [widths[j] * total / kept for j in keep_cols]
+    return [[r[j] for j in keep_cols] for r in [rows[0], *keep_rows]], new_w
+
+
+class _SafeTable(Table):
+    """A table whose later style commands cannot point past its last row or column (rows may be pruned)."""
+
+    def setStyle(self, tblstyle):  # noqa: N802 - reportlab's name
+        cmds = getattr(tblstyle, "getCommands", lambda: tblstyle)()
+        nr, nc = len(self._cellvalues), len(self._cellvalues[0]) if self._cellvalues else 0
+        ok = []
+        for c in cmds:
+            try:
+                idx = [c[1], c[2]]
+                if any(i[0] >= nc or i[1] >= nr for i in [idx[0], idx[1]] if i[0] >= 0 and i[1] >= 0):
+                    continue
+            except (IndexError, TypeError):
+                pass
+            ok.append(c)
+        super().setStyle(TableStyle(ok))
+
+
 def _table(rows, widths, *, header=True, zebra=True) -> Table:
-    t = Table(rows, colWidths=widths, repeatRows=1 if header else 0)
+    rows, widths = _prune(rows, widths, header)
+    t = _SafeTable(rows, colWidths=widths, repeatRows=1 if header else 0)
     style = [
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("TOPPADDING", (0, 0), (-1, -1), 3.5),
@@ -535,8 +597,8 @@ def _cover(report, facts, st, version, mode) -> list:
         Paragraph(
             "The financial score and research readiness are separate measures. "
             + (
-                "The verdict is the output of a stated rule set (methodology v1), not a forecast or "
-                "investment advice; see section 7."
+                "The verdict is the output of a stated rule set (methodology v2), not a forecast or "
+                "investment advice; see the Investment thesis and verdict section."
                 if _has_verdict(report)
                 else "The report contains no buy, sell or hold recommendation in this edition."
             ),
@@ -556,7 +618,7 @@ def _has_verdict(report: dict) -> bool:
     return bool(a.get("available") and a.get("verdict"))
 
 
-VERDICT_COLOUR = {"BUY": "#2f7d5b", "SELL": "#b3442f", "WATCH": "#c77d0a"}
+VERDICT_COLOUR = {"BUY": "#2f7d5b", "HOLD": "#3b6ea5", "SELL": "#b3442f", "WATCH": "#c77d0a"}
 
 
 def _verdict_cell(report: dict, st) -> list:
@@ -571,7 +633,7 @@ def _verdict_cell(report: dict, st) -> list:
             Paragraph(
                 clean(
                     f"Evidence confidence {v['confidence']['band']} ({v['confidence']['points']} / 100). "
-                    "Rule-based; see section 7."
+                    "Rule-based; see the Investment thesis and verdict section."
                 ),
                 st["small"],
             ),
@@ -672,7 +734,7 @@ def _executive(report, facts, series, st, full=False) -> list:
             Paragraph(
                 text
                 + (
-                    ". Historical, peer and intrinsic valuation are in section 6."
+                    ". Historical, peer, DCF and relative valuation are in the Valuation analysis section."
                     if full
                     else ". Intrinsic and historical valuation are not part of this edition."
                 ),
@@ -694,8 +756,8 @@ def _executive(report, facts, series, st, full=False) -> list:
                     f"{score.get('eligible_peer_count')} peers (confidence "
                     f"{str(score.get('confidence')).lower()}). "
                     + (
-                        "See section 8 for what drives it and sections 7 and 9 for the thesis and "
-                        "conclusion."
+                        "See the Financial scorecard section for what drives it, and the Investment thesis and "
+                        "Research conclusion sections."
                         if full
                         else "See section 6 for what drives it. A narrative conclusion and an "
                         "investment thesis are not part of this edition."
@@ -1090,8 +1152,13 @@ def _appendix(report, st) -> list:
             out += [Paragraph(f"<b>{title}</b>", st["body"]), Paragraph(clean(text), st["small"])]
     if lim.get("applied_price_adjustments"):
         out.append(Paragraph("<b>Price adjustments applied</b>", st["body"]))
+        seen_adj = set()
         for a in lim["applied_price_adjustments"]:
-            line = f"{a['symbol']} {a['ex_date']}: {a.get('ratio') or ''} (factor {a['factor']})"
+            factor = f"{Decimal(str(a['factor'])).normalize():f}"
+            line = f"{a['symbol']} {a['ex_date']}: {a.get('ratio') or ''} (factor {factor})"
+            if line in seen_adj:
+                continue
+            seen_adj.add(line)
             out.append(Paragraph("- " + clean(line), st["small"]))
     if lim.get("price_history_notes"):
         out.append(Paragraph("<b>Price history</b>", st["body"]))
@@ -1131,7 +1198,7 @@ def _coverage_full(st) -> list:
             "of the evidence, with the rules stated in the appendix, and hypotheses are written as "
             "hypotheses. Industry and sector-risk text is general sector context, not evidence about "
             "the company. Valuation scenarios rest on illustrative assumptions and are not target "
-            "prices. The BUY / SELL / WATCH verdict follows the stated rule set (methodology v1); it is not a forecast or investment advice.",
+            "prices. The BUY / HOLD / WATCH / SELL verdict follows the stated rule set (methodology v2); it is not a forecast or investment advice.",
             st,
             warn=False,
         ),
@@ -1203,36 +1270,39 @@ def _full_story(report, facts, hist, st, version, mode) -> list:
     # A section with nothing meaningful to say is left out entirely: no heading, no contents entry,
     # no empty page; the numbers that follow close up. Partial sections are kept.
     if ps.profitability_has_content(a.get("profitability")):
-        story += [PageBreak(), h1("Growth and profitability")]
+        story += [CondPageBreak(100 * mm), h1("Growth and profitability")]
         story += ps.profitability_section(report, st)
     if ps.sector_kpis_has_content(a.get("sector_kpis")):
-        story += [PageBreak(), h1("Sector-specific indicators")]
+        story += [CondPageBreak(100 * mm), h1("Sector-specific indicators")]
         story += ps.sector_kpis_section(report, st)
     if ps.health_has_content(a.get("health")):
-        story += [PageBreak(), h1("Working capital and financial health")]
+        story += [CondPageBreak(100 * mm), h1("Working capital and financial health")]
         story += ps.health_section(report, st)
     if ps.cashflow_has_content(a.get("cashflow")):
-        story += [PageBreak(), h1("Cash flow and earnings quality")]
+        story += [CondPageBreak(100 * mm), h1("Cash flow and earnings quality")]
         story += ps.cashflow_section(report, st)
     if ps.industry_view_has_content(a.get("industry_view")):
-        story += [PageBreak(), h1("Industry and peer analysis")]
+        story += [CondPageBreak(100 * mm), h1("Industry and peer analysis")]
         story += ps.industry_view_section(report, st)
     if ps.growth_has_content(a.get("growth")):
-        story += [PageBreak(), h1("Growth versus the peer group: CAGR")]
+        story += [CondPageBreak(100 * mm), h1("Growth versus the peer group: CAGR")]
         story += ps.growth_section(report, st)
     if ps.cyclicality_has_content(a.get("cyclicality")):
-        story += [PageBreak(), h1("Business cyclicality")] + ps.cyclicality_section(report, st)
+        story += [CondPageBreak(100 * mm), h1("Business cyclicality")] + ps.cyclicality_section(report, st)
     peers = a["peers"]["peers"]
     if peers:
         story += _peer_pages(report, st, name, peers, h1)
     if a["management"].get("available"):
-        story += [PageBreak(), h1("Management commentary")] + pa.management_section(report, st)
+        story += [CondPageBreak(100 * mm), h1("Management commentary")] + pa.management_section(report, st)
     story += [PageBreak()]
     story += _valuation(report, facts, st, title=head("Valuation analysis"), note=False)
     story += pa.valuation_section(report, st)
-    story += [PageBreak(), h1("Investment thesis and verdict")] + pa.thesis_section(report, st)
+    story += [CondPageBreak(100 * mm), h1("Investment thesis and verdict")] + pa.thesis_section(report, st)
     story += [PageBreak()] + _scorecard(report, st, title=head("Financial scorecard"))
     story += [CondPageBreak(80 * mm), h1("Research conclusion")] + pa.conclusion_section(report, st)
+    from app.research import pdf_gaps
+
+    story = pdf_gaps.consolidate(story, st, list(PRUNED))
     story += _appendix(report, st) + pa.analysis_register(report, st) + _method_full(report, st)
     story += ps.data_quality_section(report, st)
     return story
@@ -1241,7 +1311,7 @@ def _full_story(report, facts, hist, st, version, mode) -> list:
 def _peer_pages(report, st, name, peers, h1) -> list:
     from app.research import pdf_analysis as pa
 
-    intro = [PageBreak(), h1("Peer benchmarking and competitive positioning")]
+    intro = [CondPageBreak(100 * mm), h1("Peer benchmarking and competitive positioning")]
     if peers:
         rows = [[Paragraph(h, st["hdr"]) for h in ("#", "Peer", "Selection basis")]]
         for p in peers:
@@ -1304,6 +1374,7 @@ class _ContentsDoc(SimpleDocTemplate):
 def render(report: dict, *, version: int, mode: str, report_id: str, content_hash: str) -> bytes:
     """The professional PDF of a stored report's content (same signature as `pdf.render`)."""
     st = _styles()
+    PRUNED.clear()
     meta = report["meta"]
     facts = _facts(report)
     hist = _section(report, "historical").get("series", {})

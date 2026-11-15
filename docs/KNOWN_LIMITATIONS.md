@@ -457,3 +457,40 @@ Still limited:
 - A citation is recorded exactly as given and cannot be verified by the system; market inputs are not fetched
   automatically (no verified automated source is held).
 - There is no editing screen in the web frontend yet; inputs are entered through the CLI or the API.
+
+## DCF (CP11, 2026-11-14)
+- No DCF assumption has been entered for any pilot company, so no scenario is completed; each report lists what is missing.
+- Net debt and borrowings are stored for only some non-financials (BPCL, ITC, TMPV, Wipro among them); without them a scenario
+  cannot be completed. Non-controlling interests are not stored for most and are flagged as not deducted.
+- The model is a stated five-year, constant-ratio FCFF model, not a bottom-up forecast; no per-year paths or segment builds.
+
+## Relative valuation (CP12, 2026-11-14)
+- EV/EBITDA needs net debt and EBITDA (finance costs and depreciation): current EV/EBITDA exists for few pilot companies, so
+  peer and relative EV/EBITDA are mostly unavailable; historical P/B needs equity and shares for each year end.
+- SOTP needs segment results in the stored segment note (few companies) and an entered multiple per segment; none is entered.
+- There is no NBFC-specific model beyond the lender methods (P/B against ROE, residual income); no pilot NBFC exists.
+
+## Verdict back-test (CP13, 2026-11-15)
+
+- The production verdict is not back-tested: score, peer standing and valuation scenarios cannot be rebuilt as of a past date.
+  Only a three-component subset with a valuation proxy is tested, and the target, stop and reward-to-risk rules are not tested.
+- About three years of prices are stored (Nov 2023 onward): at most ~15 month-end dates at a 12-month horizon, ~21 at 6 months,
+  on 24 companies chosen today (survivorship and selection bias), in one market regime, with overlapping windows (observations
+  are strongly dependent), no index benchmark (excess return is against the pilot mean), a convention publication lag of 90 days,
+  windows with splits/bonuses excluded rather than adjusted, and no costs. The SELL bucket is too small to read.
+  Treat the thresholds as documented conventions, not validated parameters, until longer history exists.
+- Risk assessment points and bands, the 12-month review horizon and the HOLD band (+/-15%) are conventions.
+- Most pilot reports are WATCH because no valuation method completes (no entered DCF/SOTP assumptions, thin peer coverage).
+
+## Report validation findings (CP14, 2026-11-15)
+
+- "Net profit" from the market-data feed includes the non-controlling interests' share (Reliance 80,787 cr against about 69,600 cr
+  attributable; Infosys 26,750 against about 26,713). The calculation engine records this in its note and labels such figures
+  accordingly, but ratios built on it (and the "attributable" labels in the governance and health sections) are slightly
+  overstated for companies with material minorities until the attributable line is read from filings.
+- 19 of 24 pilot verdicts are WATCH and risk is "not established" for the same companies: no valuation method completes without
+  entered assumptions and thin peer coverage. This is a data state, not a defect; entering sourced assumptions (assumption_cli)
+  completes DCF/SOTP and moves them.
+- Single-method verdicts (SBIN, INFY, HCLTECH rest on relative P/E alone) are marked "one method only", halve the gap to the
+  target and carry lower confidence; they should be read with that in mind.
+- Net debt, share counts and segment results are missing for most non-financials, so EV/EBITDA, SOTP and DCF stay empty for them.

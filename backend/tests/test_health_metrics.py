@@ -205,3 +205,48 @@ def test_employee_cost_ratio_is_employee_benefits_over_revenue(session, co):
     year(session, co, d, revenue=1000, employee_benefits_expense=550)
     run(session, co)
     assert near(value(session, co, "MARGIN.employee_cost_ratio", FY26), 55)
+
+
+def test_enterprise_value_and_ev_to_ebitda_from_price_net_debt_and_ebitda(session, co):
+    from sqlalchemy import select
+
+    from app.models import EvidenceRecord
+    from tests.test_calc_db import add_prices, listing, shares
+
+    d = doc(session, co)
+    year(
+        session, co, d, finance_costs=50, depreciation_and_amortisation=150,
+        balance={"borrowings": 1500, "cash_and_cash_equivalents": 300},
+    )  # fmt: skip
+    shares(session, co, d)  # 10,000,000 shares
+    add_prices(session, listing(session, co), [300] * 30)
+    run(session, co)
+
+    def stored(metric):
+        return session.scalar(select(EvidenceRecord).where(EvidenceRecord.metric == metric))
+
+    ev, ratio = stored("VALUATION.enterprise_value"), stored("VALUATION.ev_to_ebitda")
+    # market cap 300 crore + net debt (1,500 - 300) crore = 1,500 crore; EBITDA 400 + 50 + 150 = 600 crore
+    assert ev.value == D(1500) * CR and "non-controlling interests are not stored" in " ".join(
+        ev.details["notes"]
+    )
+    assert ratio.value == D("2.5") and ratio.unit == "x"
+
+
+def test_a_bank_has_no_enterprise_value(session, co):
+    from sqlalchemy import select
+
+    from app.models import EvidenceRecord
+    from tests.test_calc_db import add_prices, listing, shares
+
+    d = doc(session, co)
+    fact(session, co, "INCOME", "interest_earned", 900, end=FY26, document=d)
+    shares(session, co, d)
+    add_prices(session, listing(session, co), [300] * 30)
+    run(session, co)
+    assert (
+        session.scalar(
+            select(EvidenceRecord).where(EvidenceRecord.metric == "VALUATION.enterprise_value")
+        )
+        is None
+    )

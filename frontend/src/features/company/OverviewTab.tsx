@@ -9,7 +9,7 @@ import Pipeline from "./Pipeline";
 import { ELIGIBILITY } from "./ReadinessPanel";
 import type { TabId } from "./CompanyWorkspace";
 
-const VT: Record<string, Tone> = { BUY: "ok", SELL: "bad", WATCH: "warn" };
+const VT: Record<string, Tone> = { BUY: "ok", HOLD: "info", SELL: "bad", WATCH: "warn" };
 
 export default function OverviewTab({ rs, go }: { rs: ResearchState; go: (t: TabId) => void }) {
   const { session, data, report } = rs;

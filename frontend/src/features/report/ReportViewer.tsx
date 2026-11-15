@@ -7,7 +7,7 @@ import { Badge, Card, Notice, type Tone } from "@/components/ui";
 import { fmtValue, titleCase, toNumber } from "@/lib/format";
 import type { Analysis, Report, ReportGap, ReportItem, ReportSection, Verdict } from "@/services/research";
 
-const VTONE: Record<Verdict["verdict"], Tone> = { BUY: "ok", SELL: "bad", WATCH: "warn" };
+const VTONE: Record<Verdict["verdict"], Tone> = { BUY: "ok", HOLD: "info", SELL: "bad", WATCH: "warn" };
 const KIND_TONE: Record<string, Tone> = { "VERIFIED FACT": "ok", FACT: "ok", DERIVED: "info", INTERPRETATION: "warn", "ANALYTICAL HYPOTHESIS": "warn", "MANAGEMENT STATEMENT": "brand", "VERIFIED FACT: classification": "ok" };
 
 const sec = (r: Report, key: string): ReportSection | undefined => r.content.sections.find((s) => s.key === key);
@@ -87,7 +87,7 @@ function VerdictBlock({ v }: { v: Verdict }) {
           ))}
         </dl>
       ) : (
-        <p className="mt-3 text-[13px] text-ink">No trade levels are given: the verdict is WATCH.{lv.would_turn_buy_below ? ` With the other components unchanged, the valuation component alone would turn positive at ₹${lv.would_turn_buy_below} or below and negative at ₹${lv.would_turn_sell_above} or above.` : ""}</p>
+        <p className="mt-3 text-[13px] text-ink">No trade levels are given: the verdict is {v.verdict}.{lv.would_turn_buy_below ? ` With the other components unchanged, the valuation component alone would turn positive at ₹${lv.would_turn_buy_below} or below and negative at ₹${lv.would_turn_sell_above} or above.` : ""}</p>
       )}
       <div className="mt-4 overflow-x-auto">
         <table className="w-full min-w-[480px] text-[13px]">

@@ -1,3 +1,4 @@
+# ruff: noqa: E501
 """Price-based calculations: technical indicators and valuation (market cap, P/E, P/B).
 
 Prices are the exchanges' official end-of-day closes (tier 1). A valuation multiplies or divides a
@@ -18,7 +19,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.calc.adjust import factor_between, price_rows, stored_events
-from app.calc.metrics import Gap, Inputs
+from app.calc.metrics import Gap, Inputs, _profile_of
 from app.calc.technical_store import STORED_INDICATORS, Skipped, dimension_of, register_technical
 from app.evidence.core import canon
 from app.evidence.ledger import LedgerError, price_evidence, register_calculation
@@ -325,6 +326,11 @@ def run_market(
             key[3],
         )
 
+    # enterprise value and EV / EBITDA: non-financial companies only (for a bank, deposits and
+    # borrowings are raw material, so net debt and enterprise value have no meaning)
+    if _profile_of(inputs) != "BANK":
+        _enterprise_value(inputs, market_cap, price_date, calc, result)
+
     # price to earnings: trailing four quarters, and the latest financial year
     for code, metric, ptypes in (
         ("VALUATION.pe_ttm", "TTM.eps_basic", ("TTM",)),
@@ -357,6 +363,50 @@ def run_market(
             notes.append(adj[1])
         calc(code, expression, ins, "x", notes, key[3])
     return result
+
+
+def _enterprise_value(
+    inputs: Inputs, market_cap, price_date: date, calc, result: MarketResult
+) -> None:
+    """EV = market capitalisation + net debt (+ non-controlling interests); EV / latest annual EBITDA.
+
+    Net debt, non-controlling interests and EBITDA must be on ONE accounting basis; the market cap is the
+    listed entity's. Each figure's own date is stated in the note: they are the latest stored, not
+    necessarily the same date as the price.
+    """
+    if market_cap is None:
+        for code in ("VALUATION.enterprise_value", "VALUATION.ev_to_ebitda"):
+            result.gaps.append(Gap(code, price_date, None, None, "needs market capitalisation, which could not be calculated"))  # fmt: skip
+        return
+    net_debt = _latest(inputs, "LEVERAGE.net_debt", ("ANNUAL",))
+    if net_debt is None:
+        for code in ("VALUATION.enterprise_value", "VALUATION.ev_to_ebitda"):
+            result.gaps.append(Gap(code, price_date, None, None, "missing input: LEVERAGE.net_debt (borrowings less cash and liquid investments)"))  # fmt: skip
+        return
+    nd_rec, nd_key = net_debt
+    basis = nd_key[3]
+    nci = _latest_on_basis(inputs, "BALANCE_SHEET.non_controlling_interests", ("ANNUAL",), basis) or _latest_on_basis(inputs, "BALANCE_SHEET.minority_interest", ("ANNUAL",), basis)  # fmt: skip
+    ins = {"cap": market_cap.id, "net_debt": nd_rec.id}
+    expression = "cap + net_debt"
+    notes = [f"market capitalisation of {price_date}; net debt as at {nd_key[1]} ({basis})"]
+    if nci is not None:
+        ins["nci"] = nci[0].id
+        expression = "cap + net_debt + nci"
+        notes.append(f"non-controlling interests as at {nci[1][1]}")
+    else:
+        notes.append("non-controlling interests are not stored and are not added")
+    ev = calc("VALUATION.enterprise_value", expression, ins, "inr", notes, basis)
+    if ev is None:
+        return
+    ebitda = _latest_on_basis(inputs, "INCOME.ebitda", ("ANNUAL",), basis)
+    if ebitda is None:
+        result.gaps.append(Gap("VALUATION.ev_to_ebitda", price_date, None, basis, f"missing input: INCOME.ebitda on the {basis} basis (needs finance costs and depreciation)"))  # fmt: skip
+        return
+    e_rec, e_key = ebitda
+    if e_rec.value is None or e_rec.value <= 0:
+        result.gaps.append(Gap("VALUATION.ev_to_ebitda", e_key[1], e_key[2], basis, f"EBITDA is {e_rec.value:f}: EV / EBITDA is not meaningful when EBITDA is zero or negative"))  # fmt: skip
+        return
+    calc("VALUATION.ev_to_ebitda", "ev / ebitda", {"ev": ev.id, "ebitda": e_rec.id}, "x", [f"EBITDA for the year ended {e_key[1]} ({basis}); EV uses the price of {price_date} and net debt as at {nd_key[1]}"], basis)  # fmt: skip
 
 
 __all__ = ["MarketResult", "adjustment_evidence", "choose_security", "run_market"]

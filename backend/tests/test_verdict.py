@@ -1,4 +1,4 @@
-"""The BUY / SELL / WATCH verdict, target, stop-loss and confidence (methodology v1)."""
+"""The BUY / HOLD / WATCH / SELL verdict, target, stop-loss and confidence (methodology v2)."""
 
 import json
 from datetime import UTC, date, datetime, timedelta
@@ -84,10 +84,10 @@ def test_a_weak_set_is_a_sell_with_a_downside_target_and_a_stop_above_the_price(
     assert D(lv["stop_pct"]) == D("15.0") and D(lv["reward_to_risk"]) > D("1.5")
 
 
-def test_the_middle_is_a_watch_with_trigger_prices_and_no_trade_levels(monkeypatch):
+def test_the_middle_with_a_fair_valuation_is_a_hold_with_trigger_prices_and_no_trade_levels(monkeypatch):
     out = run(monkeypatch, analysis(score=50, traj="mixed", better=1, worse=1, base=108))
     assert (
-        out["verdict"] == "WATCH"
+        out["verdict"] == "HOLD"
         and "target" not in out["levels"]
         and "stop_loss" not in out["levels"]
     )
@@ -197,7 +197,7 @@ def test_the_pdf_shows_the_verdict_block_with_trade_levels_for_a_buy(monkeypatch
     )[0].replace("\n", " ")
     assert "EquityOS verdict" in flat and "BUY" in flat and "Stop-loss" in flat and "Target" in flat
     assert "Reward-to-risk" in flat and "Evidence confidence: HIGH" in flat
-    assert "investment advice" in flat and "has not been back-tested" in flat
+    assert "investment advice" in flat and "back-test" in flat
     assert "EquityOS verdict: BUY" in flat  # in the executive summary too
 
 

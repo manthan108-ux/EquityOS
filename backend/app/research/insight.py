@@ -16,6 +16,7 @@ from app.research import (
     business,
     cashflow,
     cyclicality,
+    dcf,
     governance,
     health,
     industry,
@@ -23,6 +24,7 @@ from app.research import (
     mgmt,
     profile,
     profitability,
+    relative,
     sector_kpis,
     thesis,
     valuation,
@@ -77,6 +79,8 @@ def build(
         | sector_kpis.NAMES
         | business.NAMES
         | governance.NAMES
+        | dcf.NAMES
+        | relative.NAMES
     )
     own_store = rd.load_store(session, company.id, names)
     resolution = an.resolve_basis(own_store, requested)

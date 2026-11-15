@@ -374,7 +374,7 @@ export type VerdictComponent = {
   reading: string;
 };
 export type Verdict = {
-  verdict: "BUY" | "SELL" | "WATCH";
+  verdict: "BUY" | "HOLD" | "SELL" | "WATCH";
   net_points: number;
   components: VerdictComponent[];
   levels: Record<string, string | boolean | string[] | null | undefined>;

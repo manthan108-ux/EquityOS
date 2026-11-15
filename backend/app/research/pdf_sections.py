@@ -23,6 +23,14 @@ def _bullets(items, st) -> list:
     return [Paragraph(clean(i), st["bullet"], bulletText="-") for i in items]
 
 
+def _gap_bullets(items, st) -> list:
+    """Bullets about what is not stored; the report builder moves them to the evidence-gaps appendix."""
+    out = _bullets(items, st)
+    for p in out:
+        p._gap = True
+    return out
+
+
 def _note_box(text: str, st) -> Table:
     t = Table([[Paragraph(clean(text), st["small"])]], colWidths=[W])
     t.setStyle(
@@ -917,8 +925,7 @@ def profitability_section(report: dict, st) -> list:
     if len(prows) > 1:
         out += [Spacer(1, 6), _table(prows, [W - 120 * mm, 26 * mm, 36 * mm, 30 * mm, 28 * mm])]
     if gaps:
-        out += [Spacer(1, 4), Paragraph("Not available", st["h2"])]
-        out += _bullets(gaps, st)
+        out += _gap_bullets(gaps, st)
     out += [Spacer(1, 4)] + _bullets(p["definitions"], st)
     return out
 
@@ -1098,8 +1105,7 @@ def cashflow_section(report: dict, st) -> list:
     if len(prows) > 1:
         out += [Spacer(1, 6), _table(prows, [W - 120 * mm, 26 * mm, 36 * mm, 30 * mm, 28 * mm])]
     if gaps:
-        out += [Spacer(1, 4), Paragraph("Not available", st["h2"])]
-        out += _bullets(gaps, st)
+        out += _gap_bullets(gaps, st)
     out += [Spacer(1, 4)] + _bullets(c["definitions"], st)
     return out
 
@@ -1293,8 +1299,7 @@ def health_section(report: dict, st) -> list:
     if len(prows) > 1:
         out += [Spacer(1, 6), _table(prows, [W - 120 * mm, 26 * mm, 36 * mm, 30 * mm, 28 * mm])]
     if gaps:
-        out += [Spacer(1, 4), Paragraph("Not available", st["h2"])]
-        out += _bullets(gaps, st)
+        out += _gap_bullets(gaps, st)
     out += [Spacer(1, 4)] + _bullets(h["definitions"], st)
     return out
 
@@ -1458,8 +1463,7 @@ def sector_kpis_section(report: dict, st) -> list:
     if len(prows) > 1:
         out += [Spacer(1, 6), _table(prows, [W - 130 * mm, 30 * mm, 34 * mm, 36 * mm, 30 * mm])]
     if gaps:
-        out += [Spacer(1, 4), Paragraph("Not available", st["h2"])]
-        out += _bullets(gaps, st)
+        out += _gap_bullets(gaps, st)
     out += [Spacer(1, 4)] + _bullets(s["definitions"], st)
     return out
 
@@ -1836,8 +1840,7 @@ def governance_section(report: dict, st) -> list:
         gaps.append("capital expenditure and acquisitions (" + cx["reason"] + ")")
     out += _quotes(inv["stated"], st)
     if gaps:
-        out += [Spacer(1, 4), Paragraph("Not available", st["h2"])]
-        out += _bullets(gaps, st)
+        out += _gap_bullets(gaps, st)
     out += [Spacer(1, 4)] + _bullets(g["definitions"], st)
     return out
 

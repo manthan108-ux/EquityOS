@@ -41,6 +41,9 @@ class InputIn(BaseModel):
     scenario: str | None = Field(
         default=None, description="bear | base | bull, for the per-scenario inputs"
     )
+    segment: str | None = Field(
+        default=None, description="the reported segment name, for sotp_multiple"
+    )
     source: str | None = Field(
         default=None,
         description="the named source; with it the input is SOURCED, without it a USER assumption",
@@ -74,6 +77,7 @@ def list_inputs(company_id: uuid.UUID, session: SessionDep, who: Caller) -> dict
                 "label": s.label,
                 "unit": s.unit,
                 "per_scenario": s.scenario,
+                "per_segment": s.segment,
                 "market_input": s.market,
                 "range": [str(s.low), str(s.high)],
                 "max_age_days": s.max_age_days,
@@ -93,7 +97,7 @@ def enter_input(
     try:
         record = asm.set_input(
             session, company_id, body.input, body.value, author=who.name, rationale=body.rationale,
-            as_of=body.as_of, scenario=body.scenario, source=body.source, source_url=body.source_url,
+            as_of=body.as_of, scenario=body.scenario, segment=body.segment, source=body.source, source_url=body.source_url,
             edit_reason=body.edit_reason,
         )  # fmt: skip
     except asm.AssumptionError as exc:
@@ -103,13 +107,14 @@ def enter_input(
 
 
 @router.get("/companies/{company_id}/valuation-inputs/{name}/history")
-def input_history(company_id: uuid.UUID, name: str, session: SessionDep, who: Caller, scenario: Annotated[str | None, Query()] = None) -> dict:  # fmt: skip
+def input_history(company_id: uuid.UUID, name: str, session: SessionDep, who: Caller, scenario: Annotated[str | None, Query()] = None, segment: Annotated[str | None, Query()] = None) -> dict:  # fmt: skip
     _company(session, company_id)
     try:
         return {
             "input": name,
             "scenario": scenario,
-            "history": asm.history(session, company_id, name, scenario),
+            "segment": segment,
+            "history": asm.history(session, company_id, name, scenario, segment=segment),
         }
     except asm.AssumptionError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc

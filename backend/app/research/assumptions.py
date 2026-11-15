@@ -55,6 +55,7 @@ class InputSpec:
     market: bool  # a market input: expected to be source-backed
     max_age_days: int | None
     scenario: bool = False  # one value per scenario (name_bear / name_base / name_bull)
+    segment: bool = False  # one value per reported business segment (and scenario)
 
 
 SPECS: dict[str, InputSpec] = {
@@ -64,6 +65,16 @@ SPECS: dict[str, InputSpec] = {
     "cost_of_equity": InputSpec("cost_of_equity", "Cost of equity", "percent", Decimal(1), Decimal(40), False, None, scenario=True),
     "terminal_growth": InputSpec("terminal_growth", "Long-run growth", "percent", Decimal(-5), Decimal(15), False, None, scenario=True),
     "roe_shift": InputSpec("roe_shift", "Shift in return on equity", "percent", Decimal(-20), Decimal(20), False, None, scenario=True),
+    # ---- discounted cash flow (non-financial companies); every figure is entered, none is built in
+    "revenue_growth": InputSpec("revenue_growth", "Revenue growth in the first forecast year", "percent", Decimal(-30), Decimal(60), False, None, scenario=True),
+    "operating_margin": InputSpec("operating_margin", "Operating (EBIT) margin", "percent", Decimal(-50), Decimal(80), False, None, scenario=True),
+    "tax_rate": InputSpec("tax_rate", "Tax rate on operating profit", "percent", Decimal(0), Decimal(50), False, None, scenario=True),
+    "capex_to_revenue": InputSpec("capex_to_revenue", "Capital expenditure / revenue", "percent", Decimal(0), Decimal(60), False, None, scenario=True),
+    "depreciation_to_revenue": InputSpec("depreciation_to_revenue", "Depreciation and amortisation / revenue", "percent", Decimal(0), Decimal(40), False, None, scenario=True),
+    "working_capital_to_revenue": InputSpec("working_capital_to_revenue", "Operating working capital / revenue", "percent", Decimal(-50), Decimal(100), False, None, scenario=True),
+    "wacc": InputSpec("wacc", "Discount rate (WACC), entered directly", "percent", Decimal(1), Decimal(40), False, None, scenario=True),
+    "sotp_multiple": InputSpec("sotp_multiple", "Valuation multiple of a segment's reported result", "ratio", Decimal("0.1"), Decimal(200), False, None, scenario=True, segment=True),
+    "cost_of_debt": InputSpec("cost_of_debt", "Pre-tax cost of debt", "percent", Decimal(0), Decimal(30), True, 400),
 }  # fmt: skip
 MIN_RATIONALE = ledger.MIN_RATIONALE
 
@@ -72,10 +83,26 @@ class AssumptionError(ValueError):
     """An input was refused; nothing was written."""
 
 
-def metric_for(name: str, scenario: str | None) -> str:
+def slug(segment: str) -> str:
+    """A stable key for a segment name ('Auto Segment (India)' -> 'auto_segment_india')."""
+    text = "".join(c if c.isalnum() else "_" for c in segment.strip().lower())
+    return "_".join(w for w in text.split("_") if w)[:40]
+
+
+def metric_for(name: str, scenario: str | None, segment: str | None = None) -> str:
     spec = SPECS.get(name)
     if spec is None:
         raise AssumptionError(f"unknown input {name!r}; known: {', '.join(sorted(SPECS))}")
+    if spec.segment:
+        if not segment or not slug(segment):
+            raise AssumptionError(f"{spec.label} is set per segment; name the segment")
+        if scenario not in SCENARIOS:
+            raise AssumptionError(
+                f"{spec.label} is set per scenario ({', '.join(SCENARIOS)}); give one"
+            )
+        return f"{PREFIX}.{name}_{slug(segment)}_{scenario}"
+    if segment is not None:
+        raise AssumptionError(f"{spec.label} is not set per segment")
     if spec.scenario:
         if scenario not in SCENARIOS:
             raise AssumptionError(
@@ -147,6 +174,7 @@ def set_input(
     rationale: str,
     as_of: date,
     scenario: str | None = None,
+    segment: str | None = None,
     source: str | None = None,
     source_url: str | None = None,
     edit_reason: str | None = None,
@@ -156,7 +184,7 @@ def set_input(
     """Register (or edit) one valuation input. An existing active input of the same kind is superseded."""
     today = today or date.today()
     spec = SPECS.get(name)
-    metric = metric_for(name, scenario)
+    metric = metric_for(name, scenario, segment)
     try:
         v = Decimal(str(value))
     except Exception as exc:  # noqa: BLE001
@@ -184,6 +212,7 @@ def set_input(
     extra = {
         "input": name,
         "scenario": scenario,
+        "segment": (segment or "").strip() or None,
         "class": klass,
         "source": source,
         "source_url": (source_url or "").strip() or None,
@@ -192,7 +221,7 @@ def set_input(
         "supersedes": old.id if old is not None else None,
         "source_backed": bool(source),
     }
-    statement = f"{spec.label}{f' ({scenario} scenario)' if scenario else ''} is {v}{'%' if spec.unit == 'percent' else ''} as of {as_of.isoformat()}" + (f", per {source}" if source else ", as the author's own assumption")  # fmt: skip
+    statement = f"{spec.label}{f' for {segment.strip()}' if segment else ''}{f' ({scenario} scenario)' if scenario else ''} is {v}{'%' if spec.unit == 'percent' else ''} as of {as_of.isoformat()}" + (f", per {source}" if source else ", as the author's own assumption")  # fmt: skip
     try:
         record = ledger.register_assumption(
             session, company_id, metric, statement, rationale=rationale, created_by=author.strip(),
@@ -234,6 +263,7 @@ def _describe(record: EvidenceRecord, today: date) -> dict:
         "input": name,
         "label": spec.label if spec else name,
         "scenario": d.get("scenario"),
+        "segment": d.get("segment"),
         "value": str(record.value.normalize()) if record.value is not None else None,
         "unit": record.unit,
         "class": d.get("class") or USER,
@@ -278,9 +308,10 @@ def history(
     name: str,
     scenario: str | None = None,
     today: date | None = None,
+    segment: str | None = None,
 ) -> list[dict]:
     """Every record ever made for one input, newest first, with who changed it and why."""
-    metric = metric_for(name, scenario)
+    metric = metric_for(name, scenario, segment)
     today = today or date.today()
     rows = session.scalars(
         select(EvidenceRecord)

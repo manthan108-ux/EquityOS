@@ -105,6 +105,7 @@ All configuration is environment-based; see [.env.example](.env.example). Never 
 ## Documentation
 
 - [Project status](docs/PROJECT_STATUS.md)
+- [Final acceptance and operations (1.0)](docs/ACCEPTANCE.md)
 - [Architecture and design decisions](docs/ARCHITECTURE.md)
 - [Database schema](docs/DATABASE_SCHEMA.md)
 - [Data sources](docs/DATA_SOURCES.md)

@@ -393,3 +393,118 @@ Entering and editing: `python -m app.research.assumption_cli list|set|history|wi
 (API key required; the recorded author is the authenticated client). The PDF valuation section gains "Valuation inputs
 and their provenance". The sensitivity and market-implied tables are grids of hypotheticals and are produced only when a
 base long-run growth has been entered.
+
+## DCF and scenario valuation (CP11, 2026-11-14)
+
+`research/dcf.py` builds `valuation["dcf"]` for non-financial companies (a bank gets the reason it is not valued by
+FCFF: its debt is raw material and its interest an operating cost; the residual-income method applies).
+
+- **Actuals** (evidence, with ids): last annual revenue, net debt, borrowings, non-controlling interests, shares
+  outstanding, price. **Assumptions** (assumption ledger, per bear/base/bull scenario, each with source or author,
+  date and rationale, editable by supersession): first-year revenue growth, long-run growth, operating (EBIT) margin,
+  tax rate, capital expenditure, depreciation and operating working capital as percentages of revenue, and the discount
+  rate. New ledger inputs: `revenue_growth`, `operating_margin`, `tax_rate`, `capex_to_revenue`,
+  `depreciation_to_revenue`, `working_capital_to_revenue`, `wacc`, `cost_of_debt`. Nothing is built in.
+- **Method (fixed, shown in the report)**: five explicit years, growth fading linearly to the long-run rate in year five;
+  FCFF = EBIT x (1 - tax) + depreciation - capex - change in working capital (working capital / revenue x change in
+  revenue; no tax on a loss); year-end discounting; terminal value = year-six FCFF / (WACC - growth); EV = PV of the five
+  cash flows + PV of terminal value; equity = EV - net debt - non-controlling interests; value per share = equity /
+  shares, as at the last fiscal year end of the revenue used.
+- **Discount rate**: entered directly, or WACC = E/(E+D) x cost of equity + D/(E+D) x pre-tax cost of debt x (1 - tax) with
+  market weights from the stored price, shares and borrowings; the cost of equity is entered or (base scenario) CAPM from
+  sourced inputs. WACC at or below growth refuses the scenario.
+- **Guards**: a scenario missing any input, actual or weight is NOT COMPLETED and lists it; flags for a terminal value above
+  75% of EV, capex below depreciation, net debt on another date than revenue, stale or unsourced inputs, and
+  non-controlling interests not stored (not deducted).
+- **Sensitivity** (base scenario): value per share for WACC against long-run growth and for EBIT margin against first-year
+  growth, as offsets from the entered values (grids of hypotheticals, not inputs).
+- The verdict counts a completed DCF as a valuation method (with the residual-income and relative ones). The PDF shows
+  "C2. Discounted cash flow (FCFF)": scenarios, base-case inputs with provenance, projection, bridge, sensitivity, method.
+
+## Relative and sector-specific valuation (CP12, 2026-11-14)
+
+- **Method plan** (`valuation["method_plan"]`, PDF "Valuation methods for this sector"): per method, whether it applies to the
+  company's sector, its status and the reason. Banks and NBFCs: historical and peer P/E and P/B, P/B against ROE and
+  residual income (justified P/B); EV/EBITDA, FCFF DCF and SOTP are not used (debt is raw material for a lender).
+  IT and FMCG: DCF, EV/EBITDA and P/E. Automobiles and energy (and diversified groups): the same plus SOTP where several
+  segments report a result.
+- **Calculations**: `VALUATION.enterprise_value` (market cap + net debt + non-controlling interests where stored) and
+  `VALUATION.ev_to_ebitda` (EV / latest annual EBITDA on one basis), non-financials only, with each input's date in the note.
+  `EV / EBITDA` is now a peer comparison metric.
+- **Historical** (`research/relative.py`): P/B and EV/EBITDA at each fiscal year end (price and share count as at the date, so
+  later splits do not distort them), and a historical comparison placing today's P/E, P/B and EV/EBITDA against the
+  company's own year-end observations (needs 3; a position, never a verdict).
+- **Relative scenarios**: bear/base/bull are the lower quartile/median/upper quartile (lowest/median/highest below four
+  peers) of the peers' P/E, P/B or EV/EBITDA, with at least three comparable peers on the same period and basis, applied to
+  the company's own earnings, book value or EBITDA (EV/EBITDA then bridges through net debt and non-controlling interests).
+  Each scenario lists its evidence ids; a sensitivity grid offsets the multiple and the company's metric.
+- **SOTP** (`research/sotp.py`): segment result x an ENTERED multiple per segment and scenario (new ledger input
+  `sotp_multiple`, per segment), summed to enterprise value, bridged to equity per share; loss-making segments are not valued
+  by a profit multiple; central/unallocated costs are not deducted (flagged); a uniform multiple-offset sensitivity.
+- The verdict counts a completed residual-income, relative P/E, DCF, relative EV/EBITDA and SOTP value, and relative P/B only
+  for lenders. CLI/API accept `--segment` / `segment` for per-segment inputs.
+
+## Investment thesis and verdict engine (CP13, methodology v2)
+
+- **Verdicts**: BUY, HOLD, WATCH, SELL. The rule is unchanged for BUY and SELL (net points +3 / -3 over five components, at
+  least four computable, reward-to-risk 1.5). New: **HOLD** when the evidence is adequate (four components, a valuation) and the
+  price is within 15% of the base-case value with net points inside the thresholds. **WATCH** is everything unresolved: no
+  valuation, too little evidence, a valuation gap the other evidence does not confirm, or a BUY/SELL that failed a guard; each
+  reason is printed.
+- **Valuation-linked target price** (`levels.target_price`): base-case value (bear for a SELL; half the gap with one method),
+  with the bear-to-bull range, the methods behind it and a 12-month review horizon (`HORIZON_MONTHS`, a stated convention).
+- **Scenarios** (`scenarios`): bear/base/bull as the mean of each completed method's value, with lowest and highest across
+  methods; no probabilities. **Horizon** (`horizon`): the review convention plus each completed method's own horizon.
+- **Risk assessment** (`risk`): points from six stated factors (downside to the bear value, scenario dispersion, price range,
+  adverse evidence points, governance flags, low-confidence score); HIGH 5+, MODERATE 3-4, LOW 0-2; NOT ESTABLISHED when fewer
+  than four factors are measurable or there is no bear value. Points and bands are conventions, not statistics.
+- **Triggers** (`triggers`): what would change the verdict (each component's threshold, price levels, the stop, new results).
+- **Thesis** (`research/thesis.py`): bull and bear now also use the business-analysis strengths and weaknesses derived from the
+  company's own figures; catalysts add sector opportunities only where the company's figure moved the favourable way
+  (labelled hypotheses); `risk_register` groups risks into business/financial, management/governance, industry/regulatory and
+  valuation (plus data), each point labelled as evidence, hypothesis or sector template.
+- **Back-test** (`research/backtest.py`, `python -m app.research.backtest_cli run`): the production rule cannot be rebuilt for
+  past dates (scores, peer sets and entered valuation assumptions are stored as of today). The back-test therefore runs the same
+  thresholds on a three-component subset available at any date: price against its 200-day average, the direction of published
+  annual results (90-day publication lag), and a P/E-history valuation proxy; forward returns are measured against the mean of
+  the same companies on the same date. It sweeps the valuation and net-points thresholds, reports per-component diagnostics, and
+  withholds any reading from a bucket with fewer than 30 observations or 6 months. Results are saved to `backtest_latest.json`
+  and summarised in every report.
+- **Threshold validation**: internal consistency checks run with no market data. One finding: a stop at the 15% cap needs a
+  target 22.5% away for reward-to-risk 1.5, so a valuation gap of exactly 15% passes only when the stop is 10% or less; on
+  volatile shares a +15% valuation gap alone cannot produce a BUY. The thresholds were left unchanged: the back-test cannot
+  support a different value.
+- **Pilot result (2026-11-15)**: of 24 pilot reports, 2 BUY, 2 HOLD, 1 SELL, 19 WATCH (most lack a completed valuation, so
+  WATCH with a stated reason). The 12-month back-test (629 observations, Nov 2023 to Apr 2026) reads INSUFFICIENT: the SELL
+  bucket has 5 observations.
+
+## Integrated report and 24-company validation (CP14, 2026-11-15)
+
+- **One structure for every company** (`pdf_pro._full_story`): executive summary, industry overview, company and management
+  profile, governance and capital allocation, business strengths and positioning, financial performance (tables and charts),
+  growth and profitability, sector indicators, working capital and health, cash flow and earnings quality, industry and peer
+  analysis, growth versus the peer group, cyclicality, peer benchmarking, management commentary, valuation analysis (method plan,
+  historical, peer, DCF, SOTP, relative P/E, P/B, EV/EBITDA and own-history scenarios with sensitivity grids, input ledger),
+  investment thesis and verdict (target price, scenarios, horizon, risk, triggers, back-test), scorecard, conclusion, appendices.
+  A section with nothing to say is omitted; sections start part-way down a page when room remains (reports shrank from 33-48 to
+  26-41 pages).
+- **Unavailable-data statements** (`pdf_gaps.py`): standalone "not stored / not available / not completed" sentences and the
+  "Not available" bullet lists are removed from the body and stated once, grouped by section, in **Appendix F - Evidence gaps by
+  section**. Table rows and columns whose every cell is an explicit "n/a" are left out of the table (`_prune`) and listed in the
+  same appendix; blank sub-heading rows are never treated as missing. Scenario tables for a method with no completed scenario
+  become one line naming each missing input once. The duplicate "Models not completed" list is dropped when the method plan
+  already states every method's status.
+- **Cross-references by name**, not number (the old hard-coded "section 7" was wrong in the full report).
+- **Own-history scenarios** (`relative.historical_scenarios`, section D4): bear/base/bull from the quartiles (or lowest / median /
+  highest of three years) of the company's own year-end P/E applied to current EPS, with a sensitivity grid and evidence ids; no
+  rate or multiple is assumed. Shown for context and **not counted in the verdict** (it assumes the past range still applies).
+- **Traceability**: relative P/E scenarios now carry the price, own P/E and every comparable peer's evidence ids.
+- **Defects fixed during validation**: HOLD missing from the cover colour map (the report failed to render); long unrounded
+  decimals in the historical comparison and the ATR; duplicate price-adjustment lines and an unformatted factor.
+- **Validation** (`python -m app.research.validate_pilot`): per company, accounting identities on the stored statements (total
+  assets = equity + liabilities; PBT - tax vs net profit, noted not failed because associates and minorities explain gaps), peer
+  medians recomputed and rank guards, scenario ordering and evidence ids for every completed method, verdict recomputed from its
+  components, targets only for BUY/SELL, and every thesis and risk point either carrying evidence ids or labelled as a hypothesis,
+  sector template or management statement. Result on 2026-11-15: 24 of 24 pass, 0 failures. Integrity audit PASS (76,346 rows).
+  Spot check against published figures: TCS FY2025 revenue 2,55,324 cr and profit 48,797 cr, Infosys revenue 1,62,990 cr and
+  Reliance revenue 9,64,693 cr match.

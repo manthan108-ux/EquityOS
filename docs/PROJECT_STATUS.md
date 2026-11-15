@@ -1,5 +1,7 @@
 # Project Status
 
+**EquityOS 1.0 accepted on 2026-11-15** - see [ACCEPTANCE.md](ACCEPTANCE.md) for the evidence and the stated limits.
+
 | Phase | Scope | Status |
 |---|---|---|
 | 1 | Architecture and foundation | Complete |
@@ -10,10 +12,10 @@
 | 6 | Evidence and validation engine | Complete |
 | 7 | Financial calculation engine | Complete |
 | 8 | Sector and peer engine | Complete |
-| 9 | Research agent system (LLM layer starts here) | Next |
-| 10 | Forecasting, valuation and risk | Pending |
-| 11 | Investment Committee and PDF generation | Pending |
-| 12 | Final testing and deployment | Pending |
+| 9 | Research agent system (LLM layer starts here) | Complete |
+| 10 | Forecasting, valuation and risk | Complete |
+| 11 | Investment Committee and PDF generation | Complete |
+| 12 | Final testing and deployment | Complete |
 
 ## Phase 1 - what works
 
