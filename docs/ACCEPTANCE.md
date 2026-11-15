@@ -91,3 +91,50 @@ This is the record of what was run to accept 1.0, what it showed, and what was n
 EquityOS 1.0 is **accepted as a working, validated system**. It is **not declared production-ready in the sense of criterion 3**:
 valuations remain unavailable where the evidence or the user's judgement is missing, and the product says so instead of
 filling the gap.
+
+
+---
+
+# Project closure record (2026-11-16)
+
+Closure, not a development phase: no feature, valuation, scoring or verdict change was made. Every row says when it was run.
+
+Key: **THIS RUN** = executed during this closure; **EARLIER** = from a previously documented run, not repeated (the relevant
+code has not changed except as stated); **NOT VERIFIED**; **BLOCKED**.
+
+| Area | Result | Status |
+|---|---|---|
+| Backend tests | `pytest`, one process: 1,981 passed, 1 unrelated deprecation warning | THIS RUN (after the format fix) |
+| Backend lint | `ruff check .` clean; `ruff format --check .` clean (334 files) with the pinned ruff 0.17.4 | THIS RUN |
+| Migrations | database at head `0023`; `alembic check`: no drift | THIS RUN |
+| Docker Compose config | `docker compose config` valid; database container healthy (up 2 days) | THIS RUN |
+| Pipeline health | `pipeline health`: no alerts; the worker container is not running now (only the database is up) | THIS RUN |
+| Pilot validation | `validate_pilot`: 24 of 24 pass, 0 failures (run 2026-11-16 after the bank assumptions were entered) | EARLIER (same day, before the format-only change) |
+| Repository hygiene | no `.env`, key, dump or credential file tracked; diff scanned for key patterns before the last commit | THIS RUN |
+| Frontend | `tsc`, `eslint`, `vitest` (65 tests), `next build` | EARLIER (no frontend code changed since) |
+| Playwright, mocked API | 22 of 22 | EARLIER |
+| Live end-to-end on the Docker stack | 4 of 4, including a downloaded PDF | EARLIER |
+| Docker image builds, full stack with worker, clean start | healthy; start-up race fixed | EARLIER |
+| Worker recovery after a killed worker | run reclaimed after the 600 s stale-heartbeat limit and completed | EARLIER |
+| Backup and restore | 202 MB dump, restored into a scratch database, 8 tables identical | EARLIER |
+| Upstox | live `verify` for TCS and SBIN: 8 datasets verified, COMPETITORS fails (UDAPI100011) | EARLIER |
+| LLM providers | both answer; header interpretation run on 4 TECHM reports, nothing promoted | EARLIER |
+| OCR | Tesseract 5.5.0 in the image; scanned filing re-run | EARLIER |
+| Deterministic reports | 24 of 24 identical on a fixed date | EARLIER (before the share-count and bank-assumption changes) |
+| Report generation and PDF export | 24 reports regenerated, 28-45 pages each | EARLIER |
+| Bank residual income | ICICIBANK, AXISBANK, HDFCBANK, SBIN: user assumptions entered; independent recomputation matches within Rs 1 | THIS RUN (2026-11-16, before closure) |
+| Full-stack startup, report PDF and live E2E in this closure | not repeated | NOT VERIFIED this run |
+| Hosted production deployment, load, soak, multi-user | never run | NOT VERIFIED |
+| DCF valuation | completes for none of the 24 on stored data | BLOCKED (inputs unavailable) |
+| Verdict back-test | INSUFFICIENT (about three years of history) | BLOCKED |
+
+## GitHub Actions failure
+
+- **Failing runs:** `07c1edb` (run 43700146415) and `6a6ebf4` (run 43750720144); earlier runs also failed.
+- **Job and step:** `backend`, step "Run ruff format --check ." The `frontend` and `docker` jobs passed in both runs.
+- **Cause:** 16 Python files were not in `ruff format` layout. Local checks had run `ruff check` only, not the format check.
+  It is not a code regression, a dependency or Python-version mismatch, a missing secret or a service-start failure.
+- **Fix:** commit `fe25b92`, layout-only formatting with the pinned ruff 0.17.4. The full suite was re-run locally afterwards:
+  1,981 passed, the same count as before.
+- **Status:** run 43751201814 for `fe25b92`: `frontend` and `docker` passed; the `backend` job was still running when this was
+  written, so CI is **not yet confirmed passing**. Check the Actions tab; if it fails, the failing step shows which check.

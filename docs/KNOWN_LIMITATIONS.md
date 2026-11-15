@@ -1,5 +1,29 @@
 # Known limitations
 
+## Summary at project closure (2026-11-16)
+
+These are the material limitations of the final version. The dated sections below give the detail.
+
+1. **DCF coverage is incomplete.** The discounted-cash-flow method completes for none of the 24 pilot companies. Stored
+   history lacks three or more years of EBIT, depreciation, capex, borrowings and working capital for most of them, the Upstox
+   fundamentals feed has no borrowings, D&A, capex or finance costs, and the scenario inputs are analyst-owned and not entered.
+   Banks use residual income by design, not FCFF.
+2. **Bank methods disagree.** For HDFCBANK, SBIN, ICICIBANK and AXISBANK the residual-income value and the peer-P/E value
+   differ widely (for example SBIN: about Rs 643 against about Rs 1,690 per share, base case). The report blends them; the
+   verdict inherits that disagreement. The residual-income inputs (growth, ROE shift, cost of equity) are user assumptions.
+3. **Back-testing is insufficient.** Prices and statements span about three years, so the verdict back-test reads INSUFFICIENT
+   and gives no statistical support for the verdict rules. The production verdict itself is not back-tested.
+4. **Document and share-count coverage is partial.** Eleven pilot companies have no verified share count (their stored
+   documents are scans or results releases without a share-capital note), so market cap and P/B are withheld for them.
+   KOTAKBANK's P/B is withheld because its only verified count predates a split that is not applied.
+5. **Integrations and LLM workflows are not exhaustively tested.** Upstox and both LLM providers were verified live on small
+   samples. LLM-backed stages were exercised on a few documents only, and the pipeline normally runs without an LLM.
+6. **No production deployment has been run.** The stack was verified on one Windows host with Docker Compose. There has been no
+   hosted deployment, no load or soak testing, no multi-user operation and no operational monitoring in a live setting.
+7. **Scope.** 24 pilot companies only; no universe-coverage expansion and no AI copilot (both dropped by decision).
+
+Nothing is estimated to fill these gaps: a missing input is reported as missing.
+
 Honest list, as of 2026-11-08 (Phase 6 added at the end). Each item says what happens instead of a wrong answer.
 
 ## Data coverage

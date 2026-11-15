@@ -1,10 +1,22 @@
-# Next steps (updated 2026-11-14, after the integrated pipeline)
+# Optional roadmap after project closure (2026-11-16)
 
-Raw documents are no longer available from the project owner, so nothing here waits for uploads.
-Documents are *optional accelerators*: if one ever arrives, save it in `data\inbox\<SYMBOL>\` (PDF) or
-run `python -m app.docintel.cli xbrl --symbol <SYMBOL> --file <file.xml>` (XBRL), then press
-**Resume research**. Companies lacking evidence are shown as *awaiting evidence*, not blocked.
+EquityOS development is closed (see [ACCEPTANCE.md](ACCEPTANCE.md)). Nothing below is required to run, demonstrate or
+maintain the delivered system, and nothing is scheduled. It is a menu for anyone who later chooses to extend it. The sections
+that follow were written during development; they stay as reference, and a few early items are superseded by later work
+(the closure programme, the Upstox integration and the share-capital reader).
 
+Highest-value options, in order of effect on the known limitations:
+
+1. **Deeper statement history** (XBRL or filings) for EBIT, D&A, capex, borrowings and working capital: the binding
+   constraint for DCF, EV/EBITDA, SOTP and the verdict back-test.
+2. **Analyst-owned DCF inputs** (long-run growth, scenario cost of equity, pre-tax cost of debt) per non-financial company.
+3. **Share-capital notes or other verified counts** for the 11 companies without one, and a FY2026 Kotak annual report.
+4. **A longer price and statement history** so the verdict back-test can leave INSUFFICIENT.
+5. **A hosted deployment trial** with monitoring, load and recovery tests, before any production claim.
+6. Refresh market inputs before they expire (risk-free rate 45 days; premium and beta 400 days): edit
+   `market_assumptions.json`, then `python -m app.research.setup_cli market`.
+
+Universe expansion and an AI copilot were dropped by decision and are not on this roadmap.
 
 ## Open items after the closure programme (2026-11-15)
 
