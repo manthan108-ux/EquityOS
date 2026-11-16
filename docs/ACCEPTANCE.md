@@ -156,5 +156,6 @@ code has not changed except as stated); **NOT VERIFIED**; **BLOCKED**.
   delivers. Regression test added (`test_the_first_alert_delivery_does_not_depend_on_the_hosts_uptime`, faking a monotonic clock
   of 10 s): fails on the old code, passes on the new. Verified locally on Linux: `ruff check` and `ruff format --check` clean,
   1,981 passed and 1 skipped.
-- **CI status:** the run for `99cbabb` was green, the run for `c10433b` failed for the reason above; the run carrying the
-  scheduler fix is to be read from the Actions tab (see the final report).
+- **CI status:** GREEN. Run 43831461250 for `68e30d5` (carrying all three fixes) completed successfully: `backend`, `frontend` and
+  `docker` all passed (checked 2026-11-16). The runs for `fe25b92`, `0f8786b` and `c10433b` failed for the reasons above; the run for
+  `99cbabb` was green but passed by luck on the alert-timer defect (failure 3).

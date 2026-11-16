@@ -24,10 +24,10 @@ Status key: **this closure** = run on 2026-11-16; **earlier** = a previously doc
 | Check | Result | Status |
 |---|---|---|
 | Backend tests, Windows | 1,981 passed | this closure (before the final fix; isolation tests 19 passed after it) |
-| Backend tests, Linux, CI-like (fresh Postgres 17, Python 3.13) | 1,980 passed, 1 skipped | this closure |
+| Backend tests, Linux, CI-like (fresh Postgres 17, Python 3.13) | 1,981 passed, 1 skipped (after all fixes) | this closure |
 | `ruff check`, `ruff format --check` | clean (334 files) | this closure |
 | Migrations | fresh database to head 0023; `alembic check`: no drift | this closure |
-| GitHub Actions | run 43757926216 for `99cbabb`: backend, frontend and docker all passed | this closure |
+| GitHub Actions | run 43831461250 for `68e30d5`: backend, frontend and docker all passed | this closure |
 | Docker Compose config; database health | valid; healthy | this closure |
 | Pilot validation | 24 of 24 pass, 0 failures | this closure (before the last changes, which touched no valuation or report code) |
 | Frontend `tsc`, `eslint`, `vitest` (65), `next build` | clean | earlier, and in the green CI run (lint, tests, Playwright, build) |
@@ -44,7 +44,9 @@ Status key: **this closure** = run on 2026-11-16; **earlier** = a previously doc
 `ruff format` layout (fixed, `fe25b92`). Second cause, hidden behind the first: on Linux, stopping a timed-out pipeline stage
 killed its parent process, so pytest and the CI runner died ("runner lost communication"); Windows never showed it. Fixed in
 `app/pipeline/isolation.py` (`99cbabb`), reproduced and verified on Linux. This also protected the Docker worker, which would
-have killed itself on a stage timeout. Details in ACCEPTANCE.md.
+have killed itself on a stage timeout. A third, intermittent failure (the worker skipped its first alert delivery on a host with
+under 300 s of uptime, because the timer was compared with `time.monotonic()`) was found when one CI run failed, and fixed
+(`68e30d5`) with a regression test. Details in ACCEPTANCE.md.
 
 ## C. Feature acceptance
 
@@ -97,12 +99,12 @@ those gaps, so production readiness is not claimed.
 
 ## G. Final repository state
 
-- **Source code changed during closure:** yes, two defects fixed: ruff formatting of 16 files (layout only) and the process-group
-  bug in `app/pipeline/isolation.py`. No valuation, scoring or verdict logic changed.
+- **Source code changed during closure:** yes, three defects fixed: ruff formatting of 16 files (layout only), the process-group
+  bug in `app/pipeline/isolation.py`, and the first-alert timer in `app/pipeline/scheduler.py`. No valuation, scoring or verdict logic changed.
 - **Documentation updated:** README (rewritten), ACCEPTANCE, KNOWN_LIMITATIONS, NEXT_STEPS (now an optional roadmap), and this report.
 - **Tests executed:** yes, listed in B.
 - **Data or configuration changed:** user-provided valuation assumptions were entered for HDFCBANK and SBIN (on 2026-11-16, at the
   user's instruction, with audit trails). No other data or configuration changed; no data was deleted.
 - **Secrets exposed:** none. No `.env`, key or credential file is tracked; the diff was scanned before commits.
-- **Commits and pushes:** made at the user's explicit request: `6a6ebf4`, `fe25b92`, `0f8786b`, `99cbabb`, and the commit carrying
-  this report. No deployment occurred.
+- **Commits and pushes:** made at the user's explicit request: `6a6ebf4`, `fe25b92`, `0f8786b`, `99cbabb`, `c10433b`, `68e30d5` and the commit carrying
+  this update. No deployment occurred.
