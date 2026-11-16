@@ -147,5 +147,6 @@ code has not changed except as stated); **NOT VERIFIED**; **BLOCKED**.
   `ruff check` clean, `ruff format --check` clean, `pytest`: 1,980 passed and 1 skipped, `alembic upgrade head` from an empty
   database through 0023, `alembic check`: no new operations. Windows: isolation tests 19 passed; full suite 1,981 passed before the
   change. The Linux image has Tesseract, which the GitHub runner does not, so tests that need it are the one difference.
-- **CI status:** NOT yet confirmed green on GitHub. It is confirmed only after the run for the commit that carries this fix
-  finishes; check the Actions tab.
+- **CI status:** GREEN. Run 43757926216 for `99cbabb` completed successfully: `backend`, `frontend` and `docker` all passed
+  (checked 2026-11-16). This is the first fully green run since the closure began; the runs for `fe25b92` and `0f8786b` failed
+  because they did not yet carry the process-group fix.

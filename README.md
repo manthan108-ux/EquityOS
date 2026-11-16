@@ -157,6 +157,7 @@ verified on small samples; no production deployment has been run. Full list: [do
 
 ## Documentation
 
+- [Project closure report](docs/CLOSURE_REPORT.md)
 - [Final acceptance record and handover](docs/ACCEPTANCE.md)
 - [Known limitations](docs/KNOWN_LIMITATIONS.md)
 - [Optional roadmap](docs/NEXT_STEPS.md)
