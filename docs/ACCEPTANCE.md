@@ -147,6 +147,14 @@ code has not changed except as stated); **NOT VERIFIED**; **BLOCKED**.
   `ruff check` clean, `ruff format --check` clean, `pytest`: 1,980 passed and 1 skipped, `alembic upgrade head` from an empty
   database through 0023, `alembic check`: no new operations. Windows: isolation tests 19 passed; full suite 1,981 passed before the
   change. The Linux image has Tesseract, which the GitHub runner does not, so tests that need it are the one difference.
-- **CI status:** GREEN. Run 43757926216 for `99cbabb` completed successfully: `backend`, `frontend` and `docker` all passed
-  (checked 2026-11-16). This is the first fully green run since the closure began; the runs for `fe25b92` and `0f8786b` failed
-  because they did not yet carry the process-group fix.
+- **Failure 3 (run 43826661557, commit `c10433b`, docs-only change):** `backend` job, step "Run pytest -q": 1 failed, 1,979
+  passed, 1 skipped - `tests/test_pipeline_alerts.py::test_the_worker_delivers_alerts_on_its_own`. Root cause: a genuine defect in
+  `serve()` (`app/pipeline/scheduler.py`). The alert timer started at `last_alert = 0.0` and compared it with
+  `time.monotonic()`, which on Linux is roughly the host's uptime; on a freshly booted runner (under 300 s) the first alert delivery
+  was skipped. The earlier green run had a runner that had been up longer, so it was an intermittent CI result with a real cause,
+  and a worker started on a just-booted host had the same delay. Fix: `last_alert` starts as `None` and the first pass always
+  delivers. Regression test added (`test_the_first_alert_delivery_does_not_depend_on_the_hosts_uptime`, faking a monotonic clock
+  of 10 s): fails on the old code, passes on the new. Verified locally on Linux: `ruff check` and `ruff format --check` clean,
+  1,981 passed and 1 skipped.
+- **CI status:** the run for `99cbabb` was green, the run for `c10433b` failed for the reason above; the run carrying the
+  scheduler fix is to be read from the Actions tab (see the final report).

@@ -215,7 +215,7 @@ def serve(
     stages and put back in the queue, so the next worker continues it from its checkpoints.
     """
     executed = 0
-    last_alert = 0.0
+    last_alert: float | None = None  # None: deliver on the first pass, whatever the host's uptime
     beat = WorkerBeat(session_factory, beat_seconds)
     beat.start()
     try:
@@ -225,7 +225,9 @@ def serve(
 
         while not stopping():
             run_id = None
-            if alert_sinks is not None and time.monotonic() - last_alert >= alert_seconds:
+            if alert_sinks is not None and (
+                last_alert is None or time.monotonic() - last_alert >= alert_seconds
+            ):
                 last_alert = time.monotonic()
                 _deliver_alerts(session_factory, alert_sinks)
             try:

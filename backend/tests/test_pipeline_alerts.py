@@ -174,6 +174,26 @@ def test_the_worker_delivers_alerts_on_its_own(session):
     assert calls, "the worker must try to deliver alerts"
 
 
+def test_the_first_alert_delivery_does_not_depend_on_the_hosts_uptime(session, monkeypatch):
+    """time.monotonic() is the machine's uptime on Linux; a freshly booted host must still deliver."""
+    monkeypatch.setattr(scheduler.time, "monotonic", lambda: 10.0)
+    calls = []
+
+    def sinks():
+        calls.append(1)
+        raise RuntimeError("sinks could not be built")
+
+    real_close = session.close
+    session.close = lambda: None
+    try:
+        scheduler.serve(
+            lambda: session, lambda: {}, once=True, beat_seconds=3600, alert_sinks=sinks
+        )
+    finally:
+        session.close = real_close
+    assert calls, "the first pass must deliver alerts even 10 seconds after boot"
+
+
 @pytest.mark.parametrize(
     ("alert", "key"),
     [
